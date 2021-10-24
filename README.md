@@ -11,6 +11,7 @@ Git source for [hrsh7th/nvim-cmp](https://github.com/hrsh7th/nvim-cmp)
 
 - git
 - curl
+- [plenary.nvim](https://github.com/nvim-lua/plenary.nvim)
 - [GitHub CLI](https://cli.github.com/) (optional, will use curl instead if not avaliable)
 
 ### GitHub Private Repository
@@ -23,13 +24,14 @@ Git source for [hrsh7th/nvim-cmp](https://github.com/hrsh7th/nvim-cmp)
 [vim-plug](https://github.com/junegunn/vim-plug)
 
 ```vim
+Plug 'nvim-lua/plenary.nvim'
 Plug 'petertriho/cmp-git'
 ```
 
 [packer.nvim](https://github.com/wbthomason/packer.nvim)
 
 ```lua
-use("petertriho/cmp-git")
+use("petertriho/cmp-git", requires = "nvim-lua/plenary.nvim")
 ```
 
 ## Setup
