@@ -1,4 +1,5 @@
 local github = require("cmp_git.github")
+local gitlab = require("cmp_git.gitlab")
 local utils = require("cmp_git.utils")
 
 local Source = {
@@ -30,6 +31,13 @@ function Source:complete(params, callback)
 
             if self.config.github and git_info.host == "github" and git_info.owner ~= nil and git_info.repo ~= nil then
                 github.get_issues(self, callback, bufnr, git_info.owner, git_info.repo)
+            elseif
+                self.config.gitlab
+                and git_info.host == "gitlab"
+                and git_info.owner ~= nil
+                and git_info.repo ~= nil
+            then
+                gitlab.get_issues(self, callback, bufnr, git_info.owner, git_info.repo)
             else
                 callback({ items = {}, isIncomplete = false })
                 self.cache_issues[bufnr] = {}
