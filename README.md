@@ -2,6 +2,9 @@
 
 Git source for [hrsh7th/nvim-cmp](https://github.com/hrsh7th/nvim-cmp)
 
+- `#` to trigger `issues` completion
+- `@` to trigger `mentions` (contributors) completion
+
 ## Installation
 
 ### Dependencies
