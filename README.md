@@ -9,6 +9,7 @@ Git source for [hrsh7th/nvim-cmp](https://github.com/hrsh7th/nvim-cmp)
 
 ### Dependencies
 
+- git
 - curl
 - [GitHub CLI](https://cli.github.com/) (optional, will use curl instead if not avaliable)
 
