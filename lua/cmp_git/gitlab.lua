@@ -11,15 +11,13 @@ M.get_issues = function(source, callback, bufnr, owner, repo)
         -- see https://github.com/profclems/glab/issues/828
         command = {
             "glab",
-            "issue",
-            "list",
-            "--per-page", -- this is a little cheating but w/e
-            source.config.gitlab.issues.limit,
+            "api",
+            string.format(
+                "/projects/:id/issues?per_page=%s&state=%s",
+                source.config.gitlab.issues.limit,
+                source.config.gitlab.issues.state
+            ),
         }
-
-        if source.config.gitlab.issues.state == "all" or source.config.gitlab.issues.state == "closed" then
-            table.insert(command, "--" .. source.config.gitlab.issues.state)
-        end
 
         used_glab = true
     else
@@ -31,40 +29,30 @@ M.get_issues = function(source, callback, bufnr, owner, repo)
         -- TODO: check for empty result?
         local result = job:result()
 
+        local ok, parsed = pcall(vim.json.decode, table.concat(result, ""))
+        if not ok then
+            vim.notify("Failed to parse github api result")
+            return
+        end
+
         local items = {}
 
         if used_glab then
-            -- Remove the first two and last, as it's not usefull info here
-            table.remove(result, 1)
-            table.remove(result, 2)
-            table.remove(result)
-
-            for _, issue_raw in ipairs(result) do
-                local split_glab_issue = function(str)
-                    split_line = {}
-
-                    for part in issue_raw:gmatch("([^\t]*)\t?") do
-                        if part ~= "" then
-                            table.insert(split_line, part)
-                        end
-                    end
-                    return { number = split_line[1], title = split_line[2] }
+            for _, issue in ipairs(parsed) do
+                if issue.description == vim.NIL then
+                    issue.description = ""
                 end
 
-                -- Format returned by glab is '#<number>\t<title>\t<lables>\t<creation-date>'
-                local issue = split_glab_issue(issue_raw)
-
-                -- just in case I forgot some line
-                if next(issue) ~= nil then
-                    table.insert(items, {
-                        label = string.format("%s", issue.number),
-                        documentation = {
-                            kind = "markdown",
-                            value = string.format("# %s", issue.title),
-                        },
-                    })
-                end
+                table.insert(items, {
+                    label = string.format("#%s", issue.iid),
+                    documentation = {
+                        kind = "markdown",
+                        value = string.format("# %s\n\n%s", issue.title, issue.description),
+                    },
+                })
             end
+
+            print(vim.inspect(#items))
         end
 
         callback({ items = items, isIncomplete = false })

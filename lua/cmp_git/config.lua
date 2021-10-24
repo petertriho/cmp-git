@@ -13,7 +13,7 @@ local M = {
     gitlab = {
         issues = {
             limit = 100,
-            state = "open", -- open, closed, all
+            state = "opened", -- opened, closed, all
         },
     },
 }
