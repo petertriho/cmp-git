@@ -49,7 +49,7 @@ require("cmp-git").setup({
 
 ## Acknowledgements
 
-Special thanks to tjdevries for their informative video and starting code.
+Special thanks to [tjdevries](https://github.com/tjdevries) for their informative video and starting code.
 
 - [TakeTuesday E01: nvim-cmp](https://www.youtube.com/watch?v=_DnmphIwnjo)
 - [tjdevries/config_manager](https://github.com/tjdevries/config_manager)
