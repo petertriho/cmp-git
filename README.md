@@ -22,14 +22,15 @@ Git source for [hrsh7th/nvim-cmp](https://github.com/hrsh7th/nvim-cmp)
 
 ### GitHub Private Repositories
 
-- `curl`: Generate a personal token with `repo` scope in
-  [settings](https://github.com/settings/tokens) and set `GITHUB_API_TOKEN`
-  environment variable.
+- `curl`: Generate a [token](https://github.com/settings/tokens)
+  with `repo` scope and set `GITHUB_API_TOKEN` environment variable.
 - `GitHub CLI`: Run [gh auth login](https://cli.github.com/manual/gh_auth_login)
 
-### GitLab Private Respositories
+### GitLab Private Repositories
 
 - `GitLab CLI`: Run [glab auth login](https://glab.readthedocs.io/en/latest/auth/login.html)
+  or generate [token](https://gitlab.com/-/profile/personal_access_tokens) and set
+  `GITLAB_TOKEN` environment variable.
 
 [vim-plug](https://github.com/junegunn/vim-plug)
 
