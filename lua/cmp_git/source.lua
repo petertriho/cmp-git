@@ -51,6 +51,13 @@ function Source:complete(params, callback)
 
             if self.config.github and git_info.host == "github" and git_info.owner ~= nil and git_info.repo ~= nil then
                 github.get_mentions(self, callback, bufnr, git_info.owner, git_info.repo)
+            elseif
+                self.config.gitlab
+                and git_info.host == "gitlab"
+                and git_info.owner ~= nil
+                and git_info.repo ~= nil
+            then
+                gitlab.get_mentions(self, callback, bufnr, git_info.owner, git_info.repo)
             else
                 callback({ items = {}, isIncomplete = false })
                 self.cache_mentions[bufnr] = {}

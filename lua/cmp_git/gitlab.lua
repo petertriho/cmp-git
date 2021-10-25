@@ -51,8 +51,55 @@ M.get_issues = function(source, callback, bufnr, owner, repo)
                     },
                 })
             end
+        end
 
-            print(vim.inspect(#items))
+        callback({ items = items, isIncomplete = false })
+
+        source.cache_issues[bufnr] = items
+    end
+
+    Job:new(command):start()
+end
+
+M.get_mentions = function(source, callback, bufnr, owner, repo)
+    local command = nil
+    local used_glab = false
+
+    if vim.fn.executable("glab") == 1 then
+        command = {
+            "glab",
+            "api",
+            "/projects/:id/repository/contributors",
+        }
+
+        used_glab = true
+    else
+        vim.notify("glab executables not found!")
+        return
+    end
+
+    command.on_exit = function(job)
+        -- TODO: check for empty result?
+        local result = job:result()
+
+        local ok, parsed = pcall(vim.json.decode, table.concat(result, ""))
+        if not ok then
+            vim.notify("Failed to parse github api result")
+            return
+        end
+
+        local items = {}
+
+        if used_glab then
+            for _, mention in ipairs(parsed) do
+                table.insert(items, {
+                    label = string.format("@%s", mention.username),
+                    documentation = {
+                        kind = "markdown",
+                        value = string.format("# %s\n\n%s", mention.username, mention.name),
+                    },
+                })
+            end
         end
 
         callback({ items = items, isIncomplete = false })
