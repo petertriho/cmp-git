@@ -15,6 +15,7 @@ local M = {
             limit = 100,
             state = "opened", -- opened, closed, all
         },
+        mentions = true,
     },
 }
 

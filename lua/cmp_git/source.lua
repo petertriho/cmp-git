@@ -29,10 +29,17 @@ function Source:complete(params, callback)
         if not self.cache_issues[bufnr] then
             local git_info = utils.get_git_info()
 
-            if self.config.github and git_info.host == "github" and git_info.owner ~= nil and git_info.repo ~= nil then
+            if
+                self.config.github
+                and self.config.github.issues
+                and git_info.host == "github"
+                and git_info.owner ~= nil
+                and git_info.repo ~= nil
+            then
                 github.get_issues(self, callback, bufnr, git_info.owner, git_info.repo)
             elseif
                 self.config.gitlab
+                and self.config.gitlab.mentions
                 and git_info.host == "gitlab"
                 and git_info.owner ~= nil
                 and git_info.repo ~= nil
@@ -49,10 +56,17 @@ function Source:complete(params, callback)
         if not self.cache_mentions[bufnr] then
             local git_info = utils.get_git_info()
 
-            if self.config.github and git_info.host == "github" and git_info.owner ~= nil and git_info.repo ~= nil then
+            if
+                self.config.github
+                and self.config.github.mentions
+                and git_info.host == "github"
+                and git_info.owner ~= nil
+                and git_info.repo ~= nil
+            then
                 github.get_mentions(self, callback, bufnr, git_info.owner, git_info.repo)
             elseif
                 self.config.gitlab
+                and self.config.gitlab.mentions
                 and git_info.host == "gitlab"
                 and git_info.owner ~= nil
                 and git_info.repo ~= nil
