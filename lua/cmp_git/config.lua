@@ -10,6 +10,12 @@ local M = {
             limit = 100,
         },
     },
+    gitlab = {
+        issues = {
+            limit = 100,
+            state = "opened", -- opened, closed, all
+        },
+    },
 }
 
 return M
