@@ -11,7 +11,7 @@ M.get_issues = function(source, callback, bufnr, owner, repo)
             "glab",
             "api",
             string.format(
-                "/projects/:id/issues?per_page=%s&state=%s",
+                "/projects/:id/issues?per_page=%d&state=%s",
                 source.config.gitlab.issues.limit,
                 source.config.gitlab.issues.state
             ),
@@ -67,7 +67,7 @@ M.get_mentions = function(source, callback, bufnr, owner, repo)
         command = {
             "glab",
             "api",
-            "/projects/:id/users",
+            string.format("/projects/:id/users?per_page=%d", source.config.gitlab.mentions.limit),
         }
 
         used_glab = true

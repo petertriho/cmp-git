@@ -67,7 +67,9 @@ require("cmp_git").setup({
             limit = 100,
             state = "opened", -- opened, closed, all
         },
-        mentions = true,
+        mentions = {
+            limit = 100,
+        },
     },
 })
 ```
