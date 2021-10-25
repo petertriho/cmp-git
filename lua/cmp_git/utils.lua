@@ -19,7 +19,6 @@ M.get_git_info = function()
 
     if is_github_repo then
         host, owner, repo = M.get_github_info(remote_origin_url)
-        print(host, owner, repo)
     elseif is_gitlab_repo then
         host, owner, repo = M.get_gitlab_info(remote_origin_url)
     end
