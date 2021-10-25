@@ -1,11 +1,13 @@
 local M = {}
 
 M.get_gitlab_info = function(url)
-    return string.match(url, "(gitlab).*[/:](.+)/(.+)%.git")
+    local clean_url = string.gsub(url, "%.git", "")
+    return string.match(clean_url, "(gitlab).*[/:](.+)/(.+)$")
 end
 
 M.get_github_info = function(url)
-    return string.match(url, "(github)%.com[/:](.+)/(.+)%.git")
+    local clean_url = string.gsub(url, "%.git", "")
+    return string.match(clean_url, "(github)%.com[/:](.+)/(.+)$")
 end
 
 M.get_git_info = function()
@@ -17,6 +19,7 @@ M.get_git_info = function()
 
     if is_github_repo then
         host, owner, repo = M.get_github_info(remote_origin_url)
+        print(host, owner, repo)
     elseif is_gitlab_repo then
         host, owner, repo = M.get_gitlab_info(remote_origin_url)
     end
