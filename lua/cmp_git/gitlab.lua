@@ -69,7 +69,7 @@ M.get_mentions = function(source, callback, bufnr, owner, repo)
         command = {
             "glab",
             "api",
-            "/projects/:id/repository/contributors",
+            "/projects/:id/users",
         }
 
         used_glab = true
