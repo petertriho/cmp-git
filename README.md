@@ -13,13 +13,18 @@ Git source for [hrsh7th/nvim-cmp](https://github.com/hrsh7th/nvim-cmp)
 - curl
 - [plenary.nvim](https://github.com/nvim-lua/plenary.nvim)
 - [GitHub CLI](https://cli.github.com/) (optional, will use curl instead if not avaliable)
+- [GitLab CLI (unofficial)](https://github.com/profclems/glab)
 
-### GitHub Private Repository
+### GitHub Private Repositories
 
 - `curl`: Generate a personal token with `repo` scope in
   [settings](https://github.com/settings/tokens) and set `GITHUB_API_TOKEN`
   environment variable.
 - `GitHub CLI`: Run [gh auth login](https://cli.github.com/manual/gh_auth_login)
+
+### GitLab Private Respositories
+
+- `GitLab CLI`: Run [glab auth login](https://glab.readthedocs.io/en/latest/auth/login.html)
 
 [vim-plug](https://github.com/junegunn/vim-plug)
 
