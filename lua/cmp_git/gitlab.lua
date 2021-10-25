@@ -7,8 +7,6 @@ M.get_issues = function(source, callback, bufnr, owner, repo)
     local used_glab = false
 
     if vim.fn.executable("glab") == 1 then
-        -- NOTE: glab doesn't provide any json output, so we have to live with a reduced set of info
-        -- see https://github.com/profclems/glab/issues/828
         command = {
             "glab",
             "api",
