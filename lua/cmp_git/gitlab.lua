@@ -6,17 +6,17 @@ local M = {}
 M.get_issues = function(source, callback, bufnr, owner, repo)
     local command = nil
 
-    -- if vim.fn.executable("glab") == 1 then
-    --     command = {
-    --         "glab",
-    --         "api",
-    --         string.format(
-    --             "/projects/:id/issues?per_page=%d&state=%s",
-    --             source.config.gitlab.issues.limit,
-    --             source.config.gitlab.issues.state
-    --         ),
-    --     }
-    if vim.fn.executable("curl") == 1 then
+    if vim.fn.executable("glab") == 1 then
+        command = {
+            "glab",
+            "api",
+            string.format(
+                "/projects/:id/issues?per_page=%d&state=%s",
+                source.config.gitlab.issues.limit,
+                source.config.gitlab.issues.state
+            ),
+        }
+    elseif vim.fn.executable("curl") == 1 then
         local url = string.format(
             "https://gitlab.com/api/v4/projects/%s/issues?per_page=%d&state=%s",
             utils.url_encode(string.format("%s/%s", owner, repo)),
@@ -76,13 +76,13 @@ end
 M.get_mentions = function(source, callback, bufnr, owner, repo)
     local command = nil
 
-    -- if vim.fn.executable("glab") == 1 then
-    --     command = {
-    --         "glab",
-    --         "api",
-    --         string.format("/projects/:id/users?per_page=%d", source.config.gitlab.mentions.limit),
-    --     }
-    if vim.fn.executable("curl") == 1 then
+    if vim.fn.executable("glab") == 1 then
+        command = {
+            "glab",
+            "api",
+            string.format("/projects/:id/users?per_page=%d", source.config.gitlab.mentions.limit),
+        }
+    elseif vim.fn.executable("curl") == 1 then
         local url = string.format(
             "https://gitlab.com/api/v4/projects/%s/users?per_page=%d",
             utils.url_encode(string.format("%s/%s", owner, repo)),

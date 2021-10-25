@@ -4,6 +4,7 @@ local M = {}
 
 M.get_issues = function(source, callback, bufnr, owner, repo)
     local command = nil
+
     if vim.fn.executable("gh") == 1 then
         command = {
             "gh",
@@ -81,6 +82,7 @@ end
 
 M.get_mentions = function(source, callback, bufnr, owner, repo)
     local command = nil
+
     if vim.fn.executable("curl") == 1 then
         local url = string.format(
             "https://api.github.com/repos/%s/%s/contributors?per_page=%d&page=%d",
