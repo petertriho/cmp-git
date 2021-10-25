@@ -10,6 +10,7 @@ Git source for [hrsh7th/nvim-cmp](https://github.com/hrsh7th/nvim-cmp)
 - `#` to trigger `issues` completion
 
 - `@` to trigger `mentions` (contributors) completion
+- `!` to trigger `merge request` completion (GitLab only)
 
 ## Requirements
 
@@ -76,6 +77,10 @@ require("cmp_git").setup({
         },
         mentions = {
             limit = 100,
+        },
+        merge_requests = {
+            limit = 100,
+            state = "opened", -- opened, closed, locked, merged
         },
     },
 })

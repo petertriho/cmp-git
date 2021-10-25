@@ -5,6 +5,7 @@ local utils = require("cmp_git.utils")
 local Source = {
     cache_issues = {},
     cache_mentions = {},
+    cache_mrs = {},
     config = {},
     filetypes = {},
 }
@@ -25,6 +26,7 @@ end
 function Source:complete(params, callback)
     local bufnr = vim.api.nvim_get_current_buf()
 
+    print("Am i even called?")
     if params.completion_context.triggerCharacter == "#" then
         if not self.cache_issues[bufnr] then
             local git_info = utils.get_git_info()
@@ -79,11 +81,27 @@ function Source:complete(params, callback)
         else
             callback({ items = self.cache_mentions[bufnr], isIncomplete = false })
         end
+    elseif params.completion_context.triggerCharacter == "!" then
+        if not self.cache_mrs[bufnr] then
+            local git_info = utils.get_git_info()
+
+            if
+                self.config.gitlab
+                and self.config.gitlab.mentions
+                and git_info.host ~= nil
+                and git_info.owner ~= nil
+                and git_info.repo ~= nil
+            then
+                gitlab.get_mrs(self, callback, bufnr, git_info)
+            end
+        else
+            callback({ items = self.cache_mrs[bufnr], isIncomplete = false })
+        end
     end
 end
 
 function Source:get_trigger_characters()
-    return { "#", "@" }
+    return { "#", "@", "!" }
 end
 
 function Source:get_debug_name()

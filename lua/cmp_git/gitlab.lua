@@ -160,4 +160,82 @@ M.get_mentions = function(source, callback, bufnr, git_info)
     Job:new(command):start()
 end
 
+M.get_mrs = function(source, callback, bufnr, git_info)
+    local command = nil
+
+    if vim.fn.executable("glab") == 1 then
+        command = {
+            "glab",
+            "api",
+            string.format(
+                "/projects/:id/merge_requests?per_page=%d&state=%s",
+                source.config.gitlab.merge_requests.limit,
+                source.config.gitlab.merge_requests.state
+            ),
+        }
+    elseif vim.fn.executable("curl") == 1 then
+        local url = string.format(
+            "https://%s/api/v4/projects/%s/merge_requests?per_page=%d&state=%s",
+            git_info.host,
+            utils.url_encode(string.format("%s/%s", git_info.owner, git_info.repo)),
+            source.config.gitlab.merge_requests.limit,
+            source.config.gitlab.merge_requests.state
+        )
+
+        command = {
+            "curl",
+            url,
+        }
+
+        if vim.fn.exists("$GITLAB_TOKEN") == 1 then
+            local token = vim.fn.getenv("GITLAB_TOKEN")
+            local authorization_header = string.format("Authorization: Bearer %s", token)
+            table.insert(command, "-H")
+            table.insert(command, authorization_header)
+        end
+    else
+        vim.notify("glab and curl executables not found!")
+        return
+    end
+
+    local process_data = function(ok, parsed)
+        if not ok then
+            vim.notify("Failed to parse gitlab api result")
+            return
+        end
+
+        local items = {}
+
+        for _, mr in ipairs(parsed) do
+            table.insert(items, {
+                label = string.format("!%s", mr.iid),
+                documentation = {
+                    kind = "markdown",
+                    value = string.format("# %s\n\n%s", mr.title, mr.description),
+                },
+            })
+        end
+
+        callback({ items = items, isIncomplete = false })
+
+        source.cache_mrs[bufnr] = items
+    end
+
+    command.on_exit = function(job)
+        local result = job:result()
+
+        if utils.has_nvim_0_5_1 then
+            vim.schedule(function()
+                local ok, parsed = pcall(vim.fn.json_decode, result)
+                process_data(ok, parsed)
+            end)
+        else
+            local ok, parsed = pcall(vim.json_decode, result)
+            process_data(ok, parsed)
+        end
+    end
+
+    Job:new(command):start()
+end
+
 return M
