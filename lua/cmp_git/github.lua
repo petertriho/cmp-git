@@ -36,7 +36,7 @@ M.get_issues = function(source, callback, bufnr, owner, repo)
 
         if vim.fn.exists("$GITHUB_API_TOKEN") == 1 then
             local token = vim.fn.getenv("GITHUB_API_TOKEN")
-            local authorization_header = string.format("'Authorization: token %s'", token)
+            local authorization_header = string.format("Authorization: token %s", token)
             table.insert(command, "-H")
             table.insert(command, authorization_header)
         end
@@ -54,6 +54,7 @@ M.get_issues = function(source, callback, bufnr, owner, repo)
         end
 
         local items = {}
+
         for _, issue in ipairs(parsed) do
             if issue.body ~= vim.NIL then
                 issue.body = string.gsub(issue.body or "", "\r", "")
@@ -93,6 +94,13 @@ M.get_mentions = function(source, callback, bufnr, owner, repo)
             "curl",
             url,
         }
+
+        if vim.fn.exists("$GITHUB_API_TOKEN") == 1 then
+            local token = vim.fn.getenv("GITHUB_API_TOKEN")
+            local authorization_header = string.format("Authorization: token %s", token)
+            table.insert(command, "-H")
+            table.insert(command, authorization_header)
+        end
     else
         vim.notify("curl executable not found!")
         return
@@ -107,6 +115,7 @@ M.get_mentions = function(source, callback, bufnr, owner, repo)
         end
 
         local items = {}
+
         for _, mention in ipairs(parsed) do
             table.insert(items, {
                 label = string.format("@%s", mention.login),
