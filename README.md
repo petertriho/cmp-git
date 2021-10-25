@@ -18,19 +18,19 @@ Git source for [hrsh7th/nvim-cmp](https://github.com/hrsh7th/nvim-cmp)
 - curl
 - [plenary.nvim](https://github.com/nvim-lua/plenary.nvim)
 - [GitHub CLI](https://cli.github.com/) (optional, will use curl instead if not avaliable)
-- [GitLab CLI (unofficial)](https://github.com/profclems/glab)
+- [GitLab CLI (unofficial)](https://github.com/profclems/glab) (optional, will use curl instead if not avaliable)
 
 ### GitHub Private Repositories
 
-- `curl`: Generate a [token](https://github.com/settings/tokens)
-  with `repo` scope and set `GITHUB_API_TOKEN` environment variable.
+- `curl`: Generate [token](https://github.com/settings/tokens)
+  with `repo` scope. Set `GITHUB_API_TOKEN` environment variable.
 - `GitHub CLI`: Run [gh auth login](https://cli.github.com/manual/gh_auth_login)
 
 ### GitLab Private Repositories
 
+- `curl` Generate [token](https://gitlab.com/-/profile/personal_access_tokens)
+  with `api` scope. Set `GITLAB_TOKEN` environment variable.
 - `GitLab CLI`: Run [glab auth login](https://glab.readthedocs.io/en/latest/auth/login.html)
-  or generate [token](https://gitlab.com/-/profile/personal_access_tokens) and set
-  `GITLAB_TOKEN` environment variable.
 
 [vim-plug](https://github.com/junegunn/vim-plug)
 
