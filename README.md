@@ -10,7 +10,7 @@ Git source for [hrsh7th/nvim-cmp](https://github.com/hrsh7th/nvim-cmp)
 - `#` to trigger `issues` completion
 
 - `@` to trigger `mentions` (contributors) completion
-- `!` to trigger `merge request` completion (GitLab only)
+- `!` to trigger `merge requests` completion (GitLab only)
 
 ## Requirements
 
