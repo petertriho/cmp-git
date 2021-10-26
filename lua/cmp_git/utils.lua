@@ -23,4 +23,31 @@ M.get_git_info = function()
     return { host = host, owner = owner, repo = repo }
 end
 
+M.handle_response = function(response, handle_item)
+    local items = {}
+
+    local process_data = function(ok, parsed)
+        if not ok then
+            vim.notify("Failed to parse gitlab api result")
+            return
+        end
+
+        for _, item in ipairs(parsed) do
+            table.insert(items, handle_item(item))
+        end
+    end
+
+    if M.has_nvim_0_5_1 then
+        vim.schedule(function()
+            local ok, parsed = pcall(vim.fn.json_decode, response)
+            process_data(ok, parsed)
+        end)
+    else
+        local ok, parsed = pcall(vim.json_decode, response)
+        process_data(ok, parsed)
+    end
+
+    return items
+end
+
 return M

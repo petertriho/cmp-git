@@ -48,47 +48,27 @@ M.get_issues = function(source, callback, bufnr, git_info)
         return
     end
 
-    local process_data = function(ok, parsed)
-        if not ok then
-            vim.notify("Failed to parse github api result")
-            return
-        end
+    command.on_exit = function(job)
+        local result = table.concat(job:result(), "")
 
-        local items = {}
-
-        for _, issue in ipairs(parsed) do
+        local items = utils.handle_response(result, function(issue)
             if issue.body ~= vim.NIL then
                 issue.body = string.gsub(issue.body or "", "\r", "")
             else
                 issue.body = ""
             end
-
-            table.insert(items, {
+            return {
                 label = string.format("#%s", issue.number),
                 documentation = {
                     kind = "markdown",
                     value = string.format("# %s\n\n%s", issue.title, issue.body),
                 },
-            })
-        end
+            }
+        end)
 
         callback({ items = items, isIncomplete = false })
 
         source.cache_issues[bufnr] = items
-    end
-
-    command.on_exit = function(job)
-        local result = table.concat(job:result(), "")
-
-        if utils.has_nvim_0_5_1 then
-            vim.schedule(function()
-                local ok, parsed = pcall(vim.fn.json_decode, result)
-                process_data(ok, parsed)
-            end)
-        else
-            local ok, parsed = pcall(vim.json_decode, result)
-            process_data(ok, parsed)
-        end
     end
 
     Job:new(command):start()
@@ -123,37 +103,18 @@ M.get_mentions = function(source, callback, bufnr, git_info)
         return
     end
 
-    local process_data = function(ok, parsed)
-        if not ok then
-            vim.notify("Failed to parse github api result")
-            return
-        end
+    command.on_exit = function(job)
+        local result = table.concat(job:result(), "")
 
-        local items = {}
-
-        for _, mention in ipairs(parsed) do
-            table.insert(items, {
+        local items = utils.handle_response(result, function(mention)
+            return {
                 label = string.format("@%s", mention.login),
-            })
-        end
+            }
+        end)
 
         callback({ items = items, isIncomplete = false })
 
         source.cache_mentions[bufnr] = items
-    end
-
-    command.on_exit = function(job)
-        local result = table.concat(job:result(), "")
-
-        if utils.has_nvim_0_5_1 then
-            vim.schedule(function()
-                local ok, parsed = pcall(vim.fn.json_decode, result)
-                process_data(ok, parsed)
-            end)
-        else
-            local ok, parsed = pcall(vim.json_decode, result)
-            process_data(ok, parsed)
-        end
     end
 
     Job:new(command):start()

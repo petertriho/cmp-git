@@ -26,7 +26,6 @@ end
 function Source:complete(params, callback)
     local bufnr = vim.api.nvim_get_current_buf()
 
-    print("Am i even called?")
     if params.completion_context.triggerCharacter == "#" then
         if not self.cache_issues[bufnr] then
             local git_info = utils.get_git_info()
