@@ -51,7 +51,8 @@ M.get_issues = function(source, callback, bufnr, git_info)
             end
 
             return {
-                label = string.format("#%s", issue.iid),
+                label = string.format("#%s: %s", issue.iid, issue.title),
+                insertText = string.format("#%s", issue.iid),
                 documentation = {
                     kind = "markdown",
                     value = string.format("# %s\n\n%s", issue.title, issue.description),
@@ -165,7 +166,8 @@ M.get_mrs = function(source, callback, bufnr, git_info)
 
         local items = utils.handle_response(result, function(mr)
             return {
-                label = string.format("!%s", mr.iid),
+                label = string.format("!%s: %s", mr.iid, mr.title),
+                insertText = string.format("!%s", mr.iid),
                 documentation = {
                     kind = "markdown",
                     value = string.format("# %s\n\n%s", mr.title, mr.description),
