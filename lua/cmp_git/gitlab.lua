@@ -97,7 +97,7 @@ M.get_mentions = function(source, callback, bufnr, git_info)
             table.insert(command, authorization_header)
         end
     else
-        vim.notify("glab executables not found!")
+        vim.notify("glab and curl executables not found!")
         return
     end
 
