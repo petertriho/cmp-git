@@ -1,4 +1,6 @@
-local M = {}
+local M = {
+    has_nvim_0_5_1 = vim.fn.has("nvim-0.5.1"),
+}
 
 local char_to_hex = function(c)
     return string.format("%%%02X", string.byte(c))

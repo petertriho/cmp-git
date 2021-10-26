@@ -71,7 +71,7 @@ M.get_issues = function(source, callback, bufnr, owner, repo)
     command.on_exit = function(job)
         local result = table.concat(job:result(), "")
 
-        if vim.fn.has("nvim-0.5.1") then
+        if utils.has_nvim_0_5_1 then
             vim.schedule(function()
                 local ok, parsed = pcall(vim.fn.json_decode, result)
                 process_data(ok, parsed)
@@ -144,7 +144,7 @@ M.get_mentions = function(source, callback, bufnr, owner, repo)
     command.on_exit = function(job)
         local result = table.concat(job:result(), "")
 
-        if vim.fn.has("nvim-0.5.1") then
+        if utils.has_nvim_0_5_1 then
             vim.schedule(function()
                 local ok, parsed = pcall(vim.fn.json_decode, result)
                 process_data(ok, parsed)
