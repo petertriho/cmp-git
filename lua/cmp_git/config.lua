@@ -18,6 +18,10 @@ local M = {
         mentions = {
             limit = 100,
         },
+        merge_requests = {
+            limit = 100,
+            state = "opened", -- opened, closed, locked, merged
+        },
     },
 }
 
