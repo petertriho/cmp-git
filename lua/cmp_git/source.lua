@@ -32,15 +32,15 @@ function Source:complete(params, callback)
             if
                 self.config.github
                 and self.config.github.issues
-                and git_info.host == "github"
+                and git_info.host == "github.com"
                 and git_info.owner ~= nil
                 and git_info.repo ~= nil
             then
                 github.get_issues(self, callback, bufnr, git_info.owner, git_info.repo)
             elseif
                 self.config.gitlab
-                and self.config.gitlab.mentions
-                and git_info.host == "gitlab"
+                and self.config.gitlab.issues
+                and git_info.host ~= nil
                 and git_info.owner ~= nil
                 and git_info.repo ~= nil
             then
@@ -59,7 +59,7 @@ function Source:complete(params, callback)
             if
                 self.config.github
                 and self.config.github.mentions
-                and git_info.host == "github"
+                and git_info.host == "github.com"
                 and git_info.owner ~= nil
                 and git_info.repo ~= nil
             then
@@ -67,7 +67,7 @@ function Source:complete(params, callback)
             elseif
                 self.config.gitlab
                 and self.config.gitlab.mentions
-                and git_info.host == "gitlab"
+                and git_info.host ~= nil
                 and git_info.owner ~= nil
                 and git_info.repo ~= nil
             then
