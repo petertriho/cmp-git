@@ -13,7 +13,7 @@ Git source for [hrsh7th/nvim-cmp](https://github.com/hrsh7th/nvim-cmp)
 
 ## Requirements
 
-- Neovim >= 0.5.0
+- Neovim >= 0.5.1
 - git
 - curl
 - [GitHub CLI](https://cli.github.com/) (optional, will use curl instead if not avaliable)
