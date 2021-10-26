@@ -3,7 +3,7 @@ local utils = require("cmp_git.utils")
 
 local M = {}
 
-M.get_issues = function(source, callback, bufnr, owner, repo)
+M.get_issues = function(source, callback, bufnr, git_info)
     local command = nil
 
     if vim.fn.executable("glab") == 1 then
@@ -18,8 +18,9 @@ M.get_issues = function(source, callback, bufnr, owner, repo)
         }
     elseif vim.fn.executable("curl") == 1 then
         local url = string.format(
-            "https://gitlab.com/api/v4/projects/%s/issues?per_page=%d&state=%s",
-            utils.url_encode(string.format("%s/%s", owner, repo)),
+            "https://%s/api/v4/projects/%s/issues?per_page=%d&state=%s",
+            git_info.host,
+            utils.url_encode(string.format("%s/%s", git_info.owner, git_info.repo)),
             source.config.gitlab.issues.limit,
             source.config.gitlab.issues.state
         )
@@ -85,7 +86,7 @@ M.get_issues = function(source, callback, bufnr, owner, repo)
     Job:new(command):start()
 end
 
-M.get_mentions = function(source, callback, bufnr, owner, repo)
+M.get_mentions = function(source, callback, bufnr, git_info)
     local command = nil
 
     if vim.fn.executable("glab") == 1 then
@@ -96,8 +97,9 @@ M.get_mentions = function(source, callback, bufnr, owner, repo)
         }
     elseif vim.fn.executable("curl") == 1 then
         local url = string.format(
-            "https://gitlab.com/api/v4/projects/%s/users?per_page=%d",
-            utils.url_encode(string.format("%s/%s", owner, repo)),
+            "https://%s/api/v4/projects/%s/users?per_page=%d",
+            git_info.host,
+            utils.url_encode(string.format("%s/%s", git_info.owner, git_info.repo)),
             source.config.gitlab.mentions.limit
         )
 

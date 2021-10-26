@@ -3,7 +3,7 @@ local utils = require("cmp_git.utils")
 
 local M = {}
 
-M.get_issues = function(source, callback, bufnr, owner, repo)
+M.get_issues = function(source, callback, bufnr, git_info)
     local command = nil
 
     if vim.fn.executable("gh") == 1 then
@@ -21,8 +21,8 @@ M.get_issues = function(source, callback, bufnr, owner, repo)
     elseif vim.fn.executable("curl") == 1 then
         local url = string.format(
             "https://api.github.com/repos/%s/%s/issues?state=%s&per_page=%d&page=%d",
-            owner,
-            repo,
+            git_info.owner,
+            git_info.repo,
             source.config.github.filter,
             source.config.github.issues.limit,
             source.config.github.issues.state,
@@ -94,14 +94,14 @@ M.get_issues = function(source, callback, bufnr, owner, repo)
     Job:new(command):start()
 end
 
-M.get_mentions = function(source, callback, bufnr, owner, repo)
+M.get_mentions = function(source, callback, bufnr, git_info)
     local command = nil
 
     if vim.fn.executable("curl") == 1 then
         local url = string.format(
             "https://api.github.com/repos/%s/%s/contributors?per_page=%d&page=%d",
-            owner,
-            repo,
+            git_info.owner,
+            git_info.repo,
             source.config.github.mentions.limit,
             1
         )

@@ -36,7 +36,7 @@ function Source:complete(params, callback)
                 and git_info.owner ~= nil
                 and git_info.repo ~= nil
             then
-                github.get_issues(self, callback, bufnr, git_info.owner, git_info.repo)
+                github.get_issues(self, callback, bufnr, git_info)
             elseif
                 self.config.gitlab
                 and self.config.gitlab.issues
@@ -44,7 +44,7 @@ function Source:complete(params, callback)
                 and git_info.owner ~= nil
                 and git_info.repo ~= nil
             then
-                gitlab.get_issues(self, callback, bufnr, git_info.owner, git_info.repo)
+                gitlab.get_issues(self, callback, bufnr, git_info)
             else
                 callback({ items = {}, isIncomplete = false })
                 self.cache_issues[bufnr] = {}
@@ -63,7 +63,7 @@ function Source:complete(params, callback)
                 and git_info.owner ~= nil
                 and git_info.repo ~= nil
             then
-                github.get_mentions(self, callback, bufnr, git_info.owner, git_info.repo)
+                github.get_mentions(self, callback, bufnr, git_info)
             elseif
                 self.config.gitlab
                 and self.config.gitlab.mentions
@@ -71,7 +71,7 @@ function Source:complete(params, callback)
                 and git_info.owner ~= nil
                 and git_info.repo ~= nil
             then
-                gitlab.get_mentions(self, callback, bufnr, git_info.owner, git_info.repo)
+                gitlab.get_mentions(self, callback, bufnr, git_info)
             else
                 callback({ items = {}, isIncomplete = false })
                 self.cache_mentions[bufnr] = {}
