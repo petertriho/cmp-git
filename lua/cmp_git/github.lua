@@ -58,7 +58,8 @@ M.get_issues = function(source, callback, bufnr, git_info)
                 issue.body = ""
             end
             return {
-                label = string.format("#%s", issue.number),
+                label = string.format("#%s: %s", issue.number, issue.title),
+                insertText = string.format("#%s", issue.number),
                 documentation = {
                     kind = "markdown",
                     value = string.format("# %s\n\n%s", issue.title, issue.body),
