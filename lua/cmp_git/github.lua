@@ -30,6 +30,7 @@ M.get_issues = function(source, callback, bufnr, owner, repo)
 
         command = {
             "curl",
+            "-s",
             "-H",
             "'Accept: application/vnd.github.v3+json'",
             url,
@@ -46,9 +47,7 @@ M.get_issues = function(source, callback, bufnr, owner, repo)
         return
     end
 
-    command.on_exit = function(job)
-        local result = job:result()
-        local ok, parsed = pcall(vim.json.decode, table.concat(result, ""))
+    local process_data = function(ok, parsed)
         if not ok then
             vim.notify("Failed to parse github api result")
             return
@@ -77,6 +76,20 @@ M.get_issues = function(source, callback, bufnr, owner, repo)
         source.cache_issues[bufnr] = items
     end
 
+    command.on_exit = function(job)
+        local result = table.concat(job:result(), "")
+
+        if vim.fn.has("nvim-0.5.1") then
+            vim.schedule(function()
+                local ok, parsed = pcall(vim.fn.json_decode, result)
+                process_data(ok, parsed)
+            end)
+        else
+            local ok, parsed = pcall(vim.json_decode, result)
+            process_data(ok, parsed)
+        end
+    end
+
     Job:new(command):start()
 end
 
@@ -94,6 +107,7 @@ M.get_mentions = function(source, callback, bufnr, owner, repo)
 
         command = {
             "curl",
+            "-s",
             url,
         }
 
@@ -108,9 +122,7 @@ M.get_mentions = function(source, callback, bufnr, owner, repo)
         return
     end
 
-    command.on_exit = function(job)
-        local result = job:result()
-        local ok, parsed = pcall(vim.json.decode, table.concat(result, ""))
+    local process_data = function(ok, parsed)
         if not ok then
             vim.notify("Failed to parse github api result")
             return
@@ -127,6 +139,20 @@ M.get_mentions = function(source, callback, bufnr, owner, repo)
         callback({ items = items, isIncomplete = false })
 
         source.cache_mentions[bufnr] = items
+    end
+
+    command.on_exit = function(job)
+        local result = table.concat(job:result(), "")
+
+        if vim.fn.has("nvim-0.5.1") then
+            vim.schedule(function()
+                local ok, parsed = pcall(vim.fn.json_decode, result)
+                process_data(ok, parsed)
+            end)
+        else
+            local ok, parsed = pcall(vim.json_decode, result)
+            process_data(ok, parsed)
+        end
     end
 
     Job:new(command):start()
