@@ -8,6 +8,7 @@ M.url_encode = function(value)
     return string.gsub(value, "([^%w _%%%-%.~])", char_to_hex)
 end
 
+
 M.get_git_info = function()
     return M.run_in_cwd(M.get_cwd(), function()
         local remote_origin_url = vim.fn.system("git config --get remote.origin.url")
