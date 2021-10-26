@@ -8,15 +8,14 @@ in the future. Sorry for any inconveniences.
 Git source for [hrsh7th/nvim-cmp](https://github.com/hrsh7th/nvim-cmp)
 
 - `#` to trigger `issues` completion
+
 - `@` to trigger `mentions` (contributors) completion
 
-## Installation
+## Requirements
 
-### Dependencies
-
+- Neovim >= 0.5.0
 - git
 - curl
-- [plenary.nvim](https://github.com/nvim-lua/plenary.nvim)
 - [GitHub CLI](https://cli.github.com/) (optional, will use curl instead if not avaliable)
 - [GitLab CLI (unofficial)](https://github.com/profclems/glab) (optional, will use curl instead if not avaliable)
 
@@ -31,6 +30,8 @@ Git source for [hrsh7th/nvim-cmp](https://github.com/hrsh7th/nvim-cmp)
 - `curl` Generate [token](https://gitlab.com/-/profile/personal_access_tokens)
   with `api` scope. Set `GITLAB_TOKEN` environment variable.
 - `GitLab CLI`: Run [glab auth login](https://glab.readthedocs.io/en/latest/auth/login.html)
+
+## Installation
 
 [vim-plug](https://github.com/junegunn/vim-plug)
 
