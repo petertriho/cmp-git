@@ -108,7 +108,7 @@ function Source:get_debug_name()
 end
 
 function Source:is_available()
-    return self.filetypes[vim.bo.filetype] ~= nil
+    return self.filetypes["*"] ~= nil or self.filetypes[vim.bo.filetype] ~= nil
 end
 
 return Source
