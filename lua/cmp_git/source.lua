@@ -8,6 +8,7 @@ local Source = {
     cache_mrs = {},
     config = {},
     filetypes = {},
+    keyword_pattern = {},
 }
 
 Source.new = function(overrides)
@@ -19,6 +20,8 @@ Source.new = function(overrides)
     for _, item in ipairs(self.config.filetypes) do
         self.filetypes[item] = true
     end
+
+    self.keyword_pattern = table.concat(self.config.trigger_characters, "")
 
     return self
 end
@@ -99,8 +102,12 @@ function Source:complete(params, callback)
     end
 end
 
+function Source:get_keyword_pattern()
+    return string.format("[%s]", self.keyword_pattern)
+end
+
 function Source:get_trigger_characters()
-    return { "#", "@", "!" }
+    return self.config.trigger_characters
 end
 
 function Source:get_debug_name()
