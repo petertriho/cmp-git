@@ -1,6 +1,4 @@
-local M = {
-    has_nvim_0_5_1 = vim.fn.has("nvim-0.5.1"),
-}
+local M = {}
 
 local char_to_hex = function(c)
     return string.format("%%%02X", string.byte(c))
@@ -37,14 +35,14 @@ M.handle_response = function(response, handle_item)
         end
     end
 
-    if M.has_nvim_0_5_1 then
+    if vim.json and vim.json.decode then
+        local ok, parsed = pcall(vim.json.decode, response)
+        process_data(ok, parsed)
+    else
         vim.schedule(function()
             local ok, parsed = pcall(vim.fn.json_decode, response)
             process_data(ok, parsed)
         end)
-    else
-        local ok, parsed = pcall(vim.json_decode, response)
-        process_data(ok, parsed)
     end
 
     return items
