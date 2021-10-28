@@ -22,7 +22,7 @@ Source.new = function(overrides)
     end
 
     self.trigger_characters = { "#", "@", "!" }
-    self.keyword_pattern = table.concat(self.trigger_characters, "")
+    self.keyword_pattern = string.format("[%s]", table.concat(self.trigger_characters, ""))
 
     return self
 end
@@ -104,11 +104,11 @@ function Source:complete(params, callback)
 end
 
 function Source:get_keyword_pattern()
-    return string.format("[%s]", self.keyword_pattern)
+    return self.keyword_pattern
 end
 
 function Source:get_trigger_characters()
-    return self.config.trigger_characters
+    return self.trigger_characters
 end
 
 function Source:get_debug_name()
