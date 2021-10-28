@@ -22,6 +22,7 @@ Source.new = function(overrides)
 
     self.trigger_characters = { "#", "@", "!" }
     self.trigger_characters_str = table.concat(self.trigger_characters, "")
+    self.keyword_pattern = string.format("[%s]\\S*", self.trigger_characters_str)
 
     return self
 end
@@ -111,6 +112,10 @@ function Source:complete(params, callback)
             callback({ items = self.cache_merge_requests[bufnr], isIncomplete = false })
         end
     end
+end
+
+function Source:get_keyword_pattern()
+    return self.keyword_pattern
 end
 
 function Source:get_trigger_characters()
