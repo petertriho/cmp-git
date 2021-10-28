@@ -21,7 +21,7 @@ Source.new = function(overrides)
     end
 
     self.trigger_characters = { "#", "@", "!" }
-    self.trigger_characters_str = table.concat(self.trigger_characters, ",")
+    self.trigger_characters_str = table.concat(self.trigger_characters, "")
 
     return self
 end
