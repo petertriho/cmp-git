@@ -8,7 +8,6 @@ local Source = {
     cache_merge_requests = {},
     config = {},
     filetypes = {},
-    keyword_pattern = {},
 }
 
 Source.new = function(overrides)
@@ -22,7 +21,7 @@ Source.new = function(overrides)
     end
 
     self.trigger_characters = { "#", "@", "!" }
-    self.keyword_pattern = string.format("[%s].*", table.concat(self.trigger_characters, ""))
+    self.trigger_characters_str = table.concat(self.trigger_characters, ",")
 
     return self
 end
@@ -30,7 +29,18 @@ end
 function Source:complete(params, callback)
     local bufnr = vim.api.nvim_get_current_buf()
 
-    if params.completion_context.triggerCharacter == "#" then
+    local trigger_character = nil
+
+    if params.completion_context.triggerKind == 1 then
+        trigger_character = string.match(
+            params.context.cursor_before_line,
+            "%s*([" .. self.trigger_characters_str .. "])%S*$"
+        )
+    elseif params.completion_context.triggerKind == 2 then
+        trigger_character = params.completion_context.triggerCharacter
+    end
+
+    if trigger_character == "#" then
         if not self.cache_issues[bufnr] then
             local git_info = utils.get_git_info()
 
@@ -57,7 +67,7 @@ function Source:complete(params, callback)
         else
             callback({ items = self.cache_issues[bufnr], isIncomplete = false })
         end
-    elseif params.completion_context.triggerCharacter == "@" then
+    elseif trigger_character == "@" then
         if not self.cache_mentions[bufnr] then
             local git_info = utils.get_git_info()
 
@@ -84,14 +94,14 @@ function Source:complete(params, callback)
         else
             callback({ items = self.cache_mentions[bufnr], isIncomplete = false })
         end
-    elseif params.completion_context.triggerCharacter == "!" then
+    elseif trigger_character == "!" then
         if not self.cache_merge_requests[bufnr] then
             local git_info = utils.get_git_info()
 
             if
                 self.config.gitlab
                 and self.config.gitlab.mentions
-                and git_info.host ~= nil
+                and git_info.host ~= "github.com"
                 and git_info.owner ~= nil
                 and git_info.repo ~= nil
             then
@@ -101,10 +111,6 @@ function Source:complete(params, callback)
             callback({ items = self.cache_merge_requests[bufnr], isIncomplete = false })
         end
     end
-end
-
-function Source:get_keyword_pattern()
-    return self.keyword_pattern
 end
 
 function Source:get_trigger_characters()
