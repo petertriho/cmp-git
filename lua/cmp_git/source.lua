@@ -22,7 +22,7 @@ Source.new = function(overrides)
     end
 
     self.trigger_characters = { "#", "@", "!" }
-    self.keyword_pattern = string.format("[%s]", table.concat(self.trigger_characters, ""))
+    self.keyword_pattern = string.format("[%s].*", table.concat(self.trigger_characters, ""))
 
     return self
 end
