@@ -5,7 +5,7 @@ local utils = require("cmp_git.utils")
 local Source = {
     cache_issues = {},
     cache_mentions = {},
-    cache_mrs = {},
+    cache_merge_requests = {},
     config = {},
     filetypes = {},
     keyword_pattern = {},
@@ -85,7 +85,7 @@ function Source:complete(params, callback)
             callback({ items = self.cache_mentions[bufnr], isIncomplete = false })
         end
     elseif params.completion_context.triggerCharacter == "!" then
-        if not self.cache_mrs[bufnr] then
+        if not self.cache_merge_requests[bufnr] then
             local git_info = utils.get_git_info()
 
             if
@@ -95,10 +95,10 @@ function Source:complete(params, callback)
                 and git_info.owner ~= nil
                 and git_info.repo ~= nil
             then
-                gitlab.get_mrs(self, callback, bufnr, git_info)
+                gitlab.get_merge_requests(self, callback, bufnr, git_info)
             end
         else
-            callback({ items = self.cache_mrs[bufnr], isIncomplete = false })
+            callback({ items = self.cache_merge_requests[bufnr], isIncomplete = false })
         end
     end
 end

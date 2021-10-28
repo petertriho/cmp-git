@@ -3,7 +3,7 @@ local utils = require("cmp_git.utils")
 
 local M = {}
 
-local get_items = function(source, callback, bufnr, git_info, gh_command, curl_url, handle_item)
+local get_items = function(callback, gh_command, curl_url, handle_item)
     local command = nil
 
     if vim.fn.executable("gh") == 1 and gh_command then
@@ -34,8 +34,6 @@ local get_items = function(source, callback, bufnr, git_info, gh_command, curl_u
         local items = utils.handle_response(result, handle_item)
 
         callback({ items = items, isIncomplete = false })
-
-        source.cache_issues[bufnr] = items
     end
 
     Job:new(command):start()
@@ -43,10 +41,10 @@ end
 
 M.get_issues = function(source, callback, bufnr, git_info)
     get_items(
-        source,
-        callback,
-        bufnr,
-        git_info,
+        function(args)
+            callback(args)
+            source.cache_issues[bufnr] = args.items
+        end,
         {
             "gh",
             "issue",
@@ -88,10 +86,10 @@ end
 
 M.get_mentions = function(source, callback, bufnr, git_info)
     get_items(
-        source,
-        callback,
-        bufnr,
-        git_info,
+        function(args)
+            callback(args)
+            source.cache_mentions[bufnr] = args.items
+        end,
         nil,
         string.format(
             "https://api.github.com/repos/%s/%s/contributors?per_page=%d&page=%d",

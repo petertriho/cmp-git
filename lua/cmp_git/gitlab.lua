@@ -3,7 +3,7 @@ local utils = require("cmp_git.utils")
 
 local M = {}
 
-local get_items = function(source, callback, bufnr, get_info, glab_command, curl_url, handle_item)
+local get_items = function(callback, glab_command, curl_url, handle_item)
     local command = nil
 
     if vim.fn.executable("glab") == 1 then
@@ -32,8 +32,6 @@ local get_items = function(source, callback, bufnr, get_info, glab_command, curl
         local items = utils.handle_response(result, handle_item)
 
         callback({ items = items, isIncomplete = false })
-
-        source.cache_issues[bufnr] = items
     end
 
     Job:new(command):start()
@@ -41,10 +39,10 @@ end
 
 M.get_issues = function(source, callback, bufnr, git_info)
     get_items(
-        source,
-        callback,
-        bufnr,
-        git_info,
+        function(args)
+            callback(args)
+            source.cache_issues[bufnr] = args.items
+        end,
         {
             "glab",
             "api",
@@ -80,10 +78,10 @@ end
 
 M.get_mentions = function(source, callback, bufnr, git_info)
     get_items(
-        source,
-        callback,
-        bufnr,
-        git_info,
+        function(args)
+            callback(args)
+            source.cache_mentions[bufnr] = args.items
+        end,
         {
             "glab",
             "api",
@@ -107,12 +105,12 @@ M.get_mentions = function(source, callback, bufnr, git_info)
     )
 end
 
-M.get_mrs = function(source, callback, bufnr, git_info)
+M.get_merge_requests = function(source, callback, bufnr, git_info)
     get_items(
-        source,
-        callback,
-        bufnr,
-        git_info,
+        function(args)
+            callback(args)
+            source.cache_merge_requests[bufnr] = args.items
+        end,
         {
             "glab",
             "api",
