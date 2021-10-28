@@ -20,12 +20,12 @@ M.get_issues = function(source, callback, bufnr, git_info)
         }
     elseif vim.fn.executable("curl") == 1 then
         local url = string.format(
-            "https://api.github.com/repos/%s/%s/issues?state=%s&per_page=%d&page=%d",
+            "https://api.github.com/repos/%s/%s/issues?filter=%s&state=%s&per_page=%d&page=%d",
             git_info.owner,
             git_info.repo,
-            source.config.github.filter,
-            source.config.github.issues.limit,
+            source.config.github.issues.filter,
             source.config.github.issues.state,
+            source.config.github.issues.limit,
             1
         )
 
