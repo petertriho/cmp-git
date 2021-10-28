@@ -21,7 +21,8 @@ Source.new = function(overrides)
         self.filetypes[item] = true
     end
 
-    self.keyword_pattern = table.concat(self.config.trigger_characters, "")
+    self.trigger_characters = { "#", "@", "!" }
+    self.keyword_pattern = table.concat(self.trigger_characters, "")
 
     return self
 end

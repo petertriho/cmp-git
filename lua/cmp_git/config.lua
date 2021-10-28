@@ -1,6 +1,5 @@
 local M = {
     filetypes = { "gitcommit" },
-    trigger_characters = { "#", "@", "!" },
     github = {
         issues = {
             filter = "all", -- assigned, created, mentioned, subscribed, all, repos
