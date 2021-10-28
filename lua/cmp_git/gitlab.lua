@@ -6,9 +6,9 @@ local M = {}
 local get_items = function(callback, glab_command, curl_url, handle_item)
     local command = nil
 
-    if vim.fn.executable("glab") == 1 then
+    if vim.fn.executable("glab") == 1 and glab_command then
         command = glab_command
-    elseif vim.fn.executable("curl") == 1 then
+    elseif vim.fn.executable("curl") == 1 and curl_url then
         command = {
             "curl",
             "-s",
