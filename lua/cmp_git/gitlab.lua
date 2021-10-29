@@ -31,13 +31,13 @@ local get_items = function(callback, glab_command, curl_url, handle_item)
     end
 
     command.cwd = utils.get_cwd()
-    command.on_exit = function(job)
+    command.on_exit = vim.schedule_wrap(function(job)
         local result = table.concat(job:result(), "")
 
         local items = utils.handle_response(result, handle_item)
 
         callback({ items = items, isIncomplete = false })
-    end
+    end)
 
     Job:new(command):start()
 end
