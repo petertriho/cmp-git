@@ -3,6 +3,10 @@ local utils = require("cmp_git.utils")
 
 local M = {}
 
+local get_project_id = function(git_info)
+    return utils.url_encode(string.format("%s/%s", git_info.owner, git_info.repo))
+end
+
 local get_items = function(callback, glab_command, curl_url, handle_item)
     local command = nil
 
@@ -39,6 +43,8 @@ local get_items = function(callback, glab_command, curl_url, handle_item)
 end
 
 M.get_issues = function(source, callback, bufnr, git_info)
+    local id = get_project_id(git_info)
+
     get_items(
         function(args)
             callback(args)
@@ -48,7 +54,8 @@ M.get_issues = function(source, callback, bufnr, git_info)
             "glab",
             "api",
             string.format(
-                "/projects/:id/issues?per_page=%d&state=%s",
+                "/projects/%s/issues?per_page=%d&state=%s",
+                id,
                 source.config.gitlab.issues.limit,
                 source.config.gitlab.issues.state
             ),
@@ -56,7 +63,7 @@ M.get_issues = function(source, callback, bufnr, git_info)
         string.format(
             "https://%s/api/v4/projects/%s/issues?per_page=%d&state=%s",
             git_info.host,
-            utils.url_encode(string.format("%s/%s", git_info.owner, git_info.repo)),
+            id,
             source.config.gitlab.issues.limit,
             source.config.gitlab.issues.state
         ),
@@ -78,6 +85,8 @@ M.get_issues = function(source, callback, bufnr, git_info)
 end
 
 M.get_mentions = function(source, callback, bufnr, git_info)
+    local id = get_project_id(git_info)
+
     get_items(
         function(args)
             callback(args)
@@ -86,12 +95,12 @@ M.get_mentions = function(source, callback, bufnr, git_info)
         {
             "glab",
             "api",
-            string.format("/projects/:id/users?per_page=%d", source.config.gitlab.mentions.limit),
+            string.format("/projects/%s/users?per_page=%d", id, source.config.gitlab.mentions.limit),
         },
         string.format(
             "https://%s/api/v4/projects/%s/users?per_page=%d",
             git_info.host,
-            utils.url_encode(string.format("%s/%s", git_info.owner, git_info.repo)),
+            id,
             source.config.gitlab.mentions.limit
         ),
         function(mention)
@@ -107,6 +116,8 @@ M.get_mentions = function(source, callback, bufnr, git_info)
 end
 
 M.get_merge_requests = function(source, callback, bufnr, git_info)
+    local id = get_project_id(git_info)
+
     get_items(
         function(args)
             callback(args)
@@ -116,7 +127,8 @@ M.get_merge_requests = function(source, callback, bufnr, git_info)
             "glab",
             "api",
             string.format(
-                "/projects/:id/merge_requests?per_page=%d&state=%s",
+                "/projects/%s/merge_requests?per_page=%d&state=%s",
+                id,
                 source.config.gitlab.merge_requests.limit,
                 source.config.gitlab.merge_requests.state
             ),
@@ -124,7 +136,7 @@ M.get_merge_requests = function(source, callback, bufnr, git_info)
         string.format(
             "https://%s/api/v4/projects/%s/merge_requests?per_page=%d&state=%s",
             git_info.host,
-            utils.url_encode(string.format("%s/%s", git_info.owner, git_info.repo)),
+            id,
             source.config.gitlab.merge_requests.limit,
             source.config.gitlab.merge_requests.state
         ),
