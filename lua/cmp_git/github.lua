@@ -28,6 +28,7 @@ local get_command = function(callback, gh_command, curl_url, handle_item)
         return
     end
 
+    command.cwd = utils.get_cwd()
     command.on_exit = function(job)
         local result = table.concat(job:result(), "")
 
