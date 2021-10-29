@@ -3,7 +3,7 @@ local utils = require("cmp_git.utils")
 
 local M = {}
 
-local get_items = function(callback, gh_command, curl_url, handle_item)
+local get_command = function(callback, gh_command, curl_url, handle_item)
     local command = nil
 
     if vim.fn.executable("gh") == 1 and gh_command then
@@ -36,15 +36,53 @@ local get_items = function(callback, gh_command, curl_url, handle_item)
         callback({ items = items, isIncomplete = false })
     end
 
-    Job:new(command):start()
+    return command
 end
 
-M.get_issues = function(source, callback, bufnr, git_info)
-    get_items(
-        function(args)
-            callback(args)
-            source.cache_issues[bufnr] = args.items
-        end,
+M.get_pull_requests_job = function(source, callback, git_info)
+    return Job:new(get_command(
+        callback,
+        {
+            "gh",
+            "pr",
+            "list",
+            "--limit",
+            source.config.github.pull_requests.limit,
+            "--state",
+            source.config.github.pull_requests.state,
+            "--json",
+            "title,number,body",
+        },
+        string.format(
+            "https://api.github.com/repos/%s/%s/pulls?state=%s&per_page=%d&page=%d",
+            git_info.owner,
+            git_info.repo,
+            source.config.github.pull_requests.state,
+            source.config.github.pull_requests.limit,
+            1
+        ),
+        function(pr)
+            if pr.body ~= vim.NIL then
+                pr.body = string.gsub(pr.body or "", "\r", "")
+            else
+                pr.body = ""
+            end
+
+            return {
+                label = string.format("#%s: %s", pr.number, pr.title),
+                insertText = string.format("#%s", pr.number),
+                documentation = {
+                    kind = "markdown",
+                    value = string.format("# %s\n\n%s", pr.title, pr.body),
+                },
+            }
+        end
+    ))
+end
+
+M.get_issues_job = function(source, callback, git_info)
+    return Job:new(get_command(
+        callback,
         {
             "gh",
             "issue",
@@ -81,29 +119,56 @@ M.get_issues = function(source, callback, bufnr, git_info)
                 },
             }
         end
-    )
+    ))
+end
+
+M.get_issues = function(source, callback, bufnr, git_info)
+    local issues_job = M.get_issues_job(source, function(args)
+        if not source.cache_issues[bufnr] then
+            source.cache_issues[bufnr] = {}
+        end
+
+        for _, item in ipairs(args.items) do
+            table.insert(source.cache_issues[bufnr], item)
+        end
+    end, git_info)
+
+    local pull_requests_job = M.get_pull_requests_job(source, function(args)
+        if not source.cache_issues[bufnr] then
+            source.cache_issues[bufnr] = {}
+        end
+
+        for _, item in ipairs(args.items) do
+            table.insert(source.cache_issues[bufnr], item)
+        end
+        callback({ items = source.cache_issues[bufnr], isIncomplete = false })
+    end, git_info)
+
+    Job.chain(issues_job, pull_requests_job)
 end
 
 M.get_mentions = function(source, callback, bufnr, git_info)
-    get_items(
-        function(args)
-            callback(args)
-            source.cache_mentions[bufnr] = args.items
-        end,
-        nil,
-        string.format(
-            "https://api.github.com/repos/%s/%s/contributors?per_page=%d&page=%d",
-            git_info.owner,
-            git_info.repo,
-            source.config.github.mentions.limit,
-            1
-        ),
-        function(mention)
-            return {
-                label = string.format("@%s", mention.login),
-            }
-        end
-    )
+    Job
+        :new(get_command(
+            function(args)
+                callback(args)
+                source.cache_mentions[bufnr] = args.items
+            end,
+            nil,
+            string.format(
+                "https://api.github.com/repos/%s/%s/contributors?per_page=%d&page=%d",
+                git_info.owner,
+                git_info.repo,
+                source.config.github.mentions.limit,
+                1
+            ),
+            function(mention)
+                return {
+                    label = string.format("@%s", mention.login),
+                }
+            end
+        ))
+        :start()
 end
 
 return M

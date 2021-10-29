@@ -9,6 +9,10 @@ local M = {
         mentions = {
             limit = 100,
         },
+        pull_requests = {
+            limit = 100,
+            state = "open" -- open, closed, merged, all
+        }
     },
     gitlab = {
         issues = {

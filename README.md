@@ -8,7 +8,6 @@ in the future. Sorry for any inconveniences.
 Git source for [hrsh7th/nvim-cmp](https://github.com/hrsh7th/nvim-cmp)
 
 - `#` to trigger `issues` completion
-
 - `@` to trigger `mentions` (contributors) completion
 - `!` to trigger `merge requests` completion (GitLab only)
 
@@ -69,6 +68,10 @@ require("cmp_git").setup({
         mentions = {
             limit = 100,
         },
+        pull_requests = {
+            limit = 100,
+            state = "open" -- open, closed, merged, all
+        }
     },
     gitlab = {
         issues = {
