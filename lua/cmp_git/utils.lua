@@ -9,16 +9,38 @@ M.url_encode = function(value)
 end
 
 M.get_git_info = function()
-    local remote_origin_url = vim.fn.system("git config --get remote.origin.url")
-    local clean_remote_origin_url = remote_origin_url:gsub("%.git", ""):gsub("%s", "")
+    return M.run_in_cwd(M.get_cwd(), function()
+        local remote_origin_url = vim.fn.system("git config --get remote.origin.url")
+        local clean_remote_origin_url = remote_origin_url:gsub("%.git", ""):gsub("%s", "")
 
-    local host, owner, repo = string.match(clean_remote_origin_url, "^git@(.+):(.+)/(.+)$")
+        local host, owner, repo = string.match(clean_remote_origin_url, "^git@(.+):(.+)/(.+)$")
 
-    if host == nil then
-        host, owner, repo = string.match(clean_remote_origin_url, "^https?://(.+)/(.+)/(.+)$")
+        if host == nil then
+            host, owner, repo = string.match(clean_remote_origin_url, "^https?://(.+)/(.+)/(.+)$")
+        end
+
+        return { host = host, owner = owner, repo = repo }
+    end)
+end
+
+M.run_in_cwd = function(cwd, callback)
+    local old_cwd = vim.fn.getcwd()
+    local ok, result = pcall(function()
+        vim.cmd(([[lcd %s]]):format(cwd))
+        return callback()
+    end)
+    vim.cmd(([[lcd %s]]):format(old_cwd))
+    if not ok then
+        error(result)
     end
+    return result
+end
 
-    return { host = host, owner = owner, repo = repo }
+M.get_cwd = function()
+    if vim.fn.getreg('%') ~= '' then
+        return vim.fn.expand('%:p:h')
+    end
+    return vim.fn.getcwd()
 end
 
 M.handle_response = function(response, handle_item)
