@@ -10,7 +10,7 @@ end
 
 M.get_git_info = function()
     return M.run_in_cwd(M.get_cwd(), function()
-        local remote_origin_url = string.gsub(vim.fn.system("git config --get remote.origin.url"), "\n$", "")
+        local remote_origin_url = vim.fn.system("git config --get remote.origin.url")
         local clean_remote_origin_url = remote_origin_url:gsub("%.git", ""):gsub("%s", "")
 
         local host, owner, repo = string.match(clean_remote_origin_url, "^git@(.+):(.+)/(.+)$")
