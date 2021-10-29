@@ -48,7 +48,7 @@ M.handle_response = function(response, handle_item)
 
     local process_data = function(ok, parsed)
         if not ok then
-            vim.notify("Failed to parse gitlab api result")
+            vim.notify("Failed to parse api result")
             return
         end
 
