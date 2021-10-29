@@ -7,9 +7,19 @@ in the future. Sorry for any inconveniences.
 
 Git source for [hrsh7th/nvim-cmp](https://github.com/hrsh7th/nvim-cmp)
 
-- `#` to trigger `issues` completion
-- `@` to trigger `mentions` (contributors) completion
-- `!` to trigger `merge requests` completion (GitLab only)
+## Features
+
+| GitHub                 | Trigger |
+| ---------------------- | ------- |
+| issues                 | #       |
+| mentions (`curl` only) | @       |
+| pull requests          | #       |
+
+| GitLab         | Trigger |
+| -------------- | ------- |
+| issues         | #       |
+| mentions       | @       |
+| merge requests | !       |
 
 ## Requirements
 
