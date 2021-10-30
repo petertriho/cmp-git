@@ -1,5 +1,6 @@
 local M = {
     filetypes = { "gitcommit" },
+    remote = "origin",
     github = {
         issues = {
             filter = "all", -- assigned, created, mentioned, subscribed, all, repos
@@ -11,8 +12,8 @@ local M = {
         },
         pull_requests = {
             limit = 100,
-            state = "open" -- open, closed, merged, all
-        }
+            state = "open", -- open, closed, merged, all
+        },
     },
     gitlab = {
         issues = {
