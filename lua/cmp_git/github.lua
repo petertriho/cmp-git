@@ -1,5 +1,6 @@
 local Job = require("plenary.job")
 local utils = require("cmp_git.utils")
+local sort = require("cmp_git.sort")
 
 local GitHub = {
     cache = {
@@ -23,7 +24,7 @@ end
 local get_command = function(callback, gh_command, curl_url, handle_item)
     local command = nil
 
-    if vim.fn.executable("gh") == 1 and gh_command then
+    if false and vim.fn.executable("gh") == 1 and gh_command then
         command = gh_command
     elseif vim.fn.executable("curl") == 1 and curl_url then
         command = {
@@ -71,7 +72,7 @@ local get_pull_requests_job = function(callback, git_info, trigger_char, config)
             "--state",
             config.state,
             "--json",
-            "title,number,body",
+            "title,number,body,updatedAt",
         },
         string.format(
             "https://api.github.com/repos/%s/%s/pulls?state=%s&per_page=%d&page=%d",
@@ -88,14 +89,20 @@ local get_pull_requests_job = function(callback, git_info, trigger_char, config)
                 pr.body = ""
             end
 
+            if not pr.updatedAt then
+                pr.updatedAt = pr.updated_at
+            end
+
             return {
                 label = string.format("#%s: %s", pr.number, pr.title),
                 insertText = string.format("#%s", pr.number),
                 filterText = config.filter_fn(trigger_char, pr),
+                sortText = sort.get_sort_text(config.sort_by, pr),
                 documentation = {
                     kind = "markdown",
                     value = string.format("# %s\n\n%s", pr.title, pr.body),
                 },
+                data = pr,
             }
         end
     ))
@@ -115,7 +122,7 @@ local get_issues_job = function(callback, git_info, trigger_char, config)
             "--state",
             config.state,
             "--json",
-            "title,number,body",
+            "title,number,body,updatedAt",
         },
         string.format(
             "https://api.github.com/repos/%s/%s/issues?filter=%s&state=%s&per_page=%d&page=%d",
@@ -133,10 +140,15 @@ local get_issues_job = function(callback, git_info, trigger_char, config)
                 issue.body = ""
             end
 
+            if not issue.updatedAt then
+                issue.updatedAt = issue.updated_at
+            end
+
             return {
                 label = string.format("#%s: %s", issue.number, issue.title),
                 insertText = string.format("#%s", issue.number),
                 filterText = config.filter_fn(trigger_char, issue),
+                sortText = sort.get_sort_text(config.sort_by, issue),
                 documentation = {
                     kind = "markdown",
                     value = string.format("# %s\n\n%s", issue.title, issue.body),
@@ -253,7 +265,7 @@ function GitHub:get_issues_and_prs(callback, git_info, trigger_char, config)
     return true
 end
 
-function GitHub:get_mentions(callback, git_info)
+function GitHub:get_mentions(callback, git_info, trigger_char, config)
     if git_info.host ~= "github.com" or git_info.owner == nil or git_info.repo == nil then
         return false
     end
@@ -264,6 +276,8 @@ function GitHub:get_mentions(callback, git_info)
         callback({ items = self.cache.mentions[bufnr], isIncomplete = false })
         return true
     end
+
+    config = vim.tbl_extend("force", self.config.mentions, config or {})
 
     Job
         :new(get_command(
@@ -276,12 +290,15 @@ function GitHub:get_mentions(callback, git_info)
                 "https://api.github.com/repos/%s/%s/contributors?per_page=%d&page=%d",
                 git_info.owner,
                 git_info.repo,
-                self.config.mentions.limit,
+                config.limit,
                 1
             ),
             function(mention)
                 return {
                     label = string.format("@%s", mention.login),
+                    insertText = string.format("@%s", mention.number),
+                    sortText = sort.get_sort_text(config.sort_by, mention),
+                    data = mention,
                 }
             end
         ))

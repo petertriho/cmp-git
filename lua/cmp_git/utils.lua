@@ -8,6 +8,34 @@ M.url_encode = function(value)
     return string.gsub(value, "([^%w _%%%-%.~])", char_to_hex)
 end
 
+M.parse_gitlab_date = function(d)
+    local year, month, day, hours, mins, secs, _, offsethours, offsetmins = d:match(
+        "(%d+)-(%d+)-(%d+)T(%d+):(%d+):(%d+)%.(%d+)%+(%d+):(%d+)"
+    )
+
+    return os.time({
+        year = year,
+        month = month,
+        day = day,
+        hour = hours + offsethours,
+        min = mins + offsetmins,
+        sec = secs,
+    })
+end
+
+M.parse_github_date = function(d)
+    local year, month, day, hours, mins, secs = d:match("(%d+)-(%d+)-(%d+)T(%d+):(%d+):(%d+)Z")
+
+    return os.time({
+        year = year,
+        month = month,
+        day = day,
+        hour = hours,
+        min = mins,
+        sec = secs,
+    })
+end
+
 M.get_git_info = function(remotes)
     return M.run_in_cwd(M.get_cwd(), function()
         if type(remotes) == "string" then
