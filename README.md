@@ -11,7 +11,7 @@ Git source for [hrsh7th/nvim-cmp](https://github.com/hrsh7th/nvim-cmp)
 
 | Git     | Trigger |
 | ------- | ------- |
-| commits | :       |
+| Commits | :       |
 
 | GitHub                 | Trigger |
 | ---------------------- | ------- |
@@ -24,10 +24,6 @@ Git source for [hrsh7th/nvim-cmp](https://github.com/hrsh7th/nvim-cmp)
 | Issues         | #       |
 | Mentions       | @       |
 | Merge Requests | !       |
- 
-| Git         | Trigger |
-| ----------- | ------- |
-| Commits     | :       |
 
 ## Requirements
 
@@ -77,6 +73,7 @@ require("cmp").setup({
 require("cmp_git").setup({
     -- defaults
     filetypes = { "gitcommit" },
+    remote = "origin",
     git = {
         commits = {
             limit = 100,
@@ -93,8 +90,8 @@ require("cmp_git").setup({
         },
         pull_requests = {
             limit = 100,
-            state = "open" -- open, closed, merged, all
-        }
+            state = "open", -- open, closed, merged, all
+        },
     },
     gitlab = {
         issues = {
