@@ -28,7 +28,6 @@ local split_by = function(input, sep)
 end
 
 M.update_edit_range = function(commits, cursor, offset)
-    local updated = {}
     for k, v in pairs(commits) do
         local sha = v.insertText
 
