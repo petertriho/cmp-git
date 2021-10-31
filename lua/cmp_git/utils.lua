@@ -8,15 +8,30 @@ M.url_encode = function(value)
     return string.gsub(value, "([^%w _%%%-%.~])", char_to_hex)
 end
 
-M.get_git_info = function(remote)
+M.get_git_info = function(remotes)
     return M.run_in_cwd(M.get_cwd(), function()
-        local remote_origin_url = vim.fn.system("git config --get remote." .. remote .. ".url")
-        local clean_remote_origin_url = remote_origin_url:gsub("%.git", ""):gsub("%s", "")
+        if type(remotes) == "string" then
+            remotes = { remotes }
+        end
 
-        local host, owner, repo = string.match(clean_remote_origin_url, "^git@(.+):(.+)/(.+)$")
+        local host, owner, repo = nil, nil, nil
 
-        if host == nil then
-            host, owner, repo = string.match(clean_remote_origin_url, "^https?://(.+)/(.+)/(.+)$")
+        for _, r in ipairs(remotes) do
+            local remote_origin_url = vim.fn.system("git config --get remote." .. r .. ".url")
+
+            if remote_origin_url ~= "" then
+                local clean_remote_origin_url = remote_origin_url:gsub("%.git", ""):gsub("%s", "")
+
+                host, owner, repo = string.match(clean_remote_origin_url, "^git@(.+):(.+)/(.+)$")
+
+                if host == nil then
+                    host, owner, repo = string.match(clean_remote_origin_url, "^https?://(.+)/(.+)/(.+)$")
+                end
+
+                if host ~= nil and owner ~= nil and repo ~= nil then
+                    break
+                end
+            end
         end
 
         return { host = host, owner = owner, repo = repo }

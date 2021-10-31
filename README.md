@@ -73,7 +73,7 @@ require("cmp").setup({
 require("cmp_git").setup({
     -- defaults
     filetypes = { "gitcommit" },
-    remote = "origin",
+    remotes = { "upstream", "origin" }, -- in order of most to least prioritized
     git = {
         commits = {
             limit = 100,
