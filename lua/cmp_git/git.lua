@@ -65,7 +65,9 @@ M.get_git_commits = function(source, callback, bufnr, cursor, offset)
         end_entry_marker
     )
 
-    local raw_output = utils.run_in_cwd(utils.get_cwd(), vim.fn.system(command))
+    local raw_output = utils.run_in_cwd(utils.get_cwd(), function()
+        return vim.fn.system(command)
+    end)
     local commits = {}
 
     local entries = split_by(raw_output, end_entry_marker)
