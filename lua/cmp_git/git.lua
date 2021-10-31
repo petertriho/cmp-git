@@ -1,10 +1,8 @@
+local utils = require("cmp_git.utils")
+
 local M = {}
 
-local remove_newline = function(str)
-    return string.gsub(str, "\n", "")
-end
-
-function trim(s)
+local function trim(s)
     return (s:gsub("^%s*(.-)%s*$", "%1"))
 end
 
@@ -54,7 +52,7 @@ M.get_git_commits = function(source, callback, bufnr, cursor, offset)
     local end_part_marker = "###CMP_GIT###"
     local end_entry_marker = "###CMP_GIT_END###"
 
-    -- Extract abbreviated commit sha, subject, body, author name, author email, comit timestamp
+    -- Extract abbreviated commit sha, subject, body, author name, author email, commit timestamp
     local command = string.format(
         'git log -n %d --pretty=format:"%%h%s%%s%s%%b%s%%cn%s%%ce%s%%cD%s%s"',
         source.config.git.commits.limit,
@@ -67,12 +65,12 @@ M.get_git_commits = function(source, callback, bufnr, cursor, offset)
         end_entry_marker
     )
 
-    local raw_output = vim.fn.system(command)
+    local raw_output = utils.run_in_cwd(utils.get_cwd(), vim.fn.system(command))
     local commits = {}
 
     local entries = split_by(raw_output, end_entry_marker)
 
-    for i, e in ipairs(entries) do
+    for _, e in ipairs(entries) do
         local part = split_by(e, end_part_marker)
 
         local sha = trim(part[1])

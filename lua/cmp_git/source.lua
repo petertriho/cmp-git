@@ -45,8 +45,6 @@ function Source:complete(params, callback)
 
     if trigger_character == ":" then
         if not self.cache_commits[bufnr] then
-            local git_info = utils.get_git_info(self.config.remotes)
-
             if self.config.git and self.config.git.commits then
                 git.get_git_commits(self, callback, bufnr, params.context.cursor, params.offset)
             else
