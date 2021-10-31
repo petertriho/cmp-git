@@ -8,10 +8,9 @@ M.url_encode = function(value)
     return string.gsub(value, "([^%w _%%%-%.~])", char_to_hex)
 end
 
-
-M.get_git_info = function()
+M.get_git_info = function(remote)
     return M.run_in_cwd(M.get_cwd(), function()
-        local remote_origin_url = vim.fn.system("git config --get remote.origin.url")
+        local remote_origin_url = vim.fn.system("git config --get remote." .. remote .. ".url")
         local clean_remote_origin_url = remote_origin_url:gsub("%.git", ""):gsub("%s", "")
 
         local host, owner, repo = string.match(clean_remote_origin_url, "^git@(.+):(.+)/(.+)$")
@@ -38,8 +37,8 @@ M.run_in_cwd = function(cwd, callback)
 end
 
 M.get_cwd = function()
-    if vim.fn.getreg('%') ~= '' then
-        return vim.fn.expand('%:p:h')
+    if vim.fn.getreg("%") ~= "" then
+        return vim.fn.expand("%:p:h")
     end
     return vim.fn.getcwd()
 end

@@ -1,5 +1,6 @@
 local M = {
     filetypes = { "gitcommit" },
+    remote = "origin",
     git = {
         commits = {
             limit = 100,
@@ -16,8 +17,8 @@ local M = {
         },
         pull_requests = {
             limit = 100,
-            state = "open" -- open, closed, merged, all
-        }
+            state = "open", -- open, closed, merged, all
+        },
     },
     gitlab = {
         issues = {

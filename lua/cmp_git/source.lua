@@ -43,6 +43,8 @@ function Source:complete(params, callback)
         trigger_character = params.completion_context.triggerCharacter
     end
 
+    local git_info = utils.get_git_info(self.config.remote)
+
     if trigger_character == ":" then
         if not self.cache_commits[bufnr] then
             if self.config.git and self.config.git.commits then
@@ -57,8 +59,6 @@ function Source:complete(params, callback)
         end
     elseif trigger_character == "#" then
         if not self.cache_issues[bufnr] then
-            local git_info = utils.get_git_info()
-
             if
                 self.config.github
                 and self.config.github.issues
@@ -84,8 +84,6 @@ function Source:complete(params, callback)
         end
     elseif trigger_character == "@" then
         if not self.cache_mentions[bufnr] then
-            local git_info = utils.get_git_info()
-
             if
                 self.config.github
                 and self.config.github.mentions
@@ -111,8 +109,6 @@ function Source:complete(params, callback)
         end
     elseif trigger_character == "!" then
         if not self.cache_merge_requests[bufnr] then
-            local git_info = utils.get_git_info()
-
             if
                 self.config.gitlab
                 and self.config.gitlab.mentions
