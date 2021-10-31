@@ -1,11 +1,13 @@
 local github = require("cmp_git.github")
 local gitlab = require("cmp_git.gitlab")
+local git = require("cmp_git.git")
 local utils = require("cmp_git.utils")
 
 local Source = {
     cache_issues = {},
     cache_mentions = {},
     cache_merge_requests = {},
+    cache_commits = {},
     config = {},
     filetypes = {},
 }
@@ -20,7 +22,7 @@ Source.new = function(overrides)
         self.filetypes[item] = true
     end
 
-    self.trigger_characters = { "#", "@", "!" }
+    self.trigger_characters = { "#", "@", "!", ":" }
     self.trigger_characters_str = table.concat(self.trigger_characters, "")
     self.keyword_pattern = string.format("[%s]\\S*", self.trigger_characters_str)
 
@@ -41,7 +43,19 @@ function Source:complete(params, callback)
         trigger_character = params.completion_context.triggerCharacter
     end
 
-    if trigger_character == "#" then
+    if trigger_character == ":" then
+        if not self.cache_commits[bufnr] then
+            if self.config.git and self.config.git.commits then
+                git.get_git_commits(self, callback, bufnr, params.context.cursor, params.offset)
+            else
+                callback({ items = {}, isIncomplete = false })
+                self.cache_commits[bufnr] = {}
+            end
+        else
+            git.update_edit_range(self.cache_commits[bufnr], params.context.cursor, params.offset)
+            callback({ items = self.cache_commits[bufnr], isIncomplete = false })
+        end
+    elseif trigger_character == "#" then
         if not self.cache_issues[bufnr] then
             local git_info = utils.get_git_info()
 

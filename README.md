@@ -9,17 +9,25 @@ Git source for [hrsh7th/nvim-cmp](https://github.com/hrsh7th/nvim-cmp)
 
 ## Features
 
+| Git     | Trigger |
+| ------- | ------- |
+| commits | :       |
+
 | GitHub                 | Trigger |
 | ---------------------- | ------- |
-| issues                 | #       |
-| mentions (`curl` only) | @       |
-| pull requests          | #       |
+| Issues                 | #       |
+| Mentions (`curl` only) | @       |
+| Pull Requests          | #       |
 
 | GitLab         | Trigger |
 | -------------- | ------- |
-| issues         | #       |
-| mentions       | @       |
-| merge requests | !       |
+| Issues         | #       |
+| Mentions       | @       |
+| Merge Requests | !       |
+ 
+| Git         | Trigger |
+| ----------- | ------- |
+| Commits     | :       |
 
 ## Requirements
 
@@ -69,6 +77,11 @@ require("cmp").setup({
 require("cmp_git").setup({
     -- defaults
     filetypes = { "gitcommit" },
+    git = {
+        commits = {
+            limit = 100,
+        },
+    },
     github = {
         issues = {
             filter = "all", -- assigned, created, mentioned, subscribed, all, repos

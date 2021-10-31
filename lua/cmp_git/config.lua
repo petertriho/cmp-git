@@ -1,5 +1,10 @@
 local M = {
     filetypes = { "gitcommit" },
+    git = {
+        commits = {
+            limit = 100,
+        },
+    },
     github = {
         issues = {
             filter = "all", -- assigned, created, mentioned, subscribed, all, repos
