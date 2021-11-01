@@ -57,7 +57,7 @@ Plug 'petertriho/cmp-git'
 [packer.nvim](https://github.com/wbthomason/packer.nvim)
 
 ```lua
-use("petertriho/cmp-git", requires = "nvim-lua/plenary.nvim")
+use({"petertriho/cmp-git", requires = "nvim-lua/plenary.nvim"})
 ```
 
 ## Setup
