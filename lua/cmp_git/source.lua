@@ -4,10 +4,6 @@ local git = require("cmp_git.git")
 local utils = require("cmp_git.utils")
 
 local Source = {
-    cache_issues = {},
-    cache_mentions = {},
-    cache_merge_requests = {},
-    cache_commits = {},
     config = {},
     filetypes = {},
 }
@@ -22,16 +18,27 @@ Source.new = function(overrides)
         self.filetypes[item] = true
     end
 
-    self.trigger_characters = { "#", "@", "!", ":" }
+    self.sources = {}
+    self.sources.git = git.new(self.config.git)
+    self.sources.gitlab = gitlab.new(self.config.gitlab)
+    self.sources.github = github.new(self.config.github)
+
+    self.trigger_characters = {}
+    for _, v in pairs(self.config.trigger_actions) do
+        if not vim.tbl_contains(self.trigger_characters, v.trigger_character) then
+            table.insert(self.trigger_characters, v.trigger_character)
+        end
+    end
+
     self.trigger_characters_str = table.concat(self.trigger_characters, "")
     self.keyword_pattern = string.format("[%s]\\S*", self.trigger_characters_str)
+
+    self.trigger_actions = self.config.trigger_actions
 
     return self
 end
 
 function Source:complete(params, callback)
-    local bufnr = vim.api.nvim_get_current_buf()
-
     local trigger_character = nil
 
     if params.completion_context.triggerKind == 1 then
@@ -43,87 +50,13 @@ function Source:complete(params, callback)
         trigger_character = params.completion_context.triggerCharacter
     end
 
-    if trigger_character == ":" then
-        if not self.cache_commits[bufnr] then
-            if self.config.git and self.config.git.commits then
-                git.get_git_commits(self, callback, bufnr, params.context.cursor, params.offset)
-            else
-                callback({ items = {}, isIncomplete = false })
-                self.cache_commits[bufnr] = {}
-            end
-        else
-            git.update_edit_range(self.cache_commits[bufnr], params.context.cursor, params.offset)
-            callback({ items = self.cache_commits[bufnr], isIncomplete = false })
-        end
-    elseif trigger_character == "#" then
-        if not self.cache_issues[bufnr] then
+    for _, trigger in pairs(self.trigger_actions) do
+        if trigger.trigger_character == trigger_character then
             local git_info = utils.get_git_info(self.config.remotes)
 
-            if
-                self.config.github
-                and self.config.github.issues
-                and git_info.host == "github.com"
-                and git_info.owner ~= nil
-                and git_info.repo ~= nil
-            then
-                github.get_issues(self, callback, bufnr, git_info)
-            elseif
-                self.config.gitlab
-                and self.config.gitlab.issues
-                and git_info.host ~= nil
-                and git_info.owner ~= nil
-                and git_info.repo ~= nil
-            then
-                gitlab.get_issues(self, callback, bufnr, git_info)
-            else
-                callback({ items = {}, isIncomplete = false })
-                self.cache_issues[bufnr] = {}
+            if trigger.action(self.sources, trigger_character, callback, params, git_info) then
+                break
             end
-        else
-            callback({ items = self.cache_issues[bufnr], isIncomplete = false })
-        end
-    elseif trigger_character == "@" then
-        if not self.cache_mentions[bufnr] then
-            local git_info = utils.get_git_info(self.config.remotes)
-
-            if
-                self.config.github
-                and self.config.github.mentions
-                and git_info.host == "github.com"
-                and git_info.owner ~= nil
-                and git_info.repo ~= nil
-            then
-                github.get_mentions(self, callback, bufnr, git_info)
-            elseif
-                self.config.gitlab
-                and self.config.gitlab.mentions
-                and git_info.host ~= nil
-                and git_info.owner ~= nil
-                and git_info.repo ~= nil
-            then
-                gitlab.get_mentions(self, callback, bufnr, git_info)
-            else
-                callback({ items = {}, isIncomplete = false })
-                self.cache_mentions[bufnr] = {}
-            end
-        else
-            callback({ items = self.cache_mentions[bufnr], isIncomplete = false })
-        end
-    elseif trigger_character == "!" then
-        if not self.cache_merge_requests[bufnr] then
-            local git_info = utils.get_git_info(self.config.remotes)
-
-            if
-                self.config.gitlab
-                and self.config.gitlab.mentions
-                and git_info.host ~= "github.com"
-                and git_info.owner ~= nil
-                and git_info.repo ~= nil
-            then
-                gitlab.get_merge_requests(self, callback, bufnr, git_info)
-            end
-        else
-            callback({ items = self.cache_merge_requests[bufnr], isIncomplete = false })
         end
     end
 end

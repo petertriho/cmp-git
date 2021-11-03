@@ -1,7 +1,24 @@
 local Job = require("plenary.job")
 local utils = require("cmp_git.utils")
 
-local M = {}
+local GitLab = {
+    cache = {
+        issues = {},
+        mentions = {},
+        merge_requests = {},
+    },
+    config = {},
+}
+
+GitLab.new = function(overrides)
+    local self = setmetatable({}, {
+        __index = GitLab,
+    })
+
+    self.config = vim.tbl_extend("force", require("cmp_git.config").gitlab, overrides or {})
+
+    return self
+end
 
 local get_project_id = function(git_info)
     return utils.url_encode(string.format("%s/%s", git_info.owner, git_info.repo))
@@ -42,30 +59,37 @@ local get_items = function(callback, glab_command, curl_url, handle_item)
     Job:new(command):start()
 end
 
-M.get_issues = function(source, callback, bufnr, git_info)
+function GitLab:get_issues(callback, git_info, trigger_char, config)
+    if git_info.host == nil or git_info.host == "github.com" or git_info.owner == nil or git_info.repo == nil then
+        return false
+    end
+
+    local bufnr = vim.api.nvim_get_current_buf()
+
+    if self.cache.issues[bufnr] then
+        callback({ items = self.cache.issues[bufnr], isIncomplete = false })
+        return true
+    end
+
+    config = vim.tbl_extend("force", self.config.issues, config or {})
     local id = get_project_id(git_info)
 
     get_items(
         function(args)
             callback(args)
-            source.cache_issues[bufnr] = args.items
+            self.cache.issues[bufnr] = args.items
         end,
         {
             "glab",
             "api",
-            string.format(
-                "/projects/%s/issues?per_page=%d&state=%s",
-                id,
-                source.config.gitlab.issues.limit,
-                source.config.gitlab.issues.state
-            ),
+            string.format("/projects/%s/issues?per_page=%d&state=%s", id, config.limit, config.state),
         },
         string.format(
             "https://%s/api/v4/projects/%s/issues?per_page=%d&state=%s",
             git_info.host,
             id,
-            source.config.gitlab.issues.limit,
-            source.config.gitlab.issues.state
+            config.limit,
+            config.state
         ),
         function(issue)
             if issue.description == vim.NIL then
@@ -75,6 +99,7 @@ M.get_issues = function(source, callback, bufnr, git_info)
             return {
                 label = string.format("#%s: %s", issue.iid, issue.title),
                 insertText = string.format("#%s", issue.iid),
+                filterText = config.filter_fn(trigger_char, issue),
                 documentation = {
                     kind = "markdown",
                     value = string.format("# %s\n\n%s", issue.title, issue.description),
@@ -82,30 +107,39 @@ M.get_issues = function(source, callback, bufnr, git_info)
             }
         end
     )
+    return true
 end
 
-M.get_mentions = function(source, callback, bufnr, git_info)
+function GitLab:get_mentions(callback, git_info, trigger_char, config)
+    if git_info.host == nil or git_info.host == "github.com" or git_info.owner == nil or git_info.repo == nil then
+        return false
+    end
+
+    local bufnr = vim.api.nvim_get_current_buf()
+
+    if self.cache.mentions[bufnr] then
+        callback({ items = self.cache.mentions[bufnr], isIncomplete = false })
+        return true
+    end
+
+    config = vim.tbl_extend("force", self.config.mentions, config or {})
     local id = get_project_id(git_info)
 
     get_items(
         function(args)
             callback(args)
-            source.cache_mentions[bufnr] = args.items
+            self.cache.mentions[bufnr] = args.items
         end,
         {
             "glab",
             "api",
-            string.format("/projects/%s/users?per_page=%d", id, source.config.gitlab.mentions.limit),
+            string.format("/projects/%s/users?per_page=%d", id, config.limit),
         },
-        string.format(
-            "https://%s/api/v4/projects/%s/users?per_page=%d",
-            git_info.host,
-            id,
-            source.config.gitlab.mentions.limit
-        ),
+        string.format("https://%s/api/v4/projects/%s/users?per_page=%d", git_info.host, id, config.limit),
         function(mention)
             return {
                 label = string.format("@%s", mention.username),
+                filterText = config.filter_fn(trigger_char, mention),
                 documentation = {
                     kind = "markdown",
                     value = string.format("# %s\n\n%s", mention.username, mention.name),
@@ -113,38 +147,48 @@ M.get_mentions = function(source, callback, bufnr, git_info)
             }
         end
     )
+
+    return true
 end
 
-M.get_merge_requests = function(source, callback, bufnr, git_info)
+function GitLab:get_merge_requests(callback, git_info, trigger_char, config)
+    if git_info.host == nil or git_info.host == "github.com" or git_info.owner == nil or git_info.repo == nil then
+        return false
+    end
+
+    local bufnr = vim.api.nvim_get_current_buf()
+
+    if self.cache.merge_requests[bufnr] then
+        callback({ items = self.cache.merge_requests[bufnr], isIncomplete = false })
+        return true
+    end
+    
+    config = vim.tbl_extend("force", self.config.merge_requests, config or {})
     local id = get_project_id(git_info)
 
     get_items(
         function(args)
             callback(args)
-            source.cache_merge_requests[bufnr] = args.items
+            self.cache.merge_requests[bufnr] = args.items
         end,
         {
             "glab",
             "api",
-            string.format(
-                "/projects/%s/merge_requests?per_page=%d&state=%s",
-                id,
-                source.config.gitlab.merge_requests.limit,
-                source.config.gitlab.merge_requests.state
-            ),
+            string.format("/projects/%s/merge_requests?per_page=%d&state=%s", id, config.limit, config.state),
         },
         string.format(
             "https://%s/api/v4/projects/%s/merge_requests?per_page=%d&state=%s",
             git_info.host,
             id,
-            source.config.gitlab.merge_requests.limit,
-            source.config.gitlab.merge_requests.state
+            config.limit,
+            config.state
         ),
 
         function(mr)
             return {
                 label = string.format("!%s: %s", mr.iid, mr.title),
                 insertText = string.format("!%s", mr.iid),
+                filterText = config.filter_fn(trigger_char, mr),
                 documentation = {
                     kind = "markdown",
                     value = string.format("# %s\n\n%s", mr.title, mr.description),
@@ -152,6 +196,8 @@ M.get_merge_requests = function(source, callback, bufnr, git_info)
             }
         end
     )
+
+    return true
 end
 
-return M
+return GitLab

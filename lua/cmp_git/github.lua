@@ -1,7 +1,24 @@
 local Job = require("plenary.job")
 local utils = require("cmp_git.utils")
 
-local M = {}
+local GitHub = {
+    cache = {
+        issues = {},
+        mentions = {},
+        pull_requests = {},
+    },
+    config = {},
+}
+
+GitHub.new = function(overrides)
+    local self = setmetatable({}, {
+        __index = GitHub,
+    })
+
+    self.config = vim.tbl_extend("force", require("cmp_git.config").github, overrides or {})
+
+    return self
+end
 
 local get_command = function(callback, gh_command, curl_url, handle_item)
     local command = nil
@@ -40,7 +57,7 @@ local get_command = function(callback, gh_command, curl_url, handle_item)
     return command
 end
 
-M.get_pull_requests_job = function(source, callback, git_info)
+local get_pull_requests_job = function(callback, git_info, trigger_char, config)
     return Job:new(get_command(
         callback,
         {
@@ -50,9 +67,9 @@ M.get_pull_requests_job = function(source, callback, git_info)
             "--repo",
             string.format("%s/%s", git_info.owner, git_info.repo),
             "--limit",
-            source.config.github.pull_requests.limit,
+            config.limit,
             "--state",
-            source.config.github.pull_requests.state,
+            config.state,
             "--json",
             "title,number,body",
         },
@@ -60,8 +77,8 @@ M.get_pull_requests_job = function(source, callback, git_info)
             "https://api.github.com/repos/%s/%s/pulls?state=%s&per_page=%d&page=%d",
             git_info.owner,
             git_info.repo,
-            source.config.github.pull_requests.state,
-            source.config.github.pull_requests.limit,
+            config.state,
+            config.limit,
             1
         ),
         function(pr)
@@ -74,6 +91,7 @@ M.get_pull_requests_job = function(source, callback, git_info)
             return {
                 label = string.format("#%s: %s", pr.number, pr.title),
                 insertText = string.format("#%s", pr.number),
+                filterText = config.filter_fn(trigger_char, pr),
                 documentation = {
                     kind = "markdown",
                     value = string.format("# %s\n\n%s", pr.title, pr.body),
@@ -83,7 +101,7 @@ M.get_pull_requests_job = function(source, callback, git_info)
     ))
 end
 
-M.get_issues_job = function(source, callback, git_info)
+local get_issues_job = function(callback, git_info, trigger_char, config)
     return Job:new(get_command(
         callback,
         {
@@ -93,9 +111,9 @@ M.get_issues_job = function(source, callback, git_info)
             "--repo",
             string.format("%s/%s", git_info.owner, git_info.repo),
             "--limit",
-            source.config.github.issues.limit,
+            config.limit,
             "--state",
-            source.config.github.issues.state,
+            config.state,
             "--json",
             "title,number,body",
         },
@@ -103,9 +121,9 @@ M.get_issues_job = function(source, callback, git_info)
             "https://api.github.com/repos/%s/%s/issues?filter=%s&state=%s&per_page=%d&page=%d",
             git_info.owner,
             git_info.repo,
-            source.config.github.issues.filter,
-            source.config.github.issues.state,
-            source.config.github.issues.limit,
+            config.filter,
+            config.state,
+            config.limit,
             1
         ),
         function(issue)
@@ -118,6 +136,7 @@ M.get_issues_job = function(source, callback, git_info)
             return {
                 label = string.format("#%s: %s", issue.number, issue.title),
                 insertText = string.format("#%s", issue.number),
+                filterText = config.filter_fn(trigger_char, issue),
                 documentation = {
                     kind = "markdown",
                     value = string.format("# %s\n\n%s", issue.title, issue.body),
@@ -127,44 +146,137 @@ M.get_issues_job = function(source, callback, git_info)
     ))
 end
 
-M.get_issues = function(source, callback, bufnr, git_info)
-    local issues_job = M.get_issues_job(source, function(args)
-        if not source.cache_issues[bufnr] then
-            source.cache_issues[bufnr] = {}
-        end
+local _get_issues = function(self, callback, git_info, trigger_char, config)
+    local bufnr = vim.api.nvim_get_current_buf()
 
-        for _, item in ipairs(args.items) do
-            table.insert(source.cache_issues[bufnr], item)
-        end
-    end, git_info)
+    if self.cache.issues[bufnr] then
+        callback({ items = self.cache.issues[bufnr], isIncomplete = false })
+        return nil
+    end
 
-    local pull_requests_job = M.get_pull_requests_job(source, function(args)
-        if not source.cache_issues[bufnr] then
-            source.cache_issues[bufnr] = {}
-        end
+    config = vim.tbl_extend("force", self.config.issues, config or {})
 
-        for _, item in ipairs(args.items) do
-            table.insert(source.cache_issues[bufnr], item)
-        end
-        callback({ items = source.cache_issues[bufnr], isIncomplete = false })
-    end, git_info)
+    issues_job = get_issues_job(function(args)
+        self.cache.issues[bufnr] = args.items
+        callback(args)
+    end, git_info, trigger_char, config)
 
-    Job.chain(issues_job, pull_requests_job)
+    return issues_job
 end
 
-M.get_mentions = function(source, callback, bufnr, git_info)
+local _get_pull_requests = function(self, callback, git_info, trigger_char, config)
+    local bufnr = vim.api.nvim_get_current_buf()
+
+    if self.cache.pull_requests[bufnr] then
+        callback({ items = self.cache.pull_requests[bufnr], isIncomplete = false })
+        return nil
+    end
+
+    config = vim.tbl_extend("force", self.config.pull_requests, config or {})
+
+    pr_job = get_pull_requests_job(function(args)
+        self.cache.pull_requests[bufnr] = args.items
+        callback(args)
+    end, git_info, trigger_char, config)
+
+    return pr_job
+end
+
+function GitHub:get_issues(callback, git_info, trigger_char, config)
+    if git_info.host ~= "github.com" or git_info.owner == nil or git_info.repo == nil then
+        return false
+    end
+
+    local job = _get_issues(self, callback, git_info, trigger_char, config)
+
+    if job then
+        job:start()
+    end
+
+    return true
+end
+
+function GitHub:get_pull_requests(callback, git_info, trigger_char, config)
+    if git_info.host ~= "github.com" or git_info.owner == nil or git_info.repo == nil then
+        return false
+    end
+
+    local job = _get_pull_requests(self, callback, git_info, trigger_char, config)
+
+    if job then
+        job:start()
+    end
+
+    return true
+end
+
+function GitHub:get_issues_and_prs(callback, git_info, trigger_char, config)
+    local bufnr = vim.api.nvim_get_current_buf()
+
+    if self.cache.issues[bufnr] and self.cache.pull_requests[bufnr] then
+        local issues = self.cache.issues[bufnr]
+        local prs = self.cache.pull_requests[bufnr]
+
+        local merged = vim.list_extend(issues, prs)
+
+        callback({ items = merged, isIncomplete = false })
+    else
+        if git_info.host ~= "github.com" then
+            vim.notify("Can't fetch Github issues or pull requests, not a github repository")
+            return false
+        elseif git_info.owner == nil and git_info.repo == nil then
+            vim.notify("Can't figure out git repository or owner")
+            return false
+        end
+
+        local issue_config = config and config.issues or {}
+        local pr_config = config and config.pull_requests or {}
+        local issues = {}
+
+        issues_job = _get_issues(self, function(args)
+            issues = args.items
+            self.cache.issues[bufnr] = args.items
+        end, git_info, trigger_char, issue_config)
+
+        pull_requests_job = _get_pull_requests(self, function(args)
+            prs = args.items
+            self.cache.pull_requests[bufnr] = args.items
+
+            local merged = vim.list_extend(issues, prs)
+
+            callback({ items = merged, isIncomplete = false })
+        end, git_info, trigger_char, pr_config)
+
+        Job.chain(issues_job, pull_requests_job)
+    end
+
+    return true
+end
+
+function GitHub:get_mentions(callback, git_info)
+    if git_info.host ~= "github.com" or git_info.owner == nil or git_info.repo == nil then
+        return false
+    end
+
+    local bufnr = vim.api.nvim_get_current_buf()
+
+    if self.cache.mentions[bufnr] then
+        callback({ items = self.cache.mentions[bufnr], isIncomplete = false })
+        return true
+    end
+
     Job
         :new(get_command(
             function(args)
                 callback(args)
-                source.cache_mentions[bufnr] = args.items
+                self.cache.mentions[bufnr] = args.items
             end,
             nil,
             string.format(
                 "https://api.github.com/repos/%s/%s/contributors?per_page=%d&page=%d",
                 git_info.owner,
                 git_info.repo,
-                source.config.github.mentions.limit,
+                self.config.mentions.limit,
                 1
             ),
             function(mention)
@@ -174,6 +286,8 @@ M.get_mentions = function(source, callback, bufnr, git_info)
             end
         ))
         :start()
+
+    return true
 end
 
-return M
+return GitHub
