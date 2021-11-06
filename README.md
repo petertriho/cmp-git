@@ -77,6 +77,9 @@ require("cmp_git").setup({
     git = {
         commits = {
             limit = 100,
+            filter_fn = function(trigger_char, commit)
+                return string.format("%s %s %s", trigger_char, commit.sha, commit.title)
+            end,
         },
     },
     github = {
@@ -84,30 +87,109 @@ require("cmp_git").setup({
             filter = "all", -- assigned, created, mentioned, subscribed, all, repos
             limit = 100,
             state = "open", -- open, closed, all
+            filter_fn = function(trigger_char, issue)
+                return string.format("%s %s %s", trigger_char, issue.number, issue.title)
+            end,
         },
         mentions = {
             limit = 100,
+            filter_fn = function(trigger_char, mention)
+                return string.format("%s %s %s", trigger_char, mention.username)
+            end,
         },
         pull_requests = {
             limit = 100,
             state = "open", -- open, closed, merged, all
+            filter_fn = function(trigger_char, pr)
+                return string.format("%s %s %s", trigger_char, pr.number, pr.title)
+            end,
         },
     },
     gitlab = {
         issues = {
             limit = 100,
             state = "opened", -- opened, closed, all
+            filter_fn = function(trigger_char, issue)
+                return string.format("%s %s %s", trigger_char, issue.iid, issue.title)
+            end,
         },
         mentions = {
             limit = 100,
+            filter_fn = function(trigger_char, mention)
+                return string.format("%s %s", trigger_char, mention.username)
+            end,
         },
         merge_requests = {
             limit = 100,
             state = "opened", -- opened, closed, locked, merged
+            filter_fn = function(trigger_char, mr)
+                return string.format("%s %s %s", trigger_char, mr.iid, mr.title)
+            end,
+        },
+    },
+    trigger_actions = {
+        {
+            debug_name = "git_commits",
+            trigger_character = ":",
+            action = function(sources, trigger_char, callback, params, git_info)
+                return sources.git:get_commits(callback, params, trigger_char)
+            end,
+        },
+        {
+            debug_name = "gitlab_issues",
+            trigger_character = "#",
+            action = function(sources, trigger_char, callback, params, git_info)
+                return sources.gitlab:get_issues(callback, git_info, trigger_char)
+            end,
+        },
+        {
+            debug_name = "gitlab_mentions",
+            trigger_character = "@",
+            action = function(sources, trigger_char, callback, params, git_info)
+                return sources.gitlab:get_mentions(callback, git_info, trigger_char)
+            end,
+        },
+        {
+            debug_name = "gitlab_mrs",
+            trigger_character = "!",
+            action = function(sources, trigger_char, callback, params, git_info)
+                return sources.gitlab:get_merge_requests(callback, git_info, trigger_char)
+            end,
+        },
+        {
+            debug_name = "github_issues_and_pr",
+            trigger_character = "#",
+            action = function(sources, trigger_char, callback, params, git_info)
+                return sources.github:get_issues_and_prs(callback, git_info, trigger_char)
+            end,
+        },
+        {
+            debug_name = "github_mentions",
+            trigger_character = "@",
+            action = function(sources, trigger_char, callback, params, git_info)
+                return sources.github:get_mentions(callback, git_info, trigger_char)
+            end,
         },
     },
 })
 ```
+
+---
+**NOTE**
+
+If you want specific behaviour for a trigger or new behaviour for a trigger, you need to add
+an entry in the `trigger_actions` table of the config. The two necessary fields are the `trigger_character`
+and the `action`.
+
+Currently, `trigger_character` has to be a single character. Multiple actions can be used for the same charachter.
+All actions are triggered until one returns true. The parameters to the `actions` function are the
+different sources (currently `git`, `gitlab` and `github`), the completion callback, the trigger character,
+the parameters passed to `complete` from `nvim-cmp`, and the current git info.
+
+All source functions take an optional config table as last argument, with which the configuration set
+in `setup` can be overwritten for a specific call.
+
+---
 
 ## Acknowledgements
 

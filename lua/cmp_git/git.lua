@@ -1,6 +1,19 @@
 local utils = require("cmp_git.utils")
 
-local M = {}
+local Git = {
+    cache_commits = {},
+    config = {},
+}
+
+Git.new = function(overrides)
+    local self = setmetatable({}, {
+        __index = Git,
+    })
+
+    self.config = vim.tbl_extend("force", require("cmp_git.config").git, overrides or {})
+
+    return self
+end
 
 local function trim(s)
     return (s:gsub("^%s*(.-)%s*$", "%1"))
@@ -25,7 +38,7 @@ local split_by = function(input, sep)
     return t
 end
 
-M.update_edit_range = function(commits, cursor, offset)
+Git.update_edit_range = function(commits, cursor, offset)
     for k, v in pairs(commits) do
         local sha = v.insertText
 
@@ -47,7 +60,7 @@ M.update_edit_range = function(commits, cursor, offset)
     end
 end
 
-M.get_git_commits = function(source, callback, bufnr, cursor, offset)
+local parse_commits = function(trigger_char, config)
     -- Choose unique and long end markers
     local end_part_marker = "###CMP_GIT###"
     local end_entry_marker = "###CMP_GIT_END###"
@@ -55,7 +68,7 @@ M.get_git_commits = function(source, callback, bufnr, cursor, offset)
     -- Extract abbreviated commit sha, subject, body, author name, author email, commit timestamp
     local command = string.format(
         'git log -n %d --pretty=format:"%%h%s%%s%s%%b%s%%cn%s%%ce%s%%cD%s%s"',
-        source.config.git.commits.limit,
+        config.limit,
         end_part_marker,
         end_part_marker,
         end_part_marker,
@@ -82,8 +95,18 @@ M.get_git_commits = function(source, callback, bufnr, cursor, offset)
         local author_mail = part[5] or ""
         local commit_time = part[6] or ""
 
+        local commit = {
+            sha = sha,
+            title = title,
+            description = description,
+            author_name = author_name,
+            author_mail = author_mail,
+            commit_time = commit_time,
+        }
+
         table.insert(commits, {
             label = string.format("%s: %s", sha, title),
+            filterText = config.filter_fn(trigger_char, commit),
             insertText = sha,
             documentation = {
                 kind = "markdown",
@@ -96,22 +119,33 @@ M.get_git_commits = function(source, callback, bufnr, cursor, offset)
                     commit_time
                 ),
             },
-            data = {
-                sha = sha,
-                title = title,
-                description = description,
-                author_name = author_name,
-                author_mail = author_mail,
-                commit_time = commit_time,
-            },
+            data = commit,
         })
     end
 
-    M.update_edit_range(commits, cursor, offset)
+    return commits
+end
+
+function Git:get_commits(callback, params, trigger_char, config)
+    local cursor = params.context.cursor
+    local offset = params.offset
+
+    config = vim.tbl_extend("force", self.config.commits, config or {})
+
+    local bufnr = vim.api.nvim_get_current_buf()
+
+    local commits
+    if self.cache_commits and self.cache_commits[bufnr] then
+        commits = self.cache_commits[bufnr]
+    else
+        commits = parse_commits(trigger_char, config)
+    end
+
+    self.update_edit_range(commits, cursor, offset)
 
     callback({ items = commits, isIncomplete = false })
 
-    source.cache_commits[bufnr] = commits
+    return true
 end
 
-return M
+return Git
