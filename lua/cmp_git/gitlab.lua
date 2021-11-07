@@ -1,5 +1,6 @@
 local Job = require("plenary.job")
 local utils = require("cmp_git.utils")
+local sort = require("cmp_git.sort")
 
 local GitLab = {
     cache = {
@@ -100,6 +101,7 @@ function GitLab:get_issues(callback, git_info, trigger_char, config)
                 label = string.format("#%s: %s", issue.iid, issue.title),
                 insertText = string.format("#%s", issue.iid),
                 filterText = config.filter_fn(trigger_char, issue),
+                sortText = sort.get_sort_text(config.sort_by, issue),
                 documentation = {
                     kind = "markdown",
                     value = string.format("# %s\n\n%s", issue.title, issue.description),
@@ -140,6 +142,7 @@ function GitLab:get_mentions(callback, git_info, trigger_char, config)
             return {
                 label = string.format("@%s", mention.username),
                 filterText = config.filter_fn(trigger_char, mention),
+                sortText = sort.get_sort_text(config.sort_by, mention),
                 documentation = {
                     kind = "markdown",
                     value = string.format("# %s\n\n%s", mention.username, mention.name),
@@ -189,6 +192,7 @@ function GitLab:get_merge_requests(callback, git_info, trigger_char, config)
                 label = string.format("!%s: %s", mr.iid, mr.title),
                 insertText = string.format("!%s", mr.iid),
                 filterText = config.filter_fn(trigger_char, mr),
+                sortText = sort.get_sort_text(config.sort_by, mr),
                 documentation = {
                     kind = "markdown",
                     value = string.format("# %s\n\n%s", mr.title, mr.description),

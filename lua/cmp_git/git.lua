@@ -1,4 +1,5 @@
 local utils = require("cmp_git.utils")
+local sort = require("cmp_git.sort")
 
 local Git = {
     cache_commits = {},
@@ -67,7 +68,7 @@ local parse_commits = function(trigger_char, config)
 
     -- Extract abbreviated commit sha, subject, body, author name, author email, commit timestamp
     local command = string.format(
-        'git log -n %d --pretty=format:"%%h%s%%s%s%%b%s%%cn%s%%ce%s%%cD%s%s"',
+        'git log -n %d --date=unix --pretty=format:"%%h%s%%s%s%%b%s%%cn%s%%ce%s%%cd%s%s"',
         config.limit,
         end_part_marker,
         end_part_marker,
@@ -93,7 +94,8 @@ local parse_commits = function(trigger_char, config)
         local description = trim(part[3]) or ""
         local author_name = part[4] or ""
         local author_mail = part[5] or ""
-        local commit_time = part[6] or ""
+        local commit_timestamp = part[6] or ""
+        local diff = os.difftime(os.time(), commit_timestamp)
 
         local commit = {
             sha = sha,
@@ -101,13 +103,15 @@ local parse_commits = function(trigger_char, config)
             description = description,
             author_name = author_name,
             author_mail = author_mail,
-            commit_time = commit_time,
+            commit_timestamp = commit_timestamp,
+            diff = diff,
         }
 
         table.insert(commits, {
             label = string.format("%s: %s", sha, title),
             filterText = config.filter_fn(trigger_char, commit),
             insertText = sha,
+            sortText = sort.get_sort_text(config.sort_by, commit),
             documentation = {
                 kind = "markdown",
                 value = string.format(
@@ -116,7 +120,7 @@ local parse_commits = function(trigger_char, config)
                     description,
                     author_name,
                     author_mail,
-                    commit_time
+                    os.date("%c", commit_timestamp)
                 ),
             },
             data = commit,
