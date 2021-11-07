@@ -70,6 +70,12 @@ require("cmp").setup({
     }
 })
 
+require("cmp_git").setup()
+```
+
+## Config
+
+```lua
 require("cmp_git").setup({
     -- defaults
     filetypes = { "gitcommit" },
@@ -188,10 +194,12 @@ require("cmp_git").setup({
             end,
         },
     },
-})
+  }
+)
 ```
 
 ---
+
 **NOTE**
 
 If you want specific behaviour for a trigger or new behaviour for a trigger, you need to add
