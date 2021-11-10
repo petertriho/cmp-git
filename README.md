@@ -216,9 +216,8 @@ in `setup` can be overwritten for a specific call.
 
 **NOTE on sorting**
 
-The default sorting, orders by last updated (for PRs, MRs and issues) and latest (for commits).
-That the menu is sorted that way, `cmp.config.compare.score,` should be after
-`cmp.config.compare.sort_text` in `sorting.comparators`. An example omparators could be:
+The default sorting order is last updated (for PRs, MRs and issues) and latest (for commits).
+To make `nvim-cmp` sort in this order, move `cmp.config.compare.sort_text` closer to the top of (lower index) in `sorting.comparators`. E.g.
 
 ```lua
 require("cmp").setup({
@@ -229,6 +228,7 @@ require("cmp").setup({
             cmp.config.compare.exact,
             cmp.config.compare.sort_text,
             cmp.config.compare.score,
+            cmp.config.compare.recently_used,
             cmp.config.compare.kind,
             cmp.config.compare.length,
             cmp.config.compare.order,
