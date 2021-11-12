@@ -14,12 +14,12 @@ M.parse_gitlab_date = function(d)
     )
 
     return os.time({
-        year = year,
-        month = month,
-        day = day,
-        hour = hours + offsethours,
-        min = mins + offsetmins,
-        sec = secs,
+        year = year or 0,
+        month = month or 0,
+        day = day or 0,
+        hour = (hours or 0) + (offsethours or 0),
+        min = (mins or 0) + (offsetmins or 0),
+        sec = secs or 0,
     })
 end
 
@@ -27,12 +27,12 @@ M.parse_github_date = function(d)
     local year, month, day, hours, mins, secs = d:match("(%d+)-(%d+)-(%d+)T(%d+):(%d+):(%d+)Z")
 
     return os.time({
-        year = year,
-        month = month,
-        day = day,
-        hour = hours,
-        min = mins,
-        sec = secs,
+        year = year or 0,
+        month = month or 0,
+        day = day or 0,
+        hour = hours or 0,
+        min = mins or 0,
+        sec = secs or 0,
     })
 end
 
