@@ -168,7 +168,7 @@ local _get_issues = function(self, callback, git_info, trigger_char, config)
 
     config = vim.tbl_extend("force", self.config.issues, config or {})
 
-    issues_job = get_issues_job(function(args)
+    local issues_job = get_issues_job(function(args)
         self.cache.issues[bufnr] = args.items
         callback(args)
     end, git_info, trigger_char, config)
@@ -186,7 +186,7 @@ local _get_pull_requests = function(self, callback, git_info, trigger_char, conf
 
     config = vim.tbl_extend("force", self.config.pull_requests, config or {})
 
-    pr_job = get_pull_requests_job(function(args)
+    local pr_job = get_pull_requests_job(function(args)
         self.cache.pull_requests[bufnr] = args.items
         callback(args)
     end, git_info, trigger_char, config)
@@ -245,13 +245,13 @@ function GitHub:get_issues_and_prs(callback, git_info, trigger_char, config)
         local pr_config = config and config.pull_requests or {}
         local issues = {}
 
-        issues_job = _get_issues(self, function(args)
+        local issues_job = _get_issues(self, function(args)
             issues = args.items
             self.cache.issues[bufnr] = args.items
         end, git_info, trigger_char, issue_config)
 
-        pull_requests_job = _get_pull_requests(self, function(args)
-            prs = args.items
+        local pull_requests_job = _get_pull_requests(self, function(args)
+            local prs = args.items
             self.cache.pull_requests[bufnr] = args.items
 
             local merged = vim.list_extend(issues, prs)
