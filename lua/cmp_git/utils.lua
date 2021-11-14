@@ -10,7 +10,7 @@ end
 
 M.parse_gitlab_date = function(d)
     local year, month, day, hours, mins, secs, _, offsethours, offsetmins = d:match(
-        "(%d+)-(%d+)-(%d+)T(%d+):(%d+):(%d+)%.(%d+)%+(%d+):(%d+)"
+        "(%d+)-(%d+)-(%d+)T(%d+):(%d+):(%d+)%.(%d+)[+-](%d+):(%d+)"
     )
 
     if hours == nil then
