@@ -1,6 +1,7 @@
 local Job = require("plenary.job")
 local utils = require("cmp_git.utils")
 local sort = require("cmp_git.sort")
+local log = require("cmp_git.log")
 
 local GitHub = {
     cache = {
@@ -21,48 +22,33 @@ GitHub.new = function(overrides)
     return self
 end
 
-local get_command = function(callback, gh_command, curl_url, handle_item)
-    local command = nil
+local get_items = function(callback, gh_args, curl_url, handle_item)
+    local gh_job = utils.build_job("gh", callback, gh_args, handle_item)
 
-    if false and vim.fn.executable("gh") == 1 and gh_command then
-        command = gh_command
-    elseif vim.fn.executable("curl") == 1 and curl_url then
-        command = {
-            "curl",
-            "-s",
-            "-H",
-            "'Accept: application/vnd.github.v3+json'",
-            curl_url,
-        }
+    curl_args = {
+        "curl",
+        "-s",
+        "-H",
+        "'Accept: application/vnd.github.v3+json'",
+        curl_url,
+    }
 
-        if vim.fn.exists("$GITHUB_API_TOKEN") == 1 then
-            local token = vim.fn.getenv("GITHUB_API_TOKEN")
-            local authorization_header = string.format("Authorization: token %s", token)
-            table.insert(command, "-H")
-            table.insert(command, authorization_header)
-        end
-    else
-        vim.notify("gh and curl executables not found!")
-        return
+    if vim.fn.exists("$GITHUB_API_TOKEN") == 1 then
+        local token = vim.fn.getenv("GITHUB_API_TOKEN")
+        local authorization_header = string.format("Authorization: token %s", token)
+        table.insert(curl_args, "-H")
+        table.insert(curl_args, authorization_header)
     end
 
-    command.cwd = utils.get_cwd()
-    command.on_exit = vim.schedule_wrap(function(job)
-        local result = table.concat(job:result(), "")
+    local curl_job = utils.build_job("curl", callback, curl_args, handle_item)
 
-        local items = utils.handle_response(result, handle_item)
-
-        callback({ items = items, isIncomplete = false })
-    end)
-
-    return command
+    return utils.chain_fallback(gh_job, curl_job)
 end
 
 local get_pull_requests_job = function(callback, git_info, trigger_char, config)
-    return Job:new(get_command(
+    return get_items(
         callback,
         {
-            "gh",
             "pr",
             "list",
             "--repo",
@@ -105,14 +91,13 @@ local get_pull_requests_job = function(callback, git_info, trigger_char, config)
                 data = pr,
             }
         end
-    ))
+    )
 end
 
 local get_issues_job = function(callback, git_info, trigger_char, config)
-    return Job:new(get_command(
+    return get_items(
         callback,
         {
-            "gh",
             "issue",
             "list",
             "--repo",
@@ -155,7 +140,7 @@ local get_issues_job = function(callback, git_info, trigger_char, config)
                 },
             }
         end
-    ))
+    )
 end
 
 local _get_issues = function(self, callback, git_info, trigger_char, config)
@@ -234,10 +219,10 @@ function GitHub:get_issues_and_prs(callback, git_info, trigger_char, config)
         callback({ items = merged, isIncomplete = false })
     else
         if git_info.host ~= "github.com" then
-            vim.notify("Can't fetch Github issues or pull requests, not a github repository")
+            log.warn("Can't fetch Github issues or pull requests, not a github repository")
             return false
         elseif git_info.owner == nil and git_info.repo == nil then
-            vim.notify("Can't figure out git repository or owner")
+            log.warn("Can't figure out git repository or owner")
             return false
         end
 
@@ -279,8 +264,7 @@ function GitHub:get_mentions(callback, git_info, trigger_char, config)
 
     config = vim.tbl_extend("force", self.config.mentions, config or {})
 
-    Job
-        :new(get_command(
+    local job = get_items(
             function(args)
                 callback(args)
                 self.cache.mentions[bufnr] = args.items
@@ -301,8 +285,8 @@ function GitHub:get_mentions(callback, git_info, trigger_char, config)
                     data = mention,
                 }
             end
-        ))
-        :start()
+        )
+        job:start()
 
     return true
 end
