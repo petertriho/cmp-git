@@ -218,6 +218,7 @@ function GitHub:get_issues_and_prs(callback, git_info, trigger_char, config)
         local items = vim.list_extend(items, issues)
         local items = vim.list_extend(items, prs)
 
+        log.fmt_debug("Got %d issues and prs from cache", #items) 
         callback({ items = issues, isIncomplete = false })
     else
         if git_info.host ~= "github.com" then
@@ -243,6 +244,7 @@ function GitHub:get_issues_and_prs(callback, git_info, trigger_char, config)
 
             item = vim.list_extend(items, prs)
 
+            log.fmt_debug("Got %d issues and prs from GitHub", #items) 
             callback({ items = items, isIncomplete = false })
         end, git_info, trigger_char, pr_config)
 

@@ -53,7 +53,9 @@ function GitLab:get_issues(callback, git_info, trigger_char, config)
     local bufnr = vim.api.nvim_get_current_buf()
 
     if self.cache.issues[bufnr] then
-        callback({ items = self.cache.issues[bufnr], isIncomplete = false })
+        local items = self.cache.issues[bufnr]
+        log.fmt_debug("Got %d issues from cache", #items) 
+        callback({ items = items, isIncomplete = false })
         return true
     end
 
@@ -62,6 +64,7 @@ function GitLab:get_issues(callback, git_info, trigger_char, config)
 
     local job = get_items(
         function(args)
+            log.fmt_debug("Got %d issues from GitLab", #args.items) 
             callback(args)
             self.cache.issues[bufnr] = args.items
         end,
@@ -147,7 +150,9 @@ function GitLab:get_merge_requests(callback, git_info, trigger_char, config)
     local bufnr = vim.api.nvim_get_current_buf()
 
     if self.cache.merge_requests[bufnr] then
-        callback({ items = self.cache.merge_requests[bufnr], isIncomplete = false })
+        local items = self.cache.merge_requests[bufnr]
+        log.fmt_debug("Got %d MRs from cache", #items) 
+        callback({ items = items, isIncomplete = false })
         return true
     end
 
@@ -156,6 +161,7 @@ function GitLab:get_merge_requests(callback, git_info, trigger_char, config)
 
     local job = get_items(
         function(args)
+            log.fmt_debug("Got %d MRs from GitLab", #args.items) 
             callback(args)
             self.cache.merge_requests[bufnr] = args.items
         end,
