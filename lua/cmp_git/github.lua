@@ -214,9 +214,11 @@ function GitHub:get_issues_and_prs(callback, git_info, trigger_char, config)
         local issues = self.cache.issues[bufnr]
         local prs = self.cache.pull_requests[bufnr]
 
-        local merged = vim.list_extend(issues, prs)
+        local items = {}
+        local items = vim.list_extend(items, issues)
+        local items = vim.list_extend(items, prs)
 
-        callback({ items = merged, isIncomplete = false })
+        callback({ items = issues, isIncomplete = false })
     else
         if git_info.host ~= "github.com" then
             log.warn("Can't fetch Github issues or pull requests, not a github repository")
@@ -228,10 +230,10 @@ function GitHub:get_issues_and_prs(callback, git_info, trigger_char, config)
 
         local issue_config = config and config.issues or {}
         local pr_config = config and config.pull_requests or {}
-        local issues = {}
+        local items = {}
 
         local issues_job = _get_issues(self, function(args)
-            issues = args.items
+            items = args.items
             self.cache.issues[bufnr] = args.items
         end, git_info, trigger_char, issue_config)
 
@@ -239,9 +241,9 @@ function GitHub:get_issues_and_prs(callback, git_info, trigger_char, config)
             local prs = args.items
             self.cache.pull_requests[bufnr] = args.items
 
-            local merged = vim.list_extend(issues, prs)
+            item = vim.list_extend(items, prs)
 
-            callback({ items = merged, isIncomplete = false })
+            callback({ items = items, isIncomplete = false })
         end, git_info, trigger_char, pr_config)
 
         Job.chain(issues_job, pull_requests_job)
