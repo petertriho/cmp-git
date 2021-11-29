@@ -296,7 +296,7 @@ function GitHub:get_mentions(callback, git_info, trigger_char, config)
             function(mention)
                 return {
                     label = string.format("@%s", mention.login),
-                    insertText = string.format("@%s", mention.number),
+                    insertText = string.format("@%s", mention.login),
                     sortText = sort.get_sort_text(config.sort_by, mention),
                     data = mention,
                 }
