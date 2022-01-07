@@ -2,7 +2,7 @@
 
 # 🚧 WORK IN PROGRESS 🚧
 
-This is a work in prgress and breaking changes to the setup/config could occur
+This is a work in progress and breaking changes to the setup/config could occur
 in the future. Sorry for any inconveniences.
 
 Git source for [hrsh7th/nvim-cmp](https://github.com/hrsh7th/nvim-cmp)
