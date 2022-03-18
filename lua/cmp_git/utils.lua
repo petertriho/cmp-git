@@ -42,7 +42,8 @@ M.parse_github_date = function(d)
     })
 end
 
-M.get_git_info = function(remotes)
+M.get_git_info = function(remotes, opts)
+    opts = opts or {}
     return M.run_in_cwd(M.get_cwd(), function()
         if type(remotes) == "string" then
             remotes = { remotes }
@@ -51,7 +52,13 @@ M.get_git_info = function(remotes)
         local host, owner, repo = nil, nil, nil
 
         for _, r in ipairs(remotes) do
-            local remote_origin_url = vim.fn.system("git config --get remote." .. r .. ".url")
+            local cmd
+            if opts.enableRemoteUrlRewrites then
+                cmd = "git remote get-url " .. r
+            else
+                cmd = "git config --get remote." .. r .. ".url"
+            end
+            local remote_origin_url = vim.fn.system(cmd)
 
             if remote_origin_url ~= "" then
                 local clean_remote_origin_url = remote_origin_url:gsub("%.git", ""):gsub("%s", "")

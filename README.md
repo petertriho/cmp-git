@@ -80,6 +80,7 @@ require("cmp_git").setup({
     -- defaults
     filetypes = { "gitcommit" },
     remotes = { "upstream", "origin" }, -- in order of most to least prioritized
+    enableRemoteUrlRewrites = false, -- enable git url rewrites, see https://git-scm.com/docs/git-config#Documentation/git-config.txt-urlltbasegtinsteadOf
     git = {
         commits = {
             sort_by = function(commit) -- nil, "sha", "title", "description", "author_name", "author_email", "commit_timestamp", or custom function
