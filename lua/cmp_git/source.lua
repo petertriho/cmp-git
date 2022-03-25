@@ -77,7 +77,19 @@ function Source:get_debug_name()
 end
 
 function Source:is_available()
-    return self.filetypes["*"] ~= nil or self.filetypes[vim.bo.filetype] ~= nil
+    if self.filetypes["*"] ~= nil then
+        return true
+    end
+
+    -- split filetype on period to support multi-filetype buffers (see `:h 'filetype'`)
+    --
+    -- the pattern captures all non-period characters
+    for ft in string.gmatch(vim.bo.filetype, "[^%.]*") do
+        if self.filetypes[ft] ~= nil then
+            return true
+        end
+    end
+    return false
 end
 
 return Source
