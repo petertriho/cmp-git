@@ -44,7 +44,8 @@ end
 
 M.get_git_info = function(remotes, opts)
     opts = opts or {}
-    return M.run_in_cwd(M.get_cwd(), function()
+
+    local get_git_info = function()
         if type(remotes) == "string" then
             remotes = { remotes }
         end
@@ -76,7 +77,17 @@ M.get_git_info = function(remotes, opts)
         end
 
         return { host = host, owner = owner, repo = repo }
-    end)
+    end
+
+    -- buffer cwd
+    local git_info = M.run_in_cwd(M.get_cwd(), get_git_info)
+
+    if git_info.host == nil then
+        -- fallback to cwd
+        git_info = get_git_info()
+    end
+
+    return git_info
 end
 
 M.run_in_cwd = function(cwd, callback)
