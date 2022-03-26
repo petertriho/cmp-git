@@ -1,3 +1,6 @@
+local log = require("cmp_git.log")
+local Job = require("plenary.job")
+
 local M = {}
 
 local char_to_hex = function(c)
@@ -110,12 +113,64 @@ M.get_cwd = function()
     return vim.fn.getcwd()
 end
 
+M.build_job = function(exec, callback, args, handle_item)
+    -- TODO: Find a nicer way, that we can keep chaining jobs at call side
+    if vim.fn.executable(exec) ~= 1 or not args then
+        log.fmt_debug("Can't work with %s for this call", exec)
+        return nil
+    end
+
+    return Job:new({
+        command = exec,
+        args = args,
+        cwd = M.get_cwd(),
+        on_exit = vim.schedule_wrap(function(job, code)
+            if code ~= 0 then
+                log.fmt_debug("%s returned with exit code %d", exec, code)
+            else
+                log.fmt_debug("%s returned with a result", exec)
+                local result = table.concat(job:result(), "")
+
+                local items = M.handle_response(result, handle_item)
+
+                callback({ items = items, isIncomplete = false })
+            end
+        end),
+    })
+end
+
+--- Start the second job if the first on fails, handle cases if the first or second job is nil.
+--- The last job debug prints on failure
+M.chain_fallback = function(first, second)
+    if first and second then
+        first:and_then_on_failure(second)
+        second:after_failure(function(_, code, _)
+            log.fmt_debug("%s failed with exit code %d, couldn't retrieve any completion info", second.command, code)
+        end)
+
+        return first
+    elseif first then
+        first:after_failure(function(_, code, _)
+            log.fmt_debug("%s failed with exit code %d, couldn't retrieve any completion info", first.command, code)
+        end)
+        return first
+    elseif second then
+        second:after_failure(function(_, code, _)
+            log.fmt_debug("%s failed with exit code %d, couldn't retrieve any completion info", second.command, code)
+        end)
+        return second
+    else
+        log.debug("Neither %s or %s could be found", first.command, second.command)
+        return nil
+    end
+end
+
 M.handle_response = function(response, handle_item)
     local items = {}
 
     local process_data = function(ok, parsed)
         if not ok then
-            vim.notify("Failed to parse api result")
+            log.warn("Failed to parse api result")
             return
         end
 

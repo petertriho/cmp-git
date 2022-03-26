@@ -1,6 +1,6 @@
-local Job = require("plenary.job")
 local utils = require("cmp_git.utils")
 local sort = require("cmp_git.sort")
+local log = require("cmp_git.log")
 
 local GitLab = {
     cache = {
@@ -25,39 +25,24 @@ local get_project_id = function(git_info)
     return utils.url_encode(string.format("%s/%s", git_info.owner, git_info.repo))
 end
 
-local get_items = function(callback, glab_command, curl_url, handle_item)
-    local command = nil
+local get_items = function(callback, glab_args, curl_url, handle_item)
+    local glab_job = utils.build_job("glab", callback, glab_args, handle_item)
 
-    if vim.fn.executable("glab") == 1 and glab_command then
-        command = glab_command
-    elseif vim.fn.executable("curl") == 1 and curl_url then
-        command = {
-            "curl",
-            "-s",
-            curl_url,
-        }
+    curl_args = {
+        "-s",
+        curl_url,
+    }
 
-        if vim.fn.exists("$GITLAB_TOKEN") == 1 then
-            local token = vim.fn.getenv("GITLAB_TOKEN")
-            local authorization_header = string.format("Authorization: Bearer %s", token)
-            table.insert(command, "-H")
-            table.insert(command, authorization_header)
-        end
-    else
-        vim.notify("glab and curl executables not found!")
-        return
+    if vim.fn.exists("$GITLAB_TOKEN") == 1 then
+        local token = vim.fn.getenv("GITLAB_TOKEN")
+        local authorization_header = string.format("Authorization: Bearer %s", token)
+        table.insert(curl_args, "-H")
+        table.insert(curl_args, authorization_header)
     end
 
-    command.cwd = utils.get_cwd()
-    command.on_exit = vim.schedule_wrap(function(job)
-        local result = table.concat(job:result(), "")
+    local curl_job = utils.build_job("curl", callback, curl_args, handle_item)
 
-        local items = utils.handle_response(result, handle_item)
-
-        callback({ items = items, isIncomplete = false })
-    end)
-
-    Job:new(command):start()
+    return utils.chain_fallback(glab_job, curl_job)
 end
 
 function GitLab:get_issues(callback, git_info, trigger_char, config)
@@ -68,20 +53,22 @@ function GitLab:get_issues(callback, git_info, trigger_char, config)
     local bufnr = vim.api.nvim_get_current_buf()
 
     if self.cache.issues[bufnr] then
-        callback({ items = self.cache.issues[bufnr], isIncomplete = false })
+        local items = self.cache.issues[bufnr]
+        log.fmt_debug("Got %d issues from cache", #items) 
+        callback({ items = items, isIncomplete = false })
         return true
     end
 
     config = vim.tbl_extend("force", self.config.issues, config or {})
     local id = get_project_id(git_info)
 
-    get_items(
+    local job = get_items(
         function(args)
+            log.fmt_debug("Got %d issues from GitLab", #args.items) 
             callback(args)
             self.cache.issues[bufnr] = args.items
         end,
         {
-            "glab",
             "api",
             string.format("/projects/%s/issues?per_page=%d&state=%s", id, config.limit, config.state),
         },
@@ -109,6 +96,7 @@ function GitLab:get_issues(callback, git_info, trigger_char, config)
             }
         end
     )
+    job:start()
     return true
 end
 
@@ -127,13 +115,12 @@ function GitLab:get_mentions(callback, git_info, trigger_char, config)
     config = vim.tbl_extend("force", self.config.mentions, config or {})
     local id = get_project_id(git_info)
 
-    get_items(
+    local job = get_items(
         function(args)
             callback(args)
             self.cache.mentions[bufnr] = args.items
         end,
         {
-            "glab",
             "api",
             string.format("/projects/%s/users?per_page=%d", id, config.limit),
         },
@@ -150,6 +137,7 @@ function GitLab:get_mentions(callback, git_info, trigger_char, config)
             }
         end
     )
+    job:start()
 
     return true
 end
@@ -162,20 +150,22 @@ function GitLab:get_merge_requests(callback, git_info, trigger_char, config)
     local bufnr = vim.api.nvim_get_current_buf()
 
     if self.cache.merge_requests[bufnr] then
-        callback({ items = self.cache.merge_requests[bufnr], isIncomplete = false })
+        local items = self.cache.merge_requests[bufnr]
+        log.fmt_debug("Got %d MRs from cache", #items) 
+        callback({ items = items, isIncomplete = false })
         return true
     end
-    
+
     config = vim.tbl_extend("force", self.config.merge_requests, config or {})
     local id = get_project_id(git_info)
 
-    get_items(
+    local job = get_items(
         function(args)
+            log.fmt_debug("Got %d MRs from GitLab", #args.items) 
             callback(args)
             self.cache.merge_requests[bufnr] = args.items
         end,
         {
-            "glab",
             "api",
             string.format("/projects/%s/merge_requests?per_page=%d&state=%s", id, config.limit, config.state),
         },
@@ -200,6 +190,7 @@ function GitLab:get_merge_requests(callback, git_info, trigger_char, config)
             }
         end
     )
+    job:start()
 
     return true
 end
