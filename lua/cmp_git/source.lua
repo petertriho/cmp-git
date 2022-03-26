@@ -77,7 +77,7 @@ function Source:get_debug_name()
 end
 
 function Source:is_available()
-    if self.filetypes["*"] ~= nil then
+    if self.filetypes["*"] ~= nil or self.filetypes[vim.bo.filetype] ~= nil then
         return true
     end
 
@@ -89,6 +89,7 @@ function Source:is_available()
             return true
         end
     end
+
     return false
 end
 
