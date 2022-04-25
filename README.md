@@ -65,7 +65,7 @@ use({"petertriho/cmp-git", requires = "nvim-lua/plenary.nvim"})
 ```lua
 require("cmp").setup({
     sources = {
-        { name = "cmp_git" },
+        { name = "git" },
         -- more sources
     }
 })
