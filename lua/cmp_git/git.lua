@@ -1,4 +1,5 @@
-local utils = require("cmp_git.utils")
+local Job = require("plenary.job")
+local log = require("cmp_git.log")
 local sort = require("cmp_git.sort")
 
 local Git = {
@@ -61,73 +62,88 @@ Git.update_edit_range = function(commits, cursor, offset)
     end
 end
 
-local parse_commits = function(trigger_char, config)
+local parse_commits = function(trigger_char, config, callback)
     -- Choose unique and long end markers
     local end_part_marker = "###CMP_GIT###"
     local end_entry_marker = "###CMP_GIT_END###"
 
     -- Extract abbreviated commit sha, subject, body, author name, author email, commit timestamp
-    local command = string.format(
-        'git log -n %d --date=unix --pretty=format:"%%h%s%%s%s%%b%s%%cn%s%%ce%s%%cd%s%s"',
-        config.limit,
-        end_part_marker,
-        end_part_marker,
-        end_part_marker,
-        end_part_marker,
-        end_part_marker,
-        end_part_marker,
-        end_entry_marker
-    )
+    Job:new({
+        command = "git",
+        args = {
+            "log",
+            "-n",
+            config.limit,
+            "--date",
+            "unix",
+            "--pretty",
+            string.format(
+                'format:"%%h%s%%s%s%%b%s%%cn%s%%ce%s%%cd%s%s"',
+                end_part_marker,
+                end_part_marker,
+                end_part_marker,
+                end_part_marker,
+                end_part_marker,
+                end_part_marker,
+                end_entry_marker
+            ),
+        },
+        on_exit = vim.schedule_wrap(function(job, code)
+            if code ~= 0 then
+                log.fmt_debug("%s returned with exit code %d", exec, code)
+            else
+                log.fmt_debug("%s returned with a result", exec)
+                local result = table.concat(job:result(), "")
 
-    local raw_output = utils.run_in_cwd(utils.get_cwd(), function()
-        return vim.fn.system(command)
-    end)
-    local commits = {}
+                local commits = {}
 
-    local entries = split_by(raw_output, end_entry_marker)
+                local entries = split_by(result, end_entry_marker)
 
-    for _, e in ipairs(entries) do
-        local part = split_by(e, end_part_marker)
+                for _, e in ipairs(entries) do
+                    local part = split_by(e, end_part_marker)
 
-        local sha = trim(part[1])
-        local title = trim(part[2])
-        local description = trim(part[3]) or ""
-        local author_name = part[4] or ""
-        local author_mail = part[5] or ""
-        local commit_timestamp = part[6] or ""
-        local diff = os.difftime(os.time(), commit_timestamp)
+                    local sha = trim(part[1])
+                    local title = trim(part[2])
+                    local description = trim(part[3]) or ""
+                    local author_name = part[4] or ""
+                    local author_mail = part[5] or ""
+                    local commit_timestamp = part[6] or ""
+                    local diff = os.difftime(os.time(), commit_timestamp)
 
-        local commit = {
-            sha = sha,
-            title = title,
-            description = description,
-            author_name = author_name,
-            author_mail = author_mail,
-            commit_timestamp = commit_timestamp,
-            diff = diff,
-        }
+                    local commit = {
+                        sha = sha,
+                        title = title,
+                        description = description,
+                        author_name = author_name,
+                        author_mail = author_mail,
+                        commit_timestamp = commit_timestamp,
+                        diff = diff,
+                    }
 
-        table.insert(commits, {
-            label = string.format("%s: %s", sha, title),
-            filterText = config.filter_fn(trigger_char, commit),
-            insertText = sha,
-            sortText = sort.get_sort_text(config.sort_by, commit),
-            documentation = {
-                kind = "markdown",
-                value = string.format(
-                    "# %s\n\n%s\n\nCommited by %s (%s) on %s",
-                    title,
-                    description,
-                    author_name,
-                    author_mail,
-                    os.date("%c", commit_timestamp)
-                ),
-            },
-            data = commit,
-        })
-    end
+                    table.insert(commits, {
+                        label = string.format("%s: %s", sha, title),
+                        filterText = config.filter_fn(trigger_char, commit),
+                        insertText = sha,
+                        sortText = sort.get_sort_text(config.sort_by, commit),
+                        documentation = {
+                            kind = "markdown",
+                            value = string.format(
+                                "# %s\n\n%s\n\nCommited by %s (%s) on %s",
+                                title,
+                                description,
+                                author_name,
+                                author_mail,
+                                os.date("%c", commit_timestamp)
+                            ),
+                        },
+                        data = commit,
+                    })
+                end
 
-    return commits
+                callback(commits)
+            end
+        end),
+    })
 end
 
 function Git:get_commits(callback, params, trigger_char, config)
@@ -138,16 +154,16 @@ function Git:get_commits(callback, params, trigger_char, config)
 
     local bufnr = vim.api.nvim_get_current_buf()
 
-    local commits
     if self.cache_commits and self.cache_commits[bufnr] then
-        commits = self.cache_commits[bufnr]
+        local commits = self.cache_commits[bufnr]
+        self.update_edit_range(commits, cursor, offset)
+        callback({ items = commits, isIncomplete = false })
     else
-        commits = parse_commits(trigger_char, config)
+        parse_commits(trigger_char, config, function(commits)
+            self.update_edit_range(commits, cursor, offset)
+            callback({ items = commits, isIncomplete = false })
+        end)
     end
-
-    self.update_edit_range(commits, cursor, offset)
-
-    callback({ items = commits, isIncomplete = false })
 
     return true
 end
