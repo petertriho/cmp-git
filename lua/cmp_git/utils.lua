@@ -55,26 +55,32 @@ M.get_git_info = function(remotes, opts)
 
         local host, owner, repo = nil, nil, nil
 
-        for _, r in ipairs(remotes) do
-            local cmd
-            if opts.enableRemoteUrlRewrites then
-                cmd = "git remote get-url " .. r
-            else
-                cmd = "git config --get remote." .. r .. ".url"
-            end
-            local remote_origin_url = vim.fn.system(cmd)
-
-            if remote_origin_url ~= "" then
-                local clean_remote_origin_url = remote_origin_url:gsub("%.git", ""):gsub("%s", "")
-
-                host, owner, repo = string.match(clean_remote_origin_url, "^git@(.+):(.+)/(.+)$")
-
-                if host == nil then
-                    host, owner, repo = string.match(clean_remote_origin_url, "^https?://(.+)/(.+)/(.+)$")
+        if vim.bo.filetype == "octo" then
+            host = "github.com"
+            local filename = vim.fn.expand("%:p:h")
+            owner, repo = string.match(filename, "^octo://(.+)/(.+)/.+$")
+        else
+            for _, remote in ipairs(remotes) do
+                local cmd
+                if opts.enableRemoteUrlRewrites then
+                    cmd = "git remote get-url " .. remote
+                else
+                    cmd = "git config --get remote." .. remote .. ".url"
                 end
+                local remote_origin_url = vim.fn.system(cmd)
 
-                if host ~= nil and owner ~= nil and repo ~= nil then
-                    break
+                if remote_origin_url ~= "" then
+                    local clean_remote_origin_url = remote_origin_url:gsub("%.git", ""):gsub("%s", "")
+
+                    host, owner, repo = string.match(clean_remote_origin_url, "^git@(.+):(.+)/(.+)$")
+
+                    if host == nil then
+                        host, owner, repo = string.match(clean_remote_origin_url, "^https?://(.+)/(.+)/(.+)$")
+                    end
+
+                    if host ~= nil and owner ~= nil and repo ~= nil then
+                        break
+                    end
                 end
             end
         end
@@ -93,11 +99,13 @@ M.get_git_info = function(remotes, opts)
     return git_info
 end
 
-M.run_in_cwd = function(cwd, callback)
+M.run_in_cwd = function(cwd, callback, ...)
+    local args = ...
     local old_cwd = vim.fn.getcwd()
+
     local ok, result = pcall(function()
         vim.cmd(([[lcd %s]]):format(cwd))
-        return callback()
+        return callback(args)
     end)
     vim.cmd(([[lcd %s]]):format(old_cwd))
     if not ok then
@@ -107,7 +115,7 @@ M.run_in_cwd = function(cwd, callback)
 end
 
 M.get_cwd = function()
-    if vim.fn.getreg("%") ~= "" then
+    if vim.fn.getreg("%") ~= "" and vim.bo.filetype ~= "octo" then
         return vim.fn.expand("%:p:h")
     end
     return vim.fn.getcwd()
