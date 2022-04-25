@@ -1,6 +1,7 @@
 local utils = require("cmp_git.utils")
 local sort = require("cmp_git.sort")
 local log = require("cmp_git.log")
+local format = require("cmp_git.format")
 
 local GitLab = {
     cache = {
@@ -17,6 +18,10 @@ GitLab.new = function(overrides)
     })
 
     self.config = vim.tbl_extend("force", require("cmp_git.config").gitlab, overrides or {})
+
+    if overrides.filter_fn then
+        self.config.format.filterText = overrides.filter_fn
+    end
 
     return self
 end
@@ -84,16 +89,7 @@ function GitLab:get_issues(callback, git_info, trigger_char, config)
                 issue.description = ""
             end
 
-            return {
-                label = string.format("#%s: %s", issue.iid, issue.title),
-                insertText = string.format("#%s", issue.iid),
-                filterText = config.filter_fn(trigger_char, issue),
-                sortText = sort.get_sort_text(config.sort_by, issue),
-                documentation = {
-                    kind = "markdown",
-                    value = string.format("# %s\n\n%s", issue.title, issue.description),
-                },
-            }
+            return format.item(config, trigger_char, issue)
         end
     )
     job:start()
@@ -126,15 +122,7 @@ function GitLab:get_mentions(callback, git_info, trigger_char, config)
         },
         string.format("https://%s/api/v4/projects/%s/users?per_page=%d", git_info.host, id, config.limit),
         function(mention)
-            return {
-                label = string.format("@%s", mention.username),
-                filterText = config.filter_fn(trigger_char, mention),
-                sortText = sort.get_sort_text(config.sort_by, mention),
-                documentation = {
-                    kind = "markdown",
-                    value = string.format("# %s\n\n%s", mention.username, mention.name),
-                },
-            }
+            return format.item(config, trigger_char, mention)
         end
     )
     job:start()
@@ -178,16 +166,7 @@ function GitLab:get_merge_requests(callback, git_info, trigger_char, config)
         ),
 
         function(mr)
-            return {
-                label = string.format("!%s: %s", mr.iid, mr.title),
-                insertText = string.format("!%s", mr.iid),
-                filterText = config.filter_fn(trigger_char, mr),
-                sortText = sort.get_sort_text(config.sort_by, mr),
-                documentation = {
-                    kind = "markdown",
-                    value = string.format("# %s\n\n%s", mr.title, mr.description),
-                },
-            }
+            return format.item(config, trigger_char, mr)
         end
     )
     job:start()

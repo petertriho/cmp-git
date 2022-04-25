@@ -1,6 +1,7 @@
 local Job = require("plenary.job")
 local log = require("cmp_git.log")
 local sort = require("cmp_git.sort")
+local format = require("cmp_git.format")
 
 local Git = {
     cache_commits = {},
@@ -13,6 +14,10 @@ Git.new = function(overrides)
     })
 
     self.config = vim.tbl_extend("force", require("cmp_git.config").git, overrides or {})
+
+    if overrides.filter_fn then
+        self.config.format.filterText = overrides.filter_fn
+    end
 
     return self
 end
@@ -74,11 +79,9 @@ local parse_commits = function(trigger_char, config, callback)
             "log",
             "-n",
             config.limit,
-            "--date",
-            "unix",
-            "--pretty",
+            "--date=unix",
             string.format(
-                'format:"%%h%s%%s%s%%b%s%%cn%s%%ce%s%%cd%s%s"',
+                "--pretty=format:%%h%s%%s%s%%b%s%%cn%s%%ce%s%%cd%s%s",
                 end_part_marker,
                 end_part_marker,
                 end_part_marker,
@@ -90,9 +93,9 @@ local parse_commits = function(trigger_char, config, callback)
         },
         on_exit = vim.schedule_wrap(function(job, code)
             if code ~= 0 then
-                log.fmt_debug("%s returned with exit code %d", exec, code)
+                log.fmt_debug("%s returned with exit code %d", "git", code)
             else
-                log.fmt_debug("%s returned with a result", exec)
+                log.fmt_debug("%s returned with a result", "git")
                 local result = table.concat(job:result(), "")
 
                 local commits = {}
@@ -120,30 +123,13 @@ local parse_commits = function(trigger_char, config, callback)
                         diff = diff,
                     }
 
-                    table.insert(commits, {
-                        label = string.format("%s: %s", sha, title),
-                        filterText = config.filter_fn(trigger_char, commit),
-                        insertText = sha,
-                        sortText = sort.get_sort_text(config.sort_by, commit),
-                        documentation = {
-                            kind = "markdown",
-                            value = string.format(
-                                "# %s\n\n%s\n\nCommited by %s (%s) on %s",
-                                title,
-                                description,
-                                author_name,
-                                author_mail,
-                                os.date("%c", commit_timestamp)
-                            ),
-                        },
-                        data = commit,
-                    })
+                    table.insert(commits, format.item(config, trigger_char, commit))
                 end
 
                 callback(commits)
             end
         end),
-    })
+    }):start()
 end
 
 function Git:get_commits(callback, params, trigger_char, config)

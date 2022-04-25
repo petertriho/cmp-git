@@ -2,6 +2,7 @@ local Job = require("plenary.job")
 local utils = require("cmp_git.utils")
 local sort = require("cmp_git.sort")
 local log = require("cmp_git.log")
+local format = require("cmp_git.format")
 
 local GitHub = {
     cache = {
@@ -18,6 +19,10 @@ GitHub.new = function(overrides)
     })
 
     self.config = vim.tbl_extend("force", require("cmp_git.config").github, overrides or {})
+
+    if overrides.filter_fn then
+        self.config.format.filterText = overrides.filter_fn
+    end
 
     return self
 end
@@ -79,17 +84,7 @@ local get_pull_requests_job = function(callback, git_info, trigger_char, config)
                 pr.updatedAt = pr.updated_at
             end
 
-            return {
-                label = string.format("#%s: %s", pr.number, pr.title),
-                insertText = string.format("#%s", pr.number),
-                filterText = config.filter_fn(trigger_char, pr),
-                sortText = sort.get_sort_text(config.sort_by, pr),
-                documentation = {
-                    kind = "markdown",
-                    value = string.format("# %s\n\n%s", pr.title, pr.body),
-                },
-                data = pr,
-            }
+            return format.item(config, trigger_char, pr)
         end
     )
 end
@@ -129,16 +124,7 @@ local get_issues_job = function(callback, git_info, trigger_char, config)
                 issue.updatedAt = issue.updated_at
             end
 
-            return {
-                label = string.format("#%s: %s", issue.number, issue.title),
-                insertText = string.format("#%s", issue.number),
-                filterText = config.filter_fn(trigger_char, issue),
-                sortText = sort.get_sort_text(config.sort_by, issue),
-                documentation = {
-                    kind = "markdown",
-                    value = string.format("# %s\n\n%s", issue.title, issue.body),
-                },
-            }
+            return format.item(config, trigger_char, issue)
         end
     )
 end
@@ -282,12 +268,7 @@ function GitHub:get_mentions(callback, git_info, trigger_char, config)
             1
         ),
         function(mention)
-            return {
-                label = string.format("@%s", mention.login),
-                insertText = string.format("@%s", mention.login),
-                sortText = sort.get_sort_text(config.sort_by, mention),
-                data = mention,
-            }
+            return format.item(config, trigger_char, mention)
         end
     )
     job:start()
