@@ -1,3 +1,3 @@
-return require('plenary.log').new {
-    plugin = 'cmp-git',
-}
+return require("plenary.log").new({
+    plugin = "cmp-git",
+})

@@ -218,7 +218,7 @@ function GitHub:get_issues_and_prs(callback, git_info, trigger_char, config)
         local items = vim.list_extend(items, issues)
         local items = vim.list_extend(items, prs)
 
-        log.fmt_debug("Got %d issues and prs from cache", #items) 
+        log.fmt_debug("Got %d issues and prs from cache", #items)
         callback({ items = issues, isIncomplete = false })
     else
         if git_info.host ~= "github.com" then
@@ -244,7 +244,7 @@ function GitHub:get_issues_and_prs(callback, git_info, trigger_char, config)
 
             item = vim.list_extend(items, prs)
 
-            log.fmt_debug("Got %d issues and prs from GitHub", #items) 
+            log.fmt_debug("Got %d issues and prs from GitHub", #items)
             callback({ items = items, isIncomplete = false })
         end, git_info, trigger_char, pr_config)
 
@@ -269,28 +269,28 @@ function GitHub:get_mentions(callback, git_info, trigger_char, config)
     config = vim.tbl_extend("force", self.config.mentions, config or {})
 
     local job = get_items(
-            function(args)
-                callback(args)
-                self.cache.mentions[bufnr] = args.items
-            end,
-            nil,
-            string.format(
-                "https://api.github.com/repos/%s/%s/contributors?per_page=%d&page=%d",
-                git_info.owner,
-                git_info.repo,
-                config.limit,
-                1
-            ),
-            function(mention)
-                return {
-                    label = string.format("@%s", mention.login),
-                    insertText = string.format("@%s", mention.login),
-                    sortText = sort.get_sort_text(config.sort_by, mention),
-                    data = mention,
-                }
-            end
-        )
-        job:start()
+        function(args)
+            callback(args)
+            self.cache.mentions[bufnr] = args.items
+        end,
+        nil,
+        string.format(
+            "https://api.github.com/repos/%s/%s/contributors?per_page=%d&page=%d",
+            git_info.owner,
+            git_info.repo,
+            config.limit,
+            1
+        ),
+        function(mention)
+            return {
+                label = string.format("@%s", mention.login),
+                insertText = string.format("@%s", mention.login),
+                sortText = sort.get_sort_text(config.sort_by, mention),
+                data = mention,
+            }
+        end
+    )
+    job:start()
 
     return true
 end
