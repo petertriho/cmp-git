@@ -1,6 +1,6 @@
-local github = require("cmp_git.github")
-local gitlab = require("cmp_git.gitlab")
-local git = require("cmp_git.git")
+local github = require("cmp_git.sources.github")
+local gitlab = require("cmp_git.sources.gitlab")
+local git = require("cmp_git.sources.git")
 local utils = require("cmp_git.utils")
 
 local Source = {
