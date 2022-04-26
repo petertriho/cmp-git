@@ -129,15 +129,14 @@ local get_issues_job = function(callback, git_info, trigger_char, config)
     )
 end
 
-local _get_issues = function(self, callback, git_info, trigger_char, config)
+function GitHub:_get_issues(callback, git_info, trigger_char)
+    local config = self.config.issues
     local bufnr = vim.api.nvim_get_current_buf()
 
     if self.cache.issues[bufnr] then
         callback({ items = self.cache.issues[bufnr], isIncomplete = false })
         return nil
     end
-
-    config = vim.tbl_extend("force", self.config.issues, config or {})
 
     local issues_job = get_issues_job(function(args)
         self.cache.issues[bufnr] = args.items
@@ -147,15 +146,14 @@ local _get_issues = function(self, callback, git_info, trigger_char, config)
     return issues_job
 end
 
-local _get_pull_requests = function(self, callback, git_info, trigger_char, config)
+function GitHub:_get_pull_requests(callback, git_info, trigger_char)
+    local config = self.config.pull_requests
     local bufnr = vim.api.nvim_get_current_buf()
 
     if self.cache.pull_requests[bufnr] then
         callback({ items = self.cache.pull_requests[bufnr], isIncomplete = false })
         return nil
     end
-
-    config = vim.tbl_extend("force", self.config.pull_requests, config or {})
 
     local pr_job = get_pull_requests_job(function(args)
         self.cache.pull_requests[bufnr] = args.items
@@ -165,12 +163,12 @@ local _get_pull_requests = function(self, callback, git_info, trigger_char, conf
     return pr_job
 end
 
-function GitHub:get_issues(callback, git_info, trigger_char, config)
+function GitHub:get_issues(callback, git_info, trigger_char)
     if git_info.host ~= "github.com" or git_info.owner == nil or git_info.repo == nil then
         return false
     end
 
-    local job = _get_issues(self, callback, git_info, trigger_char, config)
+    local job = self:_get_issues(callback, git_info, trigger_char)
 
     if job then
         job:start()
@@ -179,12 +177,12 @@ function GitHub:get_issues(callback, git_info, trigger_char, config)
     return true
 end
 
-function GitHub:get_pull_requests(callback, git_info, trigger_char, config)
+function GitHub:get_pull_requests(callback, git_info, trigger_char)
     if git_info.host ~= "github.com" or git_info.owner == nil or git_info.repo == nil then
         return false
     end
 
-    local job = _get_pull_requests(self, callback, git_info, trigger_char, config)
+    local job = self:_get_pull_requests(callback, git_info, trigger_char)
 
     if job then
         job:start()
@@ -193,7 +191,7 @@ function GitHub:get_pull_requests(callback, git_info, trigger_char, config)
     return true
 end
 
-function GitHub:get_issues_and_prs(callback, git_info, trigger_char, config)
+function GitHub:get_issues_and_prs(callback, git_info, trigger_char)
     local bufnr = vim.api.nvim_get_current_buf()
 
     if self.cache.issues[bufnr] and self.cache.pull_requests[bufnr] then
@@ -201,8 +199,8 @@ function GitHub:get_issues_and_prs(callback, git_info, trigger_char, config)
         local prs = self.cache.pull_requests[bufnr]
 
         local items = {}
-        local items = vim.list_extend(items, issues)
-        local items = vim.list_extend(items, prs)
+        items = vim.list_extend(items, issues)
+        items = vim.list_extend(items, prs)
 
         log.fmt_debug("Got %d issues and prs from cache", #items)
         callback({ items = issues, isIncomplete = false })
@@ -215,24 +213,22 @@ function GitHub:get_issues_and_prs(callback, git_info, trigger_char, config)
             return false
         end
 
-        local issue_config = config and config.issues or {}
-        local pr_config = config and config.pull_requests or {}
         local items = {}
 
-        local issues_job = _get_issues(self, function(args)
+        local issues_job = self:_get_issues(function(args)
             items = args.items
             self.cache.issues[bufnr] = args.items
-        end, git_info, trigger_char, issue_config)
+        end, git_info, trigger_char)
 
-        local pull_requests_job = _get_pull_requests(self, function(args)
+        local pull_requests_job = self:_get_pull_requests(function(args)
             local prs = args.items
             self.cache.pull_requests[bufnr] = args.items
 
-            item = vim.list_extend(items, prs)
+            items = vim.list_extend(items, prs)
 
             log.fmt_debug("Got %d issues and prs from GitHub", #items)
             callback({ items = items, isIncomplete = false })
-        end, git_info, trigger_char, pr_config)
+        end, git_info, trigger_char)
 
         Job.chain(issues_job, pull_requests_job)
     end
@@ -240,19 +236,18 @@ function GitHub:get_issues_and_prs(callback, git_info, trigger_char, config)
     return true
 end
 
-function GitHub:get_mentions(callback, git_info, trigger_char, config)
+function GitHub:get_mentions(callback, git_info, trigger_char)
     if git_info.host ~= "github.com" or git_info.owner == nil or git_info.repo == nil then
         return false
     end
 
+    local config = self.config.mentions
     local bufnr = vim.api.nvim_get_current_buf()
 
     if self.cache.mentions[bufnr] then
         callback({ items = self.cache.mentions[bufnr], isIncomplete = false })
         return true
     end
-
-    config = vim.tbl_extend("force", self.config.mentions, config or {})
 
     local job = get_items(
         function(args)

@@ -50,11 +50,12 @@ local get_items = function(callback, glab_args, curl_url, handle_item)
     return utils.chain_fallback(glab_job, curl_job)
 end
 
-function GitLab:get_issues(callback, git_info, trigger_char, config)
+function GitLab:get_issues(callback, git_info, trigger_char)
     if git_info.host == nil or git_info.host == "github.com" or git_info.owner == nil or git_info.repo == nil then
         return false
     end
 
+    local config = self.config.issues
     local bufnr = vim.api.nvim_get_current_buf()
 
     if self.cache.issues[bufnr] then
@@ -64,7 +65,6 @@ function GitLab:get_issues(callback, git_info, trigger_char, config)
         return true
     end
 
-    config = vim.tbl_extend("force", self.config.issues, config or {})
     local id = get_project_id(git_info)
 
     local job = get_items(
@@ -96,11 +96,12 @@ function GitLab:get_issues(callback, git_info, trigger_char, config)
     return true
 end
 
-function GitLab:get_mentions(callback, git_info, trigger_char, config)
+function GitLab:get_mentions(callback, git_info, trigger_char)
     if git_info.host == nil or git_info.host == "github.com" or git_info.owner == nil or git_info.repo == nil then
         return false
     end
 
+    local config = self.config.mentions
     local bufnr = vim.api.nvim_get_current_buf()
 
     if self.cache.mentions[bufnr] then
@@ -108,7 +109,6 @@ function GitLab:get_mentions(callback, git_info, trigger_char, config)
         return true
     end
 
-    config = vim.tbl_extend("force", self.config.mentions, config or {})
     local id = get_project_id(git_info)
 
     local job = get_items(
@@ -130,11 +130,12 @@ function GitLab:get_mentions(callback, git_info, trigger_char, config)
     return true
 end
 
-function GitLab:get_merge_requests(callback, git_info, trigger_char, config)
+function GitLab:get_merge_requests(callback, git_info, trigger_char)
     if git_info.host == nil or git_info.host == "github.com" or git_info.owner == nil or git_info.repo == nil then
         return false
     end
 
+    local config = self.config.merge_requests
     local bufnr = vim.api.nvim_get_current_buf()
 
     if self.cache.merge_requests[bufnr] then
@@ -144,7 +145,6 @@ function GitLab:get_merge_requests(callback, git_info, trigger_char, config)
         return true
     end
 
-    config = vim.tbl_extend("force", self.config.merge_requests, config or {})
     local id = get_project_id(git_info)
 
     local job = get_items(
