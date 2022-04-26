@@ -17,7 +17,7 @@ GitLab.new = function(overrides)
         __index = GitLab,
     })
 
-    self.config = vim.tbl_extend("force", require("cmp_git.config").gitlab, overrides or {})
+    self.config = vim.tbl_deep_extend("force", require("cmp_git.config").gitlab, overrides or {})
 
     if overrides.filter_fn then
         self.config.format.filterText = overrides.filter_fn

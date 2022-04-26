@@ -13,7 +13,7 @@ Git.new = function(overrides)
         __index = Git,
     })
 
-    self.config = vim.tbl_extend("force", require("cmp_git.config").git, overrides or {})
+    self.config = vim.tbl_deep_extend("force", require("cmp_git.config").git, overrides or {})
 
     if overrides.filter_fn then
         self.config.format.filterText = overrides.filter_fn
@@ -73,63 +73,65 @@ local parse_commits = function(trigger_char, config, callback)
     local end_entry_marker = "###CMP_GIT_END###"
 
     -- Extract abbreviated commit sha, subject, body, author name, author email, commit timestamp
-    Job:new({
-        command = "git",
-        args = {
-            "log",
-            "-n",
-            config.limit,
-            "--date=unix",
-            string.format(
-                "--pretty=format:%%h%s%%s%s%%b%s%%cn%s%%ce%s%%cd%s%s",
-                end_part_marker,
-                end_part_marker,
-                end_part_marker,
-                end_part_marker,
-                end_part_marker,
-                end_part_marker,
-                end_entry_marker
-            ),
-        },
-        on_exit = vim.schedule_wrap(function(job, code)
-            if code ~= 0 then
-                log.fmt_debug("%s returned with exit code %d", "git", code)
-            else
-                log.fmt_debug("%s returned with a result", "git")
-                local result = table.concat(job:result(), "")
+    Job
+        :new({
+            command = "git",
+            args = {
+                "log",
+                "-n",
+                config.limit,
+                "--date=unix",
+                string.format(
+                    "--pretty=format:%%h%s%%s%s%%b%s%%cn%s%%ce%s%%cd%s%s",
+                    end_part_marker,
+                    end_part_marker,
+                    end_part_marker,
+                    end_part_marker,
+                    end_part_marker,
+                    end_part_marker,
+                    end_entry_marker
+                ),
+            },
+            on_exit = vim.schedule_wrap(function(job, code)
+                if code ~= 0 then
+                    log.fmt_debug("%s returned with exit code %d", "git", code)
+                else
+                    log.fmt_debug("%s returned with a result", "git")
+                    local result = table.concat(job:result(), "")
 
-                local commits = {}
+                    local commits = {}
 
-                local entries = split_by(result, end_entry_marker)
+                    local entries = split_by(result, end_entry_marker)
 
-                for _, e in ipairs(entries) do
-                    local part = split_by(e, end_part_marker)
+                    for _, e in ipairs(entries) do
+                        local part = split_by(e, end_part_marker)
 
-                    local sha = trim(part[1])
-                    local title = trim(part[2])
-                    local description = trim(part[3]) or ""
-                    local author_name = part[4] or ""
-                    local author_mail = part[5] or ""
-                    local commit_timestamp = part[6] or ""
-                    local diff = os.difftime(os.time(), commit_timestamp)
+                        local sha = trim(part[1])
+                        local title = trim(part[2])
+                        local description = trim(part[3]) or ""
+                        local author_name = part[4] or ""
+                        local author_mail = part[5] or ""
+                        local commit_timestamp = part[6] or ""
+                        local diff = os.difftime(os.time(), commit_timestamp)
 
-                    local commit = {
-                        sha = sha,
-                        title = title,
-                        description = description,
-                        author_name = author_name,
-                        author_mail = author_mail,
-                        commit_timestamp = commit_timestamp,
-                        diff = diff,
-                    }
+                        local commit = {
+                            sha = sha,
+                            title = title,
+                            description = description,
+                            author_name = author_name,
+                            author_mail = author_mail,
+                            commit_timestamp = commit_timestamp,
+                            diff = diff,
+                        }
 
-                    table.insert(commits, format.item(config, trigger_char, commit))
+                        table.insert(commits, format.item(config, trigger_char, commit))
+                    end
+
+                    callback(commits)
                 end
-
-                callback(commits)
-            end
-        end),
-    }):start()
+            end),
+        })
+        :start()
 end
 
 function Git:get_commits(callback, params, trigger_char, config)
