@@ -93,6 +93,7 @@ require("cmp_git").setup({
     },
     github = {
         issues = {
+            fields = { "title", "number", "body", "updatedAt", "state" },
             filter = "all", -- assigned, created, mentioned, subscribed, all, repos
             limit = 100,
             state = "open", -- open, closed, all
@@ -105,6 +106,7 @@ require("cmp_git").setup({
             format = format.github.mentions,
         },
         pull_requests = {
+            fields = { "title", "number", "body", "updatedAt", "state" },
             limit = 100,
             state = "open", -- open, closed, merged, all
             sort_by = sort.github.pull_requests,

@@ -63,7 +63,7 @@ local get_pull_requests_job = function(callback, git_info, trigger_char, config)
             "--state",
             config.state,
             "--json",
-            "title,number,body,updatedAt",
+            table.concat(config.fields, ","),
         },
         string.format(
             "https://api.github.com/repos/%s/%s/pulls?state=%s&per_page=%d&page=%d",
@@ -102,7 +102,7 @@ local get_issues_job = function(callback, git_info, trigger_char, config)
             "--state",
             config.state,
             "--json",
-            "title,number,body,updatedAt",
+            table.concat(config.fields, ","),
         },
         string.format(
             "https://api.github.com/repos/%s/%s/issues?filter=%s&state=%s&per_page=%d&page=%d",
