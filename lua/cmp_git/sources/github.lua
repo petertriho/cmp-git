@@ -257,7 +257,7 @@ function GitHub:get_mentions(callback, git_info, trigger_char)
         {
             "repo",
             "view",
-            -- string.format("%s/%s", git_info.owner, git_info.repo),
+            string.format("%s/%s", git_info.owner, git_info.repo),
             "--json",
             "mentionableUsers",
         },
@@ -272,7 +272,10 @@ function GitHub:get_mentions(callback, git_info, trigger_char)
             return format.item(config, trigger_char, mention)
         end,
         function(parsed)
-            return parsed["mentionableUsers"]
+            if parsed["mentionableUsers"] then
+                return parsed["mentionableUsers"]
+            end
+            return parsed
         end
     )
     job:start()
