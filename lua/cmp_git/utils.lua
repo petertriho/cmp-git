@@ -121,7 +121,7 @@ M.get_cwd = function()
     return vim.fn.getcwd()
 end
 
-M.build_job = function(exec, callback, args, handle_item)
+M.build_job = function(exec, callback, args, handle_item, handle_parsed)
     -- TODO: Find a nicer way, that we can keep chaining jobs at call side
     if vim.fn.executable(exec) ~= 1 or not args then
         log.fmt_debug("Can't work with %s for this call", exec)
@@ -139,7 +139,7 @@ M.build_job = function(exec, callback, args, handle_item)
                 log.fmt_debug("%s returned with a result", exec)
                 local result = table.concat(job:result(), "")
 
-                local items = M.handle_response(result, handle_item)
+                local items = M.handle_response(result, handle_item, handle_parsed)
 
                 callback({ items = items, isIncomplete = false })
             end
@@ -173,13 +173,17 @@ M.chain_fallback = function(first, second)
     end
 end
 
-M.handle_response = function(response, handle_item)
+M.handle_response = function(response, handle_item, handle_parsed)
     local items = {}
 
     local process_data = function(ok, parsed)
         if not ok then
             log.warn("Failed to parse api result")
             return
+        end
+
+        if handle_parsed then
+            parsed = handle_parsed(parsed)
         end
 
         for _, item in ipairs(parsed) do

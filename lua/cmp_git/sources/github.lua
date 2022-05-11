@@ -27,8 +27,8 @@ GitHub.new = function(overrides)
     return self
 end
 
-local get_items = function(callback, gh_args, curl_url, handle_item)
-    local gh_job = utils.build_job("gh", callback, gh_args, handle_item)
+local get_items = function(callback, gh_args, curl_url, handle_item, handle_parsed)
+    local gh_job = utils.build_job("gh", callback, gh_args, handle_item, handle_parsed)
 
     curl_args = {
         "curl",
@@ -45,7 +45,7 @@ local get_items = function(callback, gh_args, curl_url, handle_item)
         table.insert(curl_args, authorization_header)
     end
 
-    local curl_job = utils.build_job("curl", callback, curl_args, handle_item)
+    local curl_job = utils.build_job("curl", callback, curl_args, handle_item, handle_parsed)
 
     return utils.chain_fallback(gh_job, curl_job)
 end
@@ -254,7 +254,13 @@ function GitHub:get_mentions(callback, git_info, trigger_char)
             callback(args)
             self.cache.mentions[bufnr] = args.items
         end,
-        nil,
+        {
+            "repo",
+            "view",
+            -- string.format("%s/%s", git_info.owner, git_info.repo),
+            "--json",
+            "mentionableUsers",
+        },
         string.format(
             "https://api.github.com/repos/%s/%s/contributors?per_page=%d&page=%d",
             git_info.owner,
@@ -264,6 +270,9 @@ function GitHub:get_mentions(callback, git_info, trigger_char)
         ),
         function(mention)
             return format.item(config, trigger_char, mention)
+        end,
+        function(parsed)
+            return parsed["mentionableUsers"]
         end
     )
     job:start()
