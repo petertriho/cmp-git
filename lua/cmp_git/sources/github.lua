@@ -164,7 +164,7 @@ function GitHub:_get_pull_requests(callback, git_info, trigger_char)
 end
 
 function GitHub:get_issues(callback, git_info, trigger_char)
-    if git_info.host ~= "github.com" or git_info.owner == nil or git_info.repo == nil then
+    if git_info.host == nil or git_info.host ~= "github.com" or git_info.owner == nil or git_info.repo == nil then
         return false
     end
 
@@ -178,7 +178,7 @@ function GitHub:get_issues(callback, git_info, trigger_char)
 end
 
 function GitHub:get_pull_requests(callback, git_info, trigger_char)
-    if git_info.host ~= "github.com" or git_info.owner == nil or git_info.repo == nil then
+    if git_info.host == nil or git_info.host ~= "github.com" or git_info.owner == nil or git_info.repo == nil then
         return false
     end
 
@@ -192,6 +192,10 @@ function GitHub:get_pull_requests(callback, git_info, trigger_char)
 end
 
 function GitHub:get_issues_and_prs(callback, git_info, trigger_char)
+    if git_info.host == nil or git_info.host ~= "github.com" or git_info.owner == nil or git_info.repo == nil then
+        return false
+    end
+
     local bufnr = vim.api.nvim_get_current_buf()
 
     if self.cache.issues[bufnr] and self.cache.pull_requests[bufnr] then
@@ -205,14 +209,6 @@ function GitHub:get_issues_and_prs(callback, git_info, trigger_char)
         log.fmt_debug("Got %d issues and prs from cache", #items)
         callback({ items = issues, isIncomplete = false })
     else
-        if git_info.host ~= "github.com" then
-            log.warn("Can't fetch Github issues or pull requests, not a github repository")
-            return false
-        elseif git_info.owner == nil and git_info.repo == nil then
-            log.warn("Can't figure out git repository or owner")
-            return false
-        end
-
         local items = {}
 
         local issues_job = self:_get_issues(function(args)
@@ -237,7 +233,7 @@ function GitHub:get_issues_and_prs(callback, git_info, trigger_char)
 end
 
 function GitHub:get_mentions(callback, git_info, trigger_char)
-    if git_info.host ~= "github.com" or git_info.owner == nil or git_info.repo == nil then
+    if git_info.host == nil or git_info.host ~= "github.com" or git_info.owner == nil or git_info.repo == nil then
         return false
     end
 

@@ -39,13 +39,15 @@ Source.new = function(overrides)
 end
 
 function Source:complete(params, callback)
+    if not utils.is_git_repo() then
+        return
+    end
+
     local trigger_character = nil
 
     if params.completion_context.triggerKind == 1 then
-        trigger_character = string.match(
-            params.context.cursor_before_line,
-            "%s*([" .. self.trigger_characters_str .. "])%S*$"
-        )
+        trigger_character =
+            string.match(params.context.cursor_before_line, "%s*([" .. self.trigger_characters_str .. "])%S*$")
     elseif params.completion_context.triggerKind == 2 then
         trigger_character = params.completion_context.triggerCharacter
     end

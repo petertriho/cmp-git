@@ -12,9 +12,8 @@ M.url_encode = function(value)
 end
 
 M.parse_gitlab_date = function(d)
-    local year, month, day, hours, mins, secs, _, offsethours, offsetmins = d:match(
-        "(%d+)-(%d+)-(%d+)T(%d+):(%d+):(%d+)%.(%d+)[+-](%d+):(%d+)"
-    )
+    local year, month, day, hours, mins, secs, _, offsethours, offsetmins =
+        d:match("(%d+)-(%d+)-(%d+)T(%d+):(%d+):(%d+)%.(%d+)[+-](%d+):(%d+)")
 
     if hours == nil then
         year, month, day, hours, mins, secs = d:match("(%d+)-(%d+)-(%d+)T(%d+):(%d+):(%d+)%.(%d+)Z")
@@ -43,6 +42,23 @@ M.parse_github_date = function(d)
         min = mins,
         sec = secs,
     })
+end
+
+M.is_git_repo = function()
+    local is_inside_git_repo = function()
+        local cmd = "git rev-parse --is-inside-work-tree"
+        return vim.fn.system(cmd) == "true\n"
+    end
+
+    -- buffer cwd
+    local is_git_repo = M.run_in_cwd(M.get_cwd(), is_inside_git_repo)
+
+    if not is_git_repo then
+        -- fallback to cwd
+        is_git_repo = is_inside_git_repo()
+    end
+
+    return is_git_repo
 end
 
 M.get_git_info = function(remotes, opts)
