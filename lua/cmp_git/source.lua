@@ -75,7 +75,7 @@ function Source:get_trigger_characters()
 end
 
 function Source:get_debug_name()
-    return "cmp_git"
+    return "git"
 end
 
 function Source:is_available()
