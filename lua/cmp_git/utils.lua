@@ -46,8 +46,8 @@ end
 
 M.is_git_repo = function()
     local is_inside_git_repo = function()
-        local cmd = "git rev-parse --is-inside-work-tree"
-        return vim.fn.system(cmd) == "true\n"
+        local cmd = "git rev-parse --is-inside-work-tree --is-inside-git-dir"
+        return string.find(vim.fn.system(cmd), "true") ~= nil
     end
 
     -- buffer cwd
