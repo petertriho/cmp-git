@@ -251,11 +251,8 @@ function GitHub:get_mentions(callback, git_info, trigger_char)
             self.cache.mentions[bufnr] = args.items
         end,
         {
-            "repo",
-            "view",
-            string.format("%s/%s", git_info.owner, git_info.repo),
-            "--json",
-            "mentionableUsers",
+            "api",
+            string.format("repos/%s/%s/contributors", git_info.owner, git_info.repo),
         },
         string.format(
             "https://api.github.com/repos/%s/%s/contributors?per_page=%d&page=%d",
