@@ -26,7 +26,7 @@ Git source for [hrsh7th/nvim-cmp](https://github.com/hrsh7th/nvim-cmp)
 - git
 - curl
 - [GitHub CLI](https://cli.github.com/) (optional, will use curl instead if not avaliable)
-- [GitLab CLI (unofficial)](https://github.com/profclems/glab) (optional, will use curl instead if not avaliable)
+- [GitLab CLI](https://gitlab.com/gitlab-org/cli) (optional, will use curl instead if not avaliable)
 
 ### GitHub Private Repositories
 
