@@ -13,6 +13,7 @@ local M = {
         },
     },
     github = {
+        endpoints = {},
         issues = {
             fields = { "title", "number", "body", "updatedAt", "state" },
             filter = "all", -- assigned, created, mentioned, subscribed, all, repos

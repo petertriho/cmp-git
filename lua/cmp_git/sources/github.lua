@@ -24,6 +24,7 @@ GitHub.new = function(overrides)
         self.config.format.filterText = overrides.filter_fn
     end
 
+    table.insert(self.config.endpoints, "github.com")
     return self
 end
 
@@ -33,6 +34,7 @@ local get_items = function(callback, gh_args, curl_url, handle_item, handle_pars
     curl_args = {
         "curl",
         "-s",
+        "-L",
         "-H",
         "'Accept: application/vnd.github.v3+json'",
         curl_url,
@@ -129,6 +131,17 @@ local get_issues_job = function(callback, git_info, trigger_char, config)
     )
 end
 
+function GitHub:is_valid_host(git_info)
+    vim.pretty_print(git_info)
+    if git_info.host == nil or not table.contains(GitHub.config.endpoints,git_info.host) or git_info.owner == nil or git_info.repo == nil then
+        vim.pretty_print("invalid!")
+        return false
+    end
+    vim.pretty_print("valid!")
+    return true
+end
+
+
 function GitHub:_get_issues(callback, git_info, trigger_char)
     local config = self.config.issues
     local bufnr = vim.api.nvim_get_current_buf()
@@ -164,7 +177,7 @@ function GitHub:_get_pull_requests(callback, git_info, trigger_char)
 end
 
 function GitHub:get_issues(callback, git_info, trigger_char)
-    if git_info.host == nil or git_info.host ~= "github.com" or git_info.owner == nil or git_info.repo == nil then
+    if not GitHub:is_valid_host(git_info) then
         return false
     end
 
@@ -178,7 +191,7 @@ function GitHub:get_issues(callback, git_info, trigger_char)
 end
 
 function GitHub:get_pull_requests(callback, git_info, trigger_char)
-    if git_info.host == nil or git_info.host ~= "github.com" or git_info.owner == nil or git_info.repo == nil then
+    if not GitHub:is_valid_host(git_info) then
         return false
     end
 
@@ -192,7 +205,7 @@ function GitHub:get_pull_requests(callback, git_info, trigger_char)
 end
 
 function GitHub:get_issues_and_prs(callback, git_info, trigger_char)
-    if git_info.host == nil or git_info.host ~= "github.com" or git_info.owner == nil or git_info.repo == nil then
+    if not GitHub:is_valid_host(git_info) then
         return false
     end
 
@@ -233,7 +246,7 @@ function GitHub:get_issues_and_prs(callback, git_info, trigger_char)
 end
 
 function GitHub:get_mentions(callback, git_info, trigger_char)
-    if git_info.host == nil or git_info.host ~= "github.com" or git_info.owner == nil or git_info.repo == nil then
+    if not GitHub:is_valid_host(git_info) then
         return false
     end
 
@@ -253,6 +266,8 @@ function GitHub:get_mentions(callback, git_info, trigger_char)
         {
             "api",
             string.format("repos/%s/%s/contributors", git_info.owner, git_info.repo),
+            "--hostname",
+            git_info.host,
         },
         string.format(
             "https://api.github.com/repos/%s/%s/contributors?per_page=%d&page=%d",
