@@ -25,6 +25,7 @@ GitHub.new = function(overrides)
     end
 
     table.insert(self.config.endpoints, "github.com")
+    GitHub.config = self.config
     return self
 end
 
@@ -132,12 +133,9 @@ local get_issues_job = function(callback, git_info, trigger_char, config)
 end
 
 function GitHub:is_valid_host(git_info)
-    vim.pretty_print(git_info)
-    if git_info.host == nil or not table.contains(GitHub.config.endpoints,git_info.host) or git_info.owner == nil or git_info.repo == nil then
-        vim.pretty_print("invalid!")
+    if git_info.host == nil or git_info.owner == nil or git_info.repo == nil or not table.contains(GitHub.config.endpoints, git_info.host) then
         return false
     end
-    vim.pretty_print("valid!")
     return true
 end
 
