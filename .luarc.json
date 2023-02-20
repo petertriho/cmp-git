@@ -1,0 +1,10 @@
+{
+    "diagnostics.disable": [
+        "missing-parameter",
+        "need-check-nil"
+    ],
+    "diagnostics.globals": [
+        "vim",
+        "curl_args"
+    ]
+}

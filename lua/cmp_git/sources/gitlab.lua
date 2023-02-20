@@ -23,6 +23,8 @@ GitLab.new = function(overrides)
         self.config.format.filterText = overrides.filter_fn
     end
 
+    table.insert(self.config.private_servers, "gitlab.com")
+    GitLab.config = self.config
     return self
 end
 
@@ -50,8 +52,20 @@ local get_items = function(callback, glab_args, curl_url, handle_item)
     return utils.chain_fallback(glab_job, curl_job)
 end
 
+function GitLab:is_valid_host(git_info)
+    if
+        git_info.host == nil
+        or git_info.owner == nil
+        or git_info.repo == nil
+        or not table.contains(GitLab.config.private_servers, git_info.host)
+    then
+        return false
+    end
+    return true
+end
+
 function GitLab:get_issues(callback, git_info, trigger_char)
-    if git_info.host == nil or git_info.host == "github.com" or git_info.owner == nil or git_info.repo == nil then
+    if not GitLab:is_valid_host(git_info) then
         return false
     end
 
@@ -97,7 +111,7 @@ function GitLab:get_issues(callback, git_info, trigger_char)
 end
 
 function GitLab:get_mentions(callback, git_info, trigger_char)
-    if git_info.host == nil or git_info.host == "github.com" or git_info.owner == nil or git_info.repo == nil then
+    if not GitLab:is_valid_host(git_info) then
         return false
     end
 
@@ -131,7 +145,7 @@ function GitLab:get_mentions(callback, git_info, trigger_char)
 end
 
 function GitLab:get_merge_requests(callback, git_info, trigger_char)
-    if git_info.host == nil or git_info.host == "github.com" or git_info.owner == nil or git_info.repo == nil then
+    if not GitLab:is_valid_host(git_info) then
         return false
     end
 
