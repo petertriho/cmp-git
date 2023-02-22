@@ -13,7 +13,7 @@ local M = {
         },
     },
     github = {
-        private_servers = {},
+        hosts = {},
         issues = {
             fields = { "title", "number", "body", "updatedAt", "state" },
             filter = "all", -- assigned, created, mentioned, subscribed, all, repos
@@ -36,7 +36,7 @@ local M = {
         },
     },
     gitlab = {
-        private_servers = {},
+        hosts = {},
         issues = {
             limit = 100,
             state = "opened", -- opened, closed, all

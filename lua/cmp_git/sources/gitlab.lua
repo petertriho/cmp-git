@@ -23,7 +23,7 @@ GitLab.new = function(overrides)
         self.config.format.filterText = overrides.filter_fn
     end
 
-    table.insert(self.config.private_servers, "gitlab.com")
+    table.insert(self.config.hosts, "gitlab.com")
     GitLab.config = self.config
     return self
 end
@@ -57,7 +57,7 @@ function GitLab:is_valid_host(git_info)
         git_info.host == nil
         or git_info.owner == nil
         or git_info.repo == nil
-        or not table.contains(GitLab.config.private_servers, git_info.host)
+        or not table.contains(GitLab.config.hosts, git_info.host)
     then
         return false
     end
