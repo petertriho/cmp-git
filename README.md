@@ -87,6 +87,7 @@ require("cmp_git").setup({
         },
     },
     github = {
+        hosts = {},  -- list of private instances of github
         issues = {
             fields = { "title", "number", "body", "updatedAt", "state" },
             filter = "all", -- assigned, created, mentioned, subscribed, all, repos
@@ -109,6 +110,7 @@ require("cmp_git").setup({
         },
     },
     gitlab = {
+        hosts = {},  -- list of private instances of gitlab
         issues = {
             limit = 100,
             state = "opened", -- opened, closed, all
@@ -212,6 +214,20 @@ require("cmp").setup({
         },
     },
 })
+```
+
+### Working with hosted instances of GitHub or GitLab
+
+You can add hosted instances of Github Enterprise or GitLab to the corresponding `hosts` list as such:
+```lua
+require("cmp_git").setup({
+    github = {
+        hosts = { "github.mycompany.com", },
+    },
+    gitlab = {
+        hosts = { "gitlab.mycompany.com", }
+    }
+}
 ```
 
 ---
