@@ -154,7 +154,7 @@ function GitHub:is_valid_host(git_info)
         git_info.host == nil
         or git_info.owner == nil
         or git_info.repo == nil
-        or not table.contains(GitHub.config.hosts, git_info.host)
+        or not vim.tbl_contains(GitHub.config.hosts, git_info.host)
     then
         return false
     end
