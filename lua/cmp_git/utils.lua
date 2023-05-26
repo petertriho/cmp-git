@@ -72,7 +72,7 @@ M.get_git_info = function(remotes, opts)
         local host, owner, repo = nil, nil, nil
 
         if vim.bo.filetype == "octo" then
-            host = "github.com"
+            host = require("octo.config").get_config().github_hostname
             local filename = vim.fn.expand("%:p:h")
             owner, repo = string.match(filename, "^octo://(.+)/(.+)/.+$")
         else
