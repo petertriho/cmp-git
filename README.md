@@ -185,7 +185,7 @@ If you want specific behaviour for a trigger or new behaviour for a trigger, you
 an entry in the `trigger_actions` table of the config. The two necessary fields are the `trigger_character`
 and the `action`.
 
-Currently, `trigger_character` has to be a single character. Multiple actions can be used for the same charachter.
+Currently, `trigger_character` has to be a single character. Multiple actions can be used for the same character.
 All actions are triggered until one returns true. The parameters to the `actions` function are the
 different sources (currently `git`, `gitlab` and `github`), the completion callback, the trigger character,
 the parameters passed to `complete` from `nvim-cmp`, and the current git info.
