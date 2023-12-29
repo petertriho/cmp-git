@@ -116,6 +116,11 @@ M.get_git_info = function(remotes, opts)
         git_info = get_git_info()
     end
 
+    if (git_info.host or "") == "" then
+        -- fallback to github.com
+        git_info.host = "github.com"
+    end
+
     return git_info
 end
 
