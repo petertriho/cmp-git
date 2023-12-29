@@ -72,7 +72,10 @@ M.get_git_info = function(remotes, opts)
         local host, owner, repo = nil, nil, nil
 
         if vim.bo.filetype == "octo" then
-            host = require("octo.config").get_config().github_hostname
+            host = require("octo.config").values.github_hostname or ""
+            if host == "" then
+                host = "github.com"
+            end
             local filename = vim.fn.expand("%:p:h")
             owner, repo = string.match(filename, "^octo://(.+)/(.+)/.+$")
         else
@@ -114,11 +117,6 @@ M.get_git_info = function(remotes, opts)
     if git_info.host == nil then
         -- fallback to cwd
         git_info = get_git_info()
-    end
-
-    if (git_info.host or "") == "" then
-        -- fallback to github.com
-        git_info.host = "github.com"
     end
 
     return git_info
