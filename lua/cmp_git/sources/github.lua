@@ -149,6 +149,19 @@ local get_issues_job = function(callback, git_info, trigger_char, config)
     )
 end
 
+local use_gh_default_repo_if_set = function(git_info)
+    local gh_default_repo = vim.fn.system({ 'gh', 'repo', 'set-default', '--view' })
+    if vim.v.shell_error ~= 0 then
+        return git_info
+    end
+    local owner, repo = string.match(vim.fn.trim(gh_default_repo), "^(.+)/(.+)$")
+    if owner ~= nil and repo ~= nil then
+        git_info.owner = owner
+        git_info.repo = repo
+    end
+    return git_info
+end
+
 function GitHub:is_valid_host(git_info)
     if
         git_info.host == nil
@@ -200,6 +213,8 @@ function GitHub:get_issues(callback, git_info, trigger_char)
         return false
     end
 
+    git_info = use_gh_default_repo_if_set(git_info)
+
     local job = self:_get_issues(callback, git_info, trigger_char)
 
     if job then
@@ -214,6 +229,8 @@ function GitHub:get_pull_requests(callback, git_info, trigger_char)
         return false
     end
 
+    git_info = use_gh_default_repo_if_set(git_info)
+
     local job = self:_get_pull_requests(callback, git_info, trigger_char)
 
     if job then
@@ -227,6 +244,8 @@ function GitHub:get_issues_and_prs(callback, git_info, trigger_char)
     if not GitHub:is_valid_host(git_info) then
         return false
     end
+
+    git_info = use_gh_default_repo_if_set(git_info)
 
     local bufnr = vim.api.nvim_get_current_buf()
 
