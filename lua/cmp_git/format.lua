@@ -104,7 +104,7 @@ local M = {
                 return string.format("@%s", mention.username)
             end,
             insertText = function(trigger_char, mention)
-                return string.format("@%s", mention.login)
+                return string.format("@%s", mention.username)
             end,
             filterText = function(trigger_char, mention)
                 return string.format("%s %s", trigger_char, mention.username)
