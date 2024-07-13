@@ -31,19 +31,17 @@ end
 
 -- build a github api url
 local github_url = function(git_host, path)
-    local url = ""
     if git_host == "github.com" then
-        url = "https://api.github.com"
+        return string.format("https://api.github.com/%s", path)
     else
-        url = string.format("https://%s/api/v3/%s", git_host, path)
+        return string.format("https://%s/api/v3/%s", git_host, path)
     end
-    return url
 end
 
 local get_items = function(callback, gh_args, curl_url, handle_item, handle_parsed)
     local gh_job = utils.build_job("gh", callback, gh_args, handle_item, handle_parsed)
 
-    curl_args = {
+    local curl_args = {
         "curl",
         "-s",
         "-L",
