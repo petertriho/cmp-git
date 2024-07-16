@@ -55,6 +55,21 @@ Plug 'petertriho/cmp-git'
 use({"petertriho/cmp-git", requires = "nvim-lua/plenary.nvim"})
 ```
 
+[lazy.nvim](https://github.com/folke/lazy.nvim)
+
+```lua
+return {
+    "petertriho/cmp-git",
+    dependencies = { 'hrsh7th/nvim-cmp' },
+    opts = {
+        -- options go here
+    },
+    init = function()
+        table.insert(require("cmp").get_config().sources, { name = "git" })
+    end
+}
+```
+
 ## Setup
 
 ```lua
