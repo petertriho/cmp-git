@@ -2,7 +2,7 @@ local format = require("cmp_git.format")
 local sort = require("cmp_git.sort")
 
 local M = {
-    filetypes = { "gitcommit", "octo" },
+    filetypes = { "gitcommit", "octo", "NeogitCommitMessage" },
     remotes = { "upstream", "origin" }, -- in order of most to least prioritized
     enableRemoteUrlRewrites = false, -- enable git url rewrites, see https://git-scm.com/docs/git-config#Documentation/git-config.txt-urlltbasegtinsteadOf
     git = {
