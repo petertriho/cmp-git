@@ -81,7 +81,7 @@ local parse_commits = function(trigger_char, callback, config)
             config.limit,
             "--date=unix",
             string.format(
-                "--pretty=format:%%h%s%%s%s%%b%s%%cn%s%%ce%s%%cd%s%s",
+                "--pretty=format:%%H%s%%s%s%%b%s%%cn%s%%ce%s%%cd%s%s",
                 end_part_marker,
                 end_part_marker,
                 end_part_marker,

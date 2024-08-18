@@ -4,11 +4,11 @@ local M = {
     git = {
         commits = {
             label = function(trigger_char, commit)
-                return string.format("%s: %s", commit.sha, commit.title)
+                return string.format("%s: %s", commit.sha:sub(0, 7), commit.title)
             end,
             filterText = function(trigger_char, commit)
                 -- If the trigger char is not part of the label, no items will show up
-                return string.format("%s %s %s", trigger_char, commit.sha, commit.title)
+                return string.format("%s %s %s", trigger_char, commit.sha:sub(0, 7), commit.title)
             end,
             insertText = function(trigger_char, commit)
                 return commit.sha
