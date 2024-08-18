@@ -10,6 +10,7 @@ local M = {
             limit = 100,
             sort_by = sort.git.commits,
             format = format.git.commits,
+            abbreviate = true,
         },
     },
     github = {
