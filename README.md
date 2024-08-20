@@ -99,6 +99,7 @@ require("cmp_git").setup({
             limit = 100,
             sort_by = sort.git.commits,
             format = format.git.commits,
+            sha_length = 7,
         },
     },
     github = {

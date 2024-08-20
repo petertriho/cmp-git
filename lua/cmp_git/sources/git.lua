@@ -81,7 +81,7 @@ local parse_commits = function(trigger_char, callback, config)
             config.limit,
             "--date=unix",
             string.format(
-                "--pretty=format:%%h%s%%s%s%%b%s%%cn%s%%ce%s%%cd%s%s",
+                "--pretty=format:%%H%s%%s%s%%b%s%%cn%s%%ce%s%%cd%s%s",
                 end_part_marker,
                 end_part_marker,
                 end_part_marker,
@@ -105,7 +105,7 @@ local parse_commits = function(trigger_char, callback, config)
                 for _, e in ipairs(entries) do
                     local part = split_by(e, end_part_marker)
 
-                    local sha = trim(part[1])
+                    local sha = trim(part[1]):sub(0, config.sha_length)
                     local title = trim(part[2])
                     local description = trim(part[3]) or ""
                     local author_name = part[4] or ""
