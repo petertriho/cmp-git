@@ -4,8 +4,6 @@ local sort = require("cmp_git.sort")
 local log = require("cmp_git.log")
 local format = require("cmp_git.format")
 
-local gh_cmd = "CLICOLOR=0 gh"
-
 local GitHub = {
     cache = {
         issues = {},
@@ -41,7 +39,7 @@ local github_url = function(git_host, path)
 end
 
 local get_items = function(callback, gh_args, curl_url, handle_item, handle_parsed)
-    local gh_job = utils.build_job(gh_cmd, callback, gh_args, handle_item, handle_parsed)
+    local gh_job = utils.build_job("gh", callback, gh_args, handle_item, handle_parsed)
 
     local curl_args = {
         "curl",
@@ -150,7 +148,7 @@ local get_issues_job = function(callback, git_info, trigger_char, config)
 end
 
 local use_gh_default_repo_if_set = function(git_info)
-    local gh_default_repo = vim.fn.system({gh_cmd, 'repo', 'set-default', '--view' })
+    local gh_default_repo = vim.fn.system({ 'gh', 'repo', 'set-default', '--view' })
     if vim.v.shell_error ~= 0 then
         return git_info
     end
