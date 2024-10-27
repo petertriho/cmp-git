@@ -144,16 +144,25 @@ M.get_cwd = function()
     return vim.fn.getcwd()
 end
 
-M.build_job = function(exec, callback, args, handle_item, handle_parsed)
+M.build_job = function(exec, args, env, callback, handle_item, handle_parsed)
     -- TODO: Find a nicer way, that we can keep chaining jobs at call side
     if vim.fn.executable(exec) ~= 1 or not args then
         log.fmt_debug("Can't work with %s for this call", exec)
         return nil
     end
 
+    local job_env = nil
+    if env ~= nil then
+        -- NOTE: setting env causes it to not inherit it from the parent environment
+        vim.tbl_extend("force", env, {
+            path = vim.fn.getenv("PATH"),
+        })
+    end
+
     return Job:new({
         command = exec,
         args = args,
+        env = job_env,
         cwd = M.get_cwd(),
         on_exit = vim.schedule_wrap(function(job, code)
             if code ~= 0 then

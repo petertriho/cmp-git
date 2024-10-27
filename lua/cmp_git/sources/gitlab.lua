@@ -1,5 +1,4 @@
 local utils = require("cmp_git.utils")
-local sort = require("cmp_git.sort")
 local log = require("cmp_git.log")
 local format = require("cmp_git.format")
 
@@ -33,7 +32,10 @@ local get_project_id = function(git_info)
 end
 
 local get_items = function(callback, glab_args, curl_url, handle_item)
-    local glab_job = utils.build_job("glab", callback, glab_args, handle_item)
+    local glab_job = utils.build_job("glab", glab_args, {
+        GITLAB_TOKEN = vim.fn.getenv("GITLAB_TOKEN"),
+        NO_COLOR = 1, -- disables color output to avoid parsing errors
+    }, callback, handle_item)
 
     curl_args = {
         "-s",
@@ -47,7 +49,7 @@ local get_items = function(callback, glab_args, curl_url, handle_item)
         table.insert(curl_args, authorization_header)
     end
 
-    local curl_job = utils.build_job("curl", callback, curl_args, handle_item)
+    local curl_job = utils.build_job("curl", curl_args, nil, callback, handle_item)
 
     return utils.chain_fallback(glab_job, curl_job)
 end

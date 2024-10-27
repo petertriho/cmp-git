@@ -39,7 +39,10 @@ local github_url = function(git_host, path)
 end
 
 local get_items = function(callback, gh_args, curl_url, handle_item, handle_parsed)
-    local gh_job = utils.build_job("gh", callback, gh_args, handle_item, handle_parsed)
+    local gh_job = utils.build_job("gh", gh_args, {
+        GITHUB_API_TOKEN = vim.fn.getenv("GITHUB_API_TOKEN"),
+        CLICOLOR = 0, -- disables color output to avoid parsing errors
+    }, callback, handle_item, handle_parsed)
 
     local curl_args = {
         "curl",
@@ -57,7 +60,7 @@ local get_items = function(callback, gh_args, curl_url, handle_item, handle_pars
         table.insert(curl_args, authorization_header)
     end
 
-    local curl_job = utils.build_job("curl", callback, curl_args, handle_item, handle_parsed)
+    local curl_job = utils.build_job("curl", curl_args, nil, callback, handle_item, handle_parsed)
 
     return utils.chain_fallback(gh_job, curl_job)
 end
@@ -148,7 +151,7 @@ local get_issues_job = function(callback, git_info, trigger_char, config)
 end
 
 local use_gh_default_repo_if_set = function(git_info)
-    local gh_default_repo = vim.fn.system({ 'gh', 'repo', 'set-default', '--view' })
+    local gh_default_repo = vim.fn.system({ "gh", "repo", "set-default", "--view" })
     if vim.v.shell_error ~= 0 then
         return git_info
     end
