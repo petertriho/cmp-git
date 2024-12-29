@@ -61,7 +61,10 @@ M.is_git_repo = function()
     return is_git_repo
 end
 
-M.get_git_info = function(remotes, opts)
+---@param remotes string|string[]
+---@param opts {enableRemoteUrlRewrites: boolean, ssh_aliases: {[string]: string}}
+---@return {host: string?, owner: string?, repo: string?}
+function M.get_git_info(remotes, opts)
     opts = opts or {}
 
     local get_git_info = function()
@@ -101,10 +104,20 @@ M.get_git_info = function(remotes, opts)
                         host, owner, repo = string.match(clean_remote_origin_url, "^ssh://git@([^:]+):*.*/(.+)/(.+)$")
                     end
 
+                    if host == nil then
+                        host, owner, repo = string.match(clean_remote_origin_url, "^([^:]+):(.+)/(.+)$")
+                    end
+
                     if host ~= nil and owner ~= nil and repo ~= nil then
                         break
                     end
                 end
+            end
+        end
+
+        if host ~= nil then
+            for alias, rhost in pairs(opts.ssh_aliases) do
+                host = host:gsub("^" .. alias:gsub("%-", "%%-"):gsub("%.", "%%.") .. "$", rhost, 1)
             end
         end
 

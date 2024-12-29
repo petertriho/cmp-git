@@ -54,10 +54,10 @@ function Source:complete(params, callback)
 
     for _, trigger in pairs(self.trigger_actions) do
         if trigger.trigger_character == trigger_character then
-            local git_info = utils.get_git_info(
-                self.config.remotes,
-                { enableRemoteUrlRewrites = self.config.enableRemoteUrlRewrites }
-            )
+            local git_info = utils.get_git_info(self.config.remotes, {
+                enableRemoteUrlRewrites = self.config.enableRemoteUrlRewrites,
+                ssh_aliases = self.config.ssh_aliases,
+            })
 
             if trigger.action(self.sources, trigger_character, callback, params, git_info) then
                 break
