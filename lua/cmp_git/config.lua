@@ -38,9 +38,12 @@ local M = {
         issues = {
             ---@type string[]
             fields = { "title", "number", "body", "updatedAt", "state" },
-            filter = "all", -- assigned, created, mentioned, subscribed, all, repos
+            ---Filter by preconfigured options ('all', 'assigned', 'created', 'mentioned')
+            ---@type 'all' | 'assigned' | 'created' | 'mentioned'
+            filter = "all",
             limit = 100,
-            state = "open", -- open, closed, all
+            ---@type 'open' | 'closed' | 'all'
+            state = "open",
             sort_by = sort.github.issues,
             format = format.github.issues,
         },
