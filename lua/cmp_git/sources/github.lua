@@ -1,6 +1,5 @@
 local Job = require("plenary.job")
 local utils = require("cmp_git.utils")
-local sort = require("cmp_git.sort")
 local log = require("cmp_git.log")
 local format = require("cmp_git.format")
 
