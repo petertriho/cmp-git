@@ -8,7 +8,7 @@ local Source = {
     filetypes = {},
 }
 
-Source.new = function(overrides)
+function Source.new(overrides)
     local self = setmetatable({}, {
         __index = Source,
     })

@@ -11,7 +11,7 @@ local GitLab = {
     config = {},
 }
 
-GitLab.new = function(overrides)
+function GitLab.new(overrides)
     local self = setmetatable({}, {
         __index = GitLab,
     })
@@ -27,11 +27,11 @@ GitLab.new = function(overrides)
     return self
 end
 
-local get_project_id = function(git_info)
+local function get_project_id(git_info)
     return utils.url_encode(string.format("%s/%s", git_info.owner, git_info.repo))
 end
 
-local get_items = function(callback, glab_args, curl_url, handle_item)
+local function get_items(callback, glab_args, curl_url, handle_item)
     local glab_job = utils.build_job("glab", glab_args, {
         GITLAB_TOKEN = vim.fn.getenv("GITLAB_TOKEN"),
         NO_COLOR = 1, -- disables color output to avoid parsing errors

@@ -3,15 +3,15 @@ local Job = require("plenary.job")
 
 local M = {}
 
-local char_to_hex = function(c)
+local function char_to_hex(c)
     return string.format("%%%02X", string.byte(c))
 end
 
-M.url_encode = function(value)
+function M.url_encode(value)
     return string.gsub(value, "([^%w _%%%-%.~])", char_to_hex)
 end
 
-M.parse_gitlab_date = function(d)
+function M.parse_gitlab_date(d)
     local year, month, day, hours, mins, secs, _, offsethours, offsetmins =
         d:match("(%d+)-(%d+)-(%d+)T(%d+):(%d+):(%d+)%.(%d+)[+-](%d+):(%d+)")
 
@@ -31,7 +31,7 @@ M.parse_gitlab_date = function(d)
     })
 end
 
-M.parse_github_date = function(d)
+function M.parse_github_date(d)
     local year, month, day, hours, mins, secs = d:match("(%d+)-(%d+)-(%d+)T(%d+):(%d+):(%d+)Z")
 
     return os.time({
@@ -44,8 +44,8 @@ M.parse_github_date = function(d)
     })
 end
 
-M.is_git_repo = function()
-    local is_inside_git_repo = function()
+function M.is_git_repo()
+    local function is_inside_git_repo()
         local cmd = "git rev-parse --is-inside-work-tree --is-inside-git-dir"
         return string.find(vim.fn.system(cmd), "true") ~= nil
     end
@@ -67,7 +67,7 @@ end
 function M.get_git_info(remotes, opts)
     opts = opts or {}
 
-    local get_git_info = function()
+    local function get_git_info()
         if type(remotes) == "string" then
             remotes = { remotes }
         end
@@ -135,7 +135,7 @@ function M.get_git_info(remotes, opts)
     return git_info
 end
 
-M.run_in_cwd = function(cwd, callback, ...)
+function M.run_in_cwd(cwd, callback, ...)
     local args = ...
     local old_cwd = vim.fn.getcwd()
 
@@ -150,14 +150,14 @@ M.run_in_cwd = function(cwd, callback, ...)
     return result
 end
 
-M.get_cwd = function()
+function M.get_cwd()
     if vim.fn.getreg("%") ~= "" and vim.bo.filetype ~= "octo" then
         return vim.fn.expand("%:p:h")
     end
     return vim.fn.getcwd()
 end
 
-M.build_job = function(exec, args, env, callback, handle_item, handle_parsed)
+function M.build_job(exec, args, env, callback, handle_item, handle_parsed)
     -- TODO: Find a nicer way, that we can keep chaining jobs at call side
     if vim.fn.executable(exec) ~= 1 or not args then
         log.fmt_debug("Can't work with %s for this call", exec)
@@ -194,7 +194,7 @@ end
 
 --- Start the second job if the first on fails, handle cases if the first or second job is nil.
 --- The last job debug prints on failure
-M.chain_fallback = function(first, second)
+function M.chain_fallback(first, second)
     if first and second then
         first:and_then_on_failure(second)
         second:after_failure(function(_, code, _)
@@ -218,10 +218,10 @@ M.chain_fallback = function(first, second)
     end
 end
 
-M.handle_response = function(response, handle_item, handle_parsed)
+function M.handle_response(response, handle_item, handle_parsed)
     local items = {}
 
-    local process_data = function(ok, parsed)
+    local function process_data(ok, parsed)
         if not ok then
             log.warn("Failed to parse api result")
             return

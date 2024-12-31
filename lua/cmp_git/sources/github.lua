@@ -13,7 +13,7 @@ local GitHub = {
     config = {},
 }
 
-GitHub.new = function(overrides)
+function GitHub.new(overrides)
     local self = setmetatable({}, {
         __index = GitHub,
     })
@@ -30,7 +30,7 @@ GitHub.new = function(overrides)
 end
 
 -- build a github api url
-local github_url = function(git_host, path)
+local function github_url(git_host, path)
     if git_host == "github.com" then
         return string.format("https://api.github.com/%s", path)
     else
@@ -38,7 +38,7 @@ local github_url = function(git_host, path)
     end
 end
 
-local get_items = function(callback, gh_args, curl_url, handle_item, handle_parsed)
+local function get_items(callback, gh_args, curl_url, handle_item, handle_parsed)
     local gh_job = utils.build_job("gh", gh_args, {
         GITHUB_API_TOKEN = vim.fn.getenv("GITHUB_API_TOKEN"),
         CLICOLOR = 0, -- disables color output to avoid parsing errors
@@ -65,7 +65,7 @@ local get_items = function(callback, gh_args, curl_url, handle_item, handle_pars
     return utils.chain_fallback(gh_job, curl_job)
 end
 
-local get_pull_requests_job = function(callback, git_info, trigger_char, config)
+local function get_pull_requests_job(callback, git_info, trigger_char, config)
     return get_items(
         callback,
         {
@@ -107,7 +107,7 @@ local get_pull_requests_job = function(callback, git_info, trigger_char, config)
     )
 end
 
-local get_issues_job = function(callback, git_info, trigger_char, config)
+local function get_issues_job(callback, git_info, trigger_char, config)
     return get_items(
         callback,
         {
@@ -150,7 +150,7 @@ local get_issues_job = function(callback, git_info, trigger_char, config)
     )
 end
 
-local use_gh_default_repo_if_set = function(git_info)
+local function use_gh_default_repo_if_set(git_info)
     local gh_default_repo = vim.fn.system({ "gh", "repo", "set-default", "--view" })
     if vim.v.shell_error ~= 0 then
         return git_info

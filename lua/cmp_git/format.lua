@@ -136,7 +136,7 @@ local M = {
     },
 }
 
-M.item = function(config, trigger_char, item)
+function M.item(config, trigger_char, item)
     return {
         label = config.format.label(trigger_char, item),
         filterText = config.format.filterText(trigger_char, item),

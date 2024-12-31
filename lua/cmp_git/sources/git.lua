@@ -8,7 +8,7 @@ local Git = {
     config = {},
 }
 
-Git.new = function(overrides)
+function Git.new(overrides)
     local self = setmetatable({}, {
         __index = Git,
     })
@@ -26,7 +26,7 @@ local function trim(s)
     return (s:gsub("^%s*(.-)%s*$", "%1"))
 end
 
-local split_by = function(input, sep)
+local function split_by(input, sep)
     local t = {}
 
     while true do
@@ -45,7 +45,7 @@ local split_by = function(input, sep)
     return t
 end
 
-local update_edit_range = function(commits, cursor, offset)
+local function update_edit_range(commits, cursor, _offset)
     for k, v in pairs(commits) do
         local sha = v.insertText
 
@@ -67,7 +67,7 @@ local update_edit_range = function(commits, cursor, offset)
     end
 end
 
-local parse_commits = function(trigger_char, callback, config)
+local function parse_commits(trigger_char, callback, config)
     -- Choose unique and long end markers
     local end_part_marker = "###CMP_GIT###"
     local end_entry_marker = "###CMP_GIT_END###"
