@@ -2,6 +2,7 @@ local utils = require("cmp_git.utils")
 local log = require("cmp_git.log")
 local format = require("cmp_git.format")
 
+---@class cmp_git.Source.Gitlab
 local GitLab = {
     cache = {
         ---@type table<integer, cmp_git.CompletionItem[]>
@@ -11,9 +12,12 @@ local GitLab = {
         ---@type table<integer, cmp_git.CompletionItem[]>
         merge_requests = {},
     },
+    ---@type cmp_git.Config.Gitlab
+    ---@diagnostic disable-next-line: missing-fields
     config = {},
 }
 
+---@param overrides cmp_git.Config.Gitlab
 function GitLab.new(overrides)
     local self = setmetatable({}, {
         __index = GitLab,

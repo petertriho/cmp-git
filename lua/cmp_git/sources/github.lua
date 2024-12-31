@@ -3,6 +3,7 @@ local utils = require("cmp_git.utils")
 local log = require("cmp_git.log")
 local format = require("cmp_git.format")
 
+---@class cmp_git.Source.GitHub
 local GitHub = {
     cache = {
         ---@type table<integer, cmp_git.CompletionItem[]>
@@ -12,9 +13,12 @@ local GitHub = {
         ---@type table<integer, cmp_git.CompletionItem[]>
         pull_requests = {},
     },
+    ---@type cmp_git.Config.GitHub
+    ---@diagnostic disable-next-line: missing-fields
     config = {},
 }
 
+---@param overrides cmp_git.Config.GitHub
 function GitHub.new(overrides)
     local self = setmetatable({}, {
         __index = GitHub,
@@ -73,9 +77,17 @@ local function get_items(callback, gh_args, curl_url, handle_item, handle_parsed
     return utils.chain_fallback(gh_job, curl_job)
 end
 
+---Reference: https://docs.github.com/en/rest/pulls/pulls?apiVersion=2022-11-28#list-pull-requests
+---@class cmp_git.GitHub.PullRequest
+---@field number integer
+---@field title string
+---@field body string
+---@field updatedAt string
+
 ---@param callback fun(list: cmp_git.CompletionList)
 ---@param git_info cmp_git.GitInfo
 ---@param trigger_char string
+---@param config cmp_git.Config.GitHub.PullRequest
 local function get_pull_requests_job(callback, git_info, trigger_char, config)
     return get_items(
         callback,
@@ -118,9 +130,17 @@ local function get_pull_requests_job(callback, git_info, trigger_char, config)
     )
 end
 
+---Reference: https://docs.github.com/en/rest/issues/issues?apiVersion=2022-11-28#list-repository-issues
+---@class cmp_git.GitHub.Issue
+---@field number integer
+---@field title string
+---@field body string
+---@field updatedAt string
+
 ---@param callback fun(list: cmp_git.CompletionList)
 ---@param git_info cmp_git.GitInfo
 ---@param trigger_char string
+---@param config cmp_git.Config.GitHub.Issue
 local function get_issues_job(callback, git_info, trigger_char, config)
     return get_items(
         callback,
@@ -317,6 +337,10 @@ function GitHub:get_issues_and_prs(callback, git_info, trigger_char)
     return true
 end
 
+---Reference: https://docs.github.com/en/rest/repos/repos?apiVersion=2022-11-28#list-repository-contributors
+---@class cmp_git.GitHub.Mention
+---@field login string
+
 ---@param callback fun(list: cmp_git.CompletionList)
 ---@param git_info cmp_git.GitInfo
 ---@param trigger_char string
@@ -348,6 +372,7 @@ function GitHub:get_mentions(callback, git_info, trigger_char)
             git_info.host,
             string.format("%s/%s/contributors?per_page=%d&page=%d", git_info.owner, git_info.repo, config.limit, 1)
         ),
+        ---@param mention cmp_git.GitHub.Mention
         function(mention)
             return format.item(config, trigger_char, mention)
         end,

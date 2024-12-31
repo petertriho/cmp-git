@@ -2,12 +2,16 @@ local Job = require("plenary.job")
 local log = require("cmp_git.log")
 local format = require("cmp_git.format")
 
+---@class cmp_git.Source.Git
 local Git = {
     ---@type table<integer, cmp_git.CompletionItem[]>
     cache_commits = {},
+    ---@type cmp_git.Config.Git
+    ---@diagnostic disable-next-line: missing-fields
     config = {},
 }
 
+---@param overrides cmp_git.Config.Git
 function Git.new(overrides)
     local self = setmetatable({}, {
         __index = Git,
@@ -74,6 +78,7 @@ end
 
 ---@param trigger_char string
 ---@param callback fun(commits: cmp_git.CompletionItem[])
+---@param config cmp_git.Config.GitCommits
 local function parse_commits(trigger_char, callback, config)
     -- Choose unique and long end markers
     local end_part_marker = "###CMP_GIT###"
@@ -121,6 +126,7 @@ local function parse_commits(trigger_char, callback, config)
                     local commit_timestamp = part[6] or ""
                     local diff = os.difftime(os.time(), commit_timestamp)
 
+                    ---@class cmp_git.Commit
                     local commit = {
                         sha = sha,
                         title = title,
@@ -142,7 +148,7 @@ local function parse_commits(trigger_char, callback, config)
     job:start()
 end
 
----@param callback fun(commits: cmp_git.CompletionItem[])
+---@param callback fun(commits: cmp_git.CompletionList)
 ---@param trigger_char string
 function Git:get_commits(callback, params, trigger_char)
     local config = self.config.commits

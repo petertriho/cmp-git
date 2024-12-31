@@ -4,9 +4,24 @@ local git = require("cmp_git.sources.git")
 local utils = require("cmp_git.utils")
 
 local Source = {
+    ---@type cmp_git.Config
+    ---@diagnostic disable-next-line: missing-fields
     config = {},
+    ---@type table<string, true>
     filetypes = {},
+    ---@type cmp_git.Sources
+    ---@diagnostic disable-next-line: missing-fields
+    sources = {},
+    ---@type cmp_git.Config.TriggerAction[]
+    trigger_actions = {},
+    ---@type string[]
+    trigger_characters = {},
 }
+
+---@class cmp_git.Sources
+---@field git cmp_git.Source.Git
+---@field gitlab cmp_git.Source.Gitlab
+---@field github cmp_git.Source.GitHub
 
 function Source.new(overrides)
     local self = setmetatable({}, {
@@ -18,12 +33,10 @@ function Source.new(overrides)
         self.filetypes[item] = true
     end
 
-    self.sources = {}
     self.sources.git = git.new(self.config.git)
     self.sources.gitlab = gitlab.new(self.config.gitlab)
     self.sources.github = github.new(self.config.github)
 
-    self.trigger_characters = {}
     for _, v in pairs(self.config.trigger_actions) do
         if not vim.tbl_contains(self.trigger_characters, v.trigger_character) then
             table.insert(self.trigger_characters, v.trigger_character)
