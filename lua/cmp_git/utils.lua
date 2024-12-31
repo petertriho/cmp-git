@@ -3,14 +3,17 @@ local Job = require("plenary.job")
 
 local M = {}
 
+---@param c integer|string
 local function char_to_hex(c)
     return string.format("%%%02X", string.byte(c))
 end
 
+---@param value string
 function M.url_encode(value)
     return string.gsub(value, "([^%w _%%%-%.~])", char_to_hex)
 end
 
+---@param d string
 function M.parse_gitlab_date(d)
     local year, month, day, hours, mins, secs, _, offsethours, offsetmins =
         d:match("(%d+)-(%d+)-(%d+)T(%d+):(%d+):(%d+)%.(%d+)[+-](%d+):(%d+)")
@@ -31,6 +34,7 @@ function M.parse_gitlab_date(d)
     })
 end
 
+---@param d string
 function M.parse_github_date(d)
     local year, month, day, hours, mins, secs = d:match("(%d+)-(%d+)-(%d+)T(%d+):(%d+):(%d+)Z")
 
@@ -61,12 +65,18 @@ function M.is_git_repo()
     return is_git_repo
 end
 
+---@class cmp_git.GitInfo
+---@field host string?
+---@field owner string?
+---@field repo string?
+
 ---@param remotes string|string[]
 ---@param opts {enableRemoteUrlRewrites: boolean, ssh_aliases: {[string]: string}}
----@return {host: string?, owner: string?, repo: string?}
+---@return cmp_git.GitInfo
 function M.get_git_info(remotes, opts)
     opts = opts or {}
 
+    ---@return cmp_git.GitInfo
     local function get_git_info()
         if type(remotes) == "string" then
             remotes = { remotes }
@@ -135,6 +145,10 @@ function M.get_git_info(remotes, opts)
     return git_info
 end
 
+---@generic TResult
+---@param cwd string
+---@param callback fun(...): TResult
+---@return TResult
 function M.run_in_cwd(cwd, callback, ...)
     local args = ...
     local old_cwd = vim.fn.getcwd()
@@ -157,6 +171,11 @@ function M.get_cwd()
     return vim.fn.getcwd()
 end
 
+---@generic TItem
+---@param callback fun(list: cmp_git.CompletionList)
+---@param handle_item fun(item: TItem): cmp_git.CompletionItem
+---@param handle_parsed? fun(parsed: any): TItem[]
+---@return Job?
 function M.build_job(exec, args, env, callback, handle_item, handle_parsed)
     -- TODO: Find a nicer way, that we can keep chaining jobs at call side
     if vim.fn.executable(exec) ~= 1 or not args then
@@ -172,6 +191,7 @@ function M.build_job(exec, args, env, callback, handle_item, handle_parsed)
         })
     end
 
+    ---@diagnostic disable-next-line: missing-fields
     return Job:new({
         command = exec,
         args = args,
@@ -192,8 +212,11 @@ function M.build_job(exec, args, env, callback, handle_item, handle_parsed)
     })
 end
 
---- Start the second job if the first on fails, handle cases if the first or second job is nil.
---- The last job debug prints on failure
+---Start the second job if the first on fails, handle cases if the first or second job is nil.
+---The last job debug prints on failure
+---@param first Job?
+---@param second Job?
+---@return Job?
 function M.chain_fallback(first, second)
     if first and second then
         first:and_then_on_failure(second)
@@ -218,6 +241,10 @@ function M.chain_fallback(first, second)
     end
 end
 
+---@generic TItem
+---@param handle_item fun(item: TItem): cmp_git.CompletionItem
+---@param handle_parsed fun(parsed: any): TItem[]
+---@return cmp_git.CompletionItem[]
 function M.handle_response(response, handle_item, handle_parsed)
     local items = {}
 

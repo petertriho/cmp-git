@@ -3,6 +3,7 @@ local log = require("cmp_git.log")
 local format = require("cmp_git.format")
 
 local Git = {
+    ---@type table<integer, cmp_git.CompletionItem[]>
     cache_commits = {},
     config = {},
 }
@@ -21,10 +22,14 @@ function Git.new(overrides)
     return self
 end
 
+---@param s string
 local function trim(s)
     return (s:gsub("^%s*(.-)%s*$", "%1"))
 end
 
+---@param input string
+---@param sep string
+---@return string[]
 local function split_by(input, sep)
     local t = {}
 
@@ -44,6 +49,7 @@ local function split_by(input, sep)
     return t
 end
 
+---@param commits cmp_git.CompletionItem[]
 local function update_edit_range(commits, cursor, _offset)
     for k, v in pairs(commits) do
         local sha = v.insertText
@@ -66,12 +72,15 @@ local function update_edit_range(commits, cursor, _offset)
     end
 end
 
+---@param trigger_char string
+---@param callback fun(commits: cmp_git.CompletionItem[])
 local function parse_commits(trigger_char, callback, config)
     -- Choose unique and long end markers
     local end_part_marker = "###CMP_GIT###"
     local end_entry_marker = "###CMP_GIT_END###"
 
     -- Extract abbreviated commit sha, subject, body, author name, author email, commit timestamp
+    ---@diagnostic disable-next-line: missing-fields
     local job = Job:new({
         command = "git",
         args = {
@@ -133,6 +142,8 @@ local function parse_commits(trigger_char, callback, config)
     job:start()
 end
 
+---@param callback fun(commits: cmp_git.CompletionItem[])
+---@param trigger_char string
 function Git:get_commits(callback, params, trigger_char)
     local config = self.config.commits
     local cursor = params.context.cursor

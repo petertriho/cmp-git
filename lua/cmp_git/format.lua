@@ -136,6 +136,16 @@ local M = {
     },
 }
 
+---@class cmp_git.CompletionItem : lsp.CompletionItem
+---@field label string
+---@field filterText string
+---@field insertText string
+---@field sortText string
+---@field documentation lsp.MarkupContent
+---@field data any
+
+---@param trigger_char string
+---@return cmp_git.CompletionItem
 function M.item(config, trigger_char, item)
     return {
         label = config.format.label(trigger_char, item),

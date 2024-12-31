@@ -38,11 +38,17 @@ function Source.new(overrides)
     return self
 end
 
+---@class cmp_git.CompletionList : lsp.CompletionList
+---@field items cmp_git.CompletionItem[]
+
+---@param params cmp.SourceCompletionApiParams
+---@param callback fun(args: cmp_git.CompletionList)
 function Source:complete(params, callback)
     if not utils.is_git_repo() then
         return
     end
 
+    ---@type string?
     local trigger_character = nil
 
     if params.completion_context.triggerKind == 1 then

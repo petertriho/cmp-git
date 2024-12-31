@@ -4,8 +4,11 @@ local format = require("cmp_git.format")
 
 local GitLab = {
     cache = {
+        ---@type table<integer, cmp_git.CompletionItem[]>
         issues = {},
+        ---@type table<integer, cmp_git.CompletionItem[]>
         mentions = {},
+        ---@type table<integer, cmp_git.CompletionItem[]>
         merge_requests = {},
     },
     config = {},
@@ -27,17 +30,20 @@ function GitLab.new(overrides)
     return self
 end
 
+---@param git_info cmp_git.GitInfo
 local function get_project_id(git_info)
     return utils.url_encode(string.format("%s/%s", git_info.owner, git_info.repo))
 end
 
+---@param callback fun(list: cmp_git.CompletionList)
+---@param handle_item fun(item: any): cmp_git.CompletionItem
 local function get_items(callback, glab_args, curl_url, handle_item)
     local glab_job = utils.build_job("glab", glab_args, {
         GITLAB_TOKEN = vim.fn.getenv("GITLAB_TOKEN"),
         NO_COLOR = 1, -- disables color output to avoid parsing errors
     }, callback, handle_item)
 
-    curl_args = {
+    local curl_args = {
         "-s",
         curl_url,
     }
@@ -54,6 +60,7 @@ local function get_items(callback, glab_args, curl_url, handle_item)
     return utils.chain_fallback(glab_job, curl_job)
 end
 
+---@param git_info cmp_git.GitInfo
 function GitLab:is_valid_host(git_info)
     if
         git_info.host == nil
@@ -66,6 +73,9 @@ function GitLab:is_valid_host(git_info)
     return true
 end
 
+---@param callback fun(list: cmp_git.CompletionList)
+---@param git_info cmp_git.GitInfo
+---@param trigger_char string
 function GitLab:get_issues(callback, git_info, trigger_char)
     if not GitLab:is_valid_host(git_info) then
         return false
@@ -112,6 +122,9 @@ function GitLab:get_issues(callback, git_info, trigger_char)
     return true
 end
 
+---@param callback fun(list: cmp_git.CompletionList)
+---@param git_info cmp_git.GitInfo
+---@param trigger_char string
 function GitLab:get_mentions(callback, git_info, trigger_char)
     if not GitLab:is_valid_host(git_info) then
         return false
@@ -146,6 +159,9 @@ function GitLab:get_mentions(callback, git_info, trigger_char)
     return true
 end
 
+---@param callback fun(list: cmp_git.CompletionList)
+---@param git_info cmp_git.GitInfo
+---@param trigger_char string
 function GitLab:get_merge_requests(callback, git_info, trigger_char)
     if not GitLab:is_valid_host(git_info) then
         return false
