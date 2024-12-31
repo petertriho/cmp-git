@@ -364,7 +364,13 @@ function GitHub:get_mentions(callback, git_info, trigger_char)
         end,
         {
             "api",
-            string.format("repos/%s/%s/contributors", git_info.owner, git_info.repo),
+            string.format(
+                "repos/%s/%s/contributors?per_page=%d&page=%d",
+                git_info.owner,
+                git_info.repo,
+                config.limit,
+                1
+            ),
             "--hostname",
             git_info.host,
         },
