@@ -1,14 +1,18 @@
 local Job = require("plenary.job")
 local log = require("cmp_git.log")
-local sort = require("cmp_git.sort")
 local format = require("cmp_git.format")
 
+---@class cmp_git.Source.Git
 local Git = {
+    ---@type table<integer, cmp_git.CompletionItem[]>
     cache_commits = {},
+    ---@type cmp_git.Config.Git
+    ---@diagnostic disable-next-line: missing-fields
     config = {},
 }
 
-Git.new = function(overrides)
+---@param overrides cmp_git.Config.Git
+function Git.new(overrides)
     local self = setmetatable({}, {
         __index = Git,
     })
@@ -22,11 +26,15 @@ Git.new = function(overrides)
     return self
 end
 
+---@param s string
 local function trim(s)
     return (s:gsub("^%s*(.-)%s*$", "%1"))
 end
 
-local split_by = function(input, sep)
+---@param input string
+---@param sep string
+---@return string[]
+local function split_by(input, sep)
     local t = {}
 
     while true do
@@ -45,7 +53,8 @@ local split_by = function(input, sep)
     return t
 end
 
-local update_edit_range = function(commits, cursor, offset)
+---@param commits cmp_git.CompletionItem[]
+local function update_edit_range(commits, cursor, _offset)
     for k, v in pairs(commits) do
         local sha = v.insertText
 
@@ -67,12 +76,16 @@ local update_edit_range = function(commits, cursor, offset)
     end
 end
 
-local parse_commits = function(trigger_char, callback, config)
+---@param trigger_char string
+---@param callback fun(commits: cmp_git.CompletionItem[])
+---@param config cmp_git.Config.GitCommits
+local function parse_commits(trigger_char, callback, config)
     -- Choose unique and long end markers
     local end_part_marker = "###CMP_GIT###"
     local end_entry_marker = "###CMP_GIT_END###"
 
     -- Extract abbreviated commit sha, subject, body, author name, author email, commit timestamp
+    ---@diagnostic disable-next-line: missing-fields
     local job = Job:new({
         command = "git",
         args = {
@@ -113,6 +126,7 @@ local parse_commits = function(trigger_char, callback, config)
                     local commit_timestamp = part[6] or ""
                     local diff = os.difftime(os.time(), commit_timestamp)
 
+                    ---@class cmp_git.Commit
                     local commit = {
                         sha = sha,
                         title = title,
@@ -134,6 +148,8 @@ local parse_commits = function(trigger_char, callback, config)
     job:start()
 end
 
+---@param callback fun(commits: cmp_git.CompletionList)
+---@param trigger_char string
 function Git:get_commits(callback, params, trigger_char)
     local config = self.config.commits
     local cursor = params.context.cursor

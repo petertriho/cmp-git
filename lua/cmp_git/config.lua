@@ -1,12 +1,26 @@
 local format = require("cmp_git.format")
 local sort = require("cmp_git.sort")
 
+---@class cmp_git.Config.TriggerAction
+---@field debug_name string
+---@field trigger_character string
+---@field action fun(sources: cmp_git.Sources, trigger_char: string, callback: fun(list: cmp_git.CompletionList), params: cmp.SourceCompletionApiParams, git_info: cmp_git.GitInfo): boolean
+
+---@class cmp_git.Config
 local M = {
+    ---@type string[]
     filetypes = { "gitcommit", "octo", "NeogitCommitMessage" },
+    ---@type string[]
     remotes = { "upstream", "origin" }, -- in order of most to least prioritized
+    ---@type boolean
     enableRemoteUrlRewrites = false, -- enable git url rewrites, see https://git-scm.com/docs/git-config#Documentation/git-config.txt-urlltbasegtinsteadOf
+    ---@type table<string, string>
     ssh_aliases = {},
+    ---@class cmp_git.Config.Git
+    ---@field filter_fn? fun(trigger_char: string, item: cmp_git.Commit): string
+    ---@field format? cmp_git.FormatConfig<cmp_git.Commit>
     git = {
+        ---@class cmp_git.Config.GitCommits
         commits = {
             limit = 100,
             sort_by = sort.git.commits,
@@ -14,9 +28,15 @@ local M = {
             sha_length = 7,
         },
     },
+    ---@class cmp_git.Config.GitHub
+    ---@field format? cmp_git.FormatConfig<cmp_git.GitHub.Issue | cmp_git.GitHub.Mention | cmp_git.GitHub.PullRequest>
+    ---@field filter_fn? fun(trigger_char: string, item: cmp_git.GitHub.Issue | cmp_git.GitHub.Mention | cmp_git.GitHub.PullRequest): string
     github = {
+        ---@type string[]
         hosts = {},
+        ---@class cmp_git.Config.GitHub.Issue
         issues = {
+            ---@type string[]
             fields = { "title", "number", "body", "updatedAt", "state" },
             filter = "all", -- assigned, created, mentioned, subscribed, all, repos
             limit = 100,
@@ -29,7 +49,9 @@ local M = {
             sort_by = sort.github.mentions,
             format = format.github.mentions,
         },
+        ---@class cmp_git.Config.GitHub.PullRequest
         pull_requests = {
+            ---@type string[]
             fields = { "title", "number", "body", "updatedAt", "state" },
             limit = 100,
             state = "open", -- open, closed, merged, all
@@ -37,6 +59,9 @@ local M = {
             format = format.github.pull_requests,
         },
     },
+    ---@class cmp_git.Config.Gitlab
+    ---@field filter_fn? fun(trigger_char: string, item: any): string
+    ---@field format? cmp_git.FormatConfig<any>
     gitlab = {
         hosts = {},
         issues = {
@@ -57,6 +82,7 @@ local M = {
             format = format.gitlab.merge_requests,
         },
     },
+    ---@type cmp_git.Config.TriggerAction[]
     trigger_actions = {
         {
             debug_name = "git_commits",
