@@ -3,12 +3,16 @@ local utils = require("cmp_git.utils")
 local log = require("cmp_git.log")
 local format = require("cmp_git.format")
 
+---@class cmp_git.AsyncItemList
+---@field in_progress boolean
+---@field items cmp_git.CompletionItem[]
+
 ---@class cmp_git.Source.GitHub
 local GitHub = {
     cache = {
         ---@type table<integer, cmp_git.CompletionItem[]>
         issues = {},
-        ---@type table<integer, cmp_git.CompletionItem[]>
+        ---@type table<integer, cmp_git.AsyncItemList>
         mentions = {},
         ---@type table<integer, cmp_git.CompletionItem[]>
         pull_requests = {},
@@ -362,43 +366,59 @@ function GitHub:get_mentions(callback, git_info, trigger_char)
     local bufnr = vim.api.nvim_get_current_buf()
 
     if self.cache.mentions[bufnr] then
-        callback({ items = self.cache.mentions[bufnr], isIncomplete = false })
+        local mentionsCache = self.cache.mentions[bufnr]
+        -- Immediately return in progress results to prevent multiple concurrent requests
+        callback({ items = mentionsCache.items, isIncomplete = mentionsCache.in_progress })
         return true
     end
 
-    local job = get_items(
-        function(args)
-            callback(args)
-            self.cache.mentions[bufnr] = args.items
-        end,
-        {
-            "api",
-            string.format(
-                "repos/%s/%s/contributors?per_page=%d&page=%d",
-                git_info.owner,
-                git_info.repo,
-                config.limit,
-                1
+    self.cache.mentions[bufnr] = { items = {}, in_progress = true }
+    ---@param page integer
+    local function fetch_mentions(page)
+        local page_size = math.min(config.limit - #self.cache.mentions[bufnr].items, 100)
+        local job = get_items(
+            function(args)
+                local mentionsCache = self.cache.mentions[bufnr]
+                vim.list_extend(mentionsCache.items, args.items)
+                -- Go until there are no more items or we've reached the limit
+                mentionsCache.in_progress = #args.items ~= 0 and #mentionsCache.items < config.limit
+                if mentionsCache.in_progress then
+                    fetch_mentions(page + 1)
+                end
+                -- Do not wait for all pages to be fetched to give back results
+                callback({ items = mentionsCache.items, isIncomplete = mentionsCache.in_progress })
+            end,
+            {
+                "api",
+                string.format(
+                    "repos/%s/%s/contributors?per_page=%d&page=%d",
+                    git_info.owner,
+                    git_info.repo,
+                    page_size,
+                    page
+                ),
+                "--hostname",
+                git_info.host,
+            },
+            github_url(
+                git_info.host,
+                string.format("%s/%s/contributors?per_page=%d&page=%d", git_info.owner, git_info.repo, page_size, page)
             ),
-            "--hostname",
-            git_info.host,
-        },
-        github_url(
-            git_info.host,
-            string.format("%s/%s/contributors?per_page=%d&page=%d", git_info.owner, git_info.repo, config.limit, 1)
-        ),
-        ---@param mention cmp_git.GitHub.Mention
-        function(mention)
-            return format.item(config, trigger_char, mention)
-        end,
-        function(parsed)
-            if parsed["mentionableUsers"] then
-                return parsed["mentionableUsers"]
+            ---@param mention cmp_git.GitHub.Mention
+            function(mention)
+                return format.item(config, trigger_char, mention)
+            end,
+            function(parsed)
+                if parsed["mentionableUsers"] then
+                    return parsed["mentionableUsers"]
+                end
+                return parsed
             end
-            return parsed
-        end
-    )
-    job:start()
+        )
+        job:start()
+    end
+
+    fetch_mentions(1)
 
     return true
 end
