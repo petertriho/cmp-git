@@ -1,19 +1,25 @@
 local Job = require("plenary.job")
 local utils = require("cmp_git.utils")
-local sort = require("cmp_git.sort")
 local log = require("cmp_git.log")
 local format = require("cmp_git.format")
 
+---@class cmp_git.Source.GitHub
 local GitHub = {
     cache = {
+        ---@type table<integer, cmp_git.CompletionItem[]>
         issues = {},
+        ---@type table<integer, cmp_git.CompletionItem[]>
         mentions = {},
+        ---@type table<integer, cmp_git.CompletionItem[]>
         pull_requests = {},
     },
+    ---@type cmp_git.Config.GitHub
+    ---@diagnostic disable-next-line: missing-fields
     config = {},
 }
 
-GitHub.new = function(overrides)
+---@param overrides cmp_git.Config.GitHub
+function GitHub.new(overrides)
     local self = setmetatable({}, {
         __index = GitHub,
     })
@@ -30,7 +36,9 @@ GitHub.new = function(overrides)
 end
 
 -- build a github api url
-local github_url = function(git_host, path)
+---@param git_host string
+---@param path string
+local function github_url(git_host, path)
     if git_host == "github.com" then
         return string.format("https://api.github.com/%s", path)
     else
@@ -38,7 +46,11 @@ local github_url = function(git_host, path)
     end
 end
 
-local get_items = function(callback, gh_args, curl_url, handle_item, handle_parsed)
+---@generic TItem
+---@param handle_item fun(item: TItem): cmp_git.CompletionItem
+---@param handle_parsed? fun(parsed: any): TItem[]
+---@param callback fun(list: cmp_git.CompletionList)
+local function get_items(callback, gh_args, curl_url, handle_item, handle_parsed)
     local gh_job = utils.build_job("gh", gh_args, {
         GITHUB_API_TOKEN = vim.fn.getenv("GITHUB_API_TOKEN"),
         CLICOLOR = 0, -- disables color output to avoid parsing errors
@@ -65,7 +77,18 @@ local get_items = function(callback, gh_args, curl_url, handle_item, handle_pars
     return utils.chain_fallback(gh_job, curl_job)
 end
 
-local get_pull_requests_job = function(callback, git_info, trigger_char, config)
+---Reference: https://docs.github.com/en/rest/pulls/pulls?apiVersion=2022-11-28#list-pull-requests
+---@class cmp_git.GitHub.PullRequest
+---@field number integer
+---@field title string
+---@field body string
+---@field updatedAt string
+
+---@param callback fun(list: cmp_git.CompletionList)
+---@param git_info cmp_git.GitInfo
+---@param trigger_char string
+---@param config cmp_git.Config.GitHub.PullRequest
+local function get_pull_requests_job(callback, git_info, trigger_char, config)
     return get_items(
         callback,
         {
@@ -107,7 +130,18 @@ local get_pull_requests_job = function(callback, git_info, trigger_char, config)
     )
 end
 
-local get_issues_job = function(callback, git_info, trigger_char, config)
+---Reference: https://docs.github.com/en/rest/issues/issues?apiVersion=2022-11-28#list-repository-issues
+---@class cmp_git.GitHub.Issue
+---@field number integer
+---@field title string
+---@field body string
+---@field updatedAt string
+
+---@param callback fun(list: cmp_git.CompletionList)
+---@param git_info cmp_git.GitInfo
+---@param trigger_char string
+---@param config cmp_git.Config.GitHub.Issue
+local function get_issues_job(callback, git_info, trigger_char, config)
     return get_items(
         callback,
         {
@@ -150,7 +184,8 @@ local get_issues_job = function(callback, git_info, trigger_char, config)
     )
 end
 
-local use_gh_default_repo_if_set = function(git_info)
+---@param git_info cmp_git.GitInfo
+local function use_gh_default_repo_if_set(git_info)
     local gh_default_repo = vim.fn.system({ "gh", "repo", "set-default", "--view" })
     if vim.v.shell_error ~= 0 then
         return git_info
@@ -163,6 +198,7 @@ local use_gh_default_repo_if_set = function(git_info)
     return git_info
 end
 
+---@param git_info cmp_git.GitInfo
 function GitHub:is_valid_host(git_info)
     if
         git_info.host == nil
@@ -175,6 +211,9 @@ function GitHub:is_valid_host(git_info)
     return true
 end
 
+---@param callback fun(list: cmp_git.CompletionList)
+---@param git_info cmp_git.GitInfo
+---@param trigger_char string
 function GitHub:_get_issues(callback, git_info, trigger_char)
     local config = self.config.issues
     local bufnr = vim.api.nvim_get_current_buf()
@@ -192,6 +231,9 @@ function GitHub:_get_issues(callback, git_info, trigger_char)
     return issues_job
 end
 
+---@param callback fun(list: cmp_git.CompletionList)
+---@param git_info cmp_git.GitInfo
+---@param trigger_char string
 function GitHub:_get_pull_requests(callback, git_info, trigger_char)
     local config = self.config.pull_requests
     local bufnr = vim.api.nvim_get_current_buf()
@@ -209,6 +251,9 @@ function GitHub:_get_pull_requests(callback, git_info, trigger_char)
     return pr_job
 end
 
+---@param callback fun(list: cmp_git.CompletionList)
+---@param git_info cmp_git.GitInfo
+---@param trigger_char string
 function GitHub:get_issues(callback, git_info, trigger_char)
     if not GitHub:is_valid_host(git_info) then
         return false
@@ -225,6 +270,9 @@ function GitHub:get_issues(callback, git_info, trigger_char)
     return true
 end
 
+---@param callback fun(list: cmp_git.CompletionList)
+---@param git_info cmp_git.GitInfo
+---@param trigger_char string
 function GitHub:get_pull_requests(callback, git_info, trigger_char)
     if not GitHub:is_valid_host(git_info) then
         return false
@@ -241,6 +289,9 @@ function GitHub:get_pull_requests(callback, git_info, trigger_char)
     return true
 end
 
+---@param callback fun(list: cmp_git.CompletionList)
+---@param git_info cmp_git.GitInfo
+---@param trigger_char string
 function GitHub:get_issues_and_prs(callback, git_info, trigger_char)
     if not GitHub:is_valid_host(git_info) then
         return false
@@ -254,6 +305,7 @@ function GitHub:get_issues_and_prs(callback, git_info, trigger_char)
         local issues = self.cache.issues[bufnr]
         local prs = self.cache.pull_requests[bufnr]
 
+        ---@type cmp_git.CompletionItem[]
         local items = {}
         items = vim.list_extend(items, issues)
         items = vim.list_extend(items, prs)
@@ -261,6 +313,7 @@ function GitHub:get_issues_and_prs(callback, git_info, trigger_char)
         log.fmt_debug("Got %d issues and prs from cache", #items)
         callback({ items = issues, isIncomplete = false })
     else
+        ---@type cmp_git.CompletionItem[]
         local items = {}
 
         local issues_job = self:_get_issues(function(args)
@@ -284,6 +337,13 @@ function GitHub:get_issues_and_prs(callback, git_info, trigger_char)
     return true
 end
 
+---Reference: https://docs.github.com/en/rest/repos/repos?apiVersion=2022-11-28#list-repository-contributors
+---@class cmp_git.GitHub.Mention
+---@field login string
+
+---@param callback fun(list: cmp_git.CompletionList)
+---@param git_info cmp_git.GitInfo
+---@param trigger_char string
 function GitHub:get_mentions(callback, git_info, trigger_char)
     if not GitHub:is_valid_host(git_info) then
         return false
@@ -312,6 +372,7 @@ function GitHub:get_mentions(callback, git_info, trigger_char)
             git_info.host,
             string.format("%s/%s/contributors?per_page=%d&page=%d", git_info.owner, git_info.repo, config.limit, 1)
         ),
+        ---@param mention cmp_git.GitHub.Mention
         function(mention)
             return format.item(config, trigger_char, mention)
         end,

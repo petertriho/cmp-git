@@ -1,7 +1,15 @@
 local sort = require("cmp_git.sort")
 
+---@class cmp_git.FormatConfig<TItem>: {
+---label: fun(trigger_char: string, item: TItem): string;
+---filterText: fun(trigger_char: string, item: TItem): string;
+---insertText: fun(trigger_char: string, item: TItem): string;
+---documentation: fun(trigger_char: string, item: TItem): lsp.MarkupContent;
+---}
+
 local M = {
     git = {
+        ---@type cmp_git.FormatConfig<cmp_git.Commit>
         commits = {
             label = function(trigger_char, commit)
                 return string.format("%s: %s", commit.sha:sub(0, 7), commit.title)
@@ -29,6 +37,7 @@ local M = {
         },
     },
     github = {
+        ---@type cmp_git.FormatConfig<cmp_git.GitHub.Issue>
         issues = {
             label = function(trigger_char, issue)
                 return string.format("#%s: %s", issue.number, issue.title)
@@ -46,6 +55,7 @@ local M = {
                 }
             end,
         },
+        ---@type cmp_git.FormatConfig<cmp_git.GitHub.Mention>
         mentions = {
             label = function(trigger_char, mention)
                 return string.format("@%s", mention.login)
@@ -63,6 +73,7 @@ local M = {
                 }
             end,
         },
+        ---@type cmp_git.FormatConfig<cmp_git.GitHub.PullRequest>
         pull_requests = {
             label = function(trigger_char, pr)
                 return string.format("#%s: %s", pr.number, pr.title)
@@ -82,6 +93,7 @@ local M = {
         },
     },
     gitlab = {
+        ---@type cmp_git.FormatConfig<any>
         issues = {
             label = function(trigger_char, issue)
                 return string.format("#%s: %s", issue.iid, issue.title)
@@ -99,6 +111,7 @@ local M = {
                 }
             end,
         },
+        ---@type cmp_git.FormatConfig<any>
         mentions = {
             label = function(trigger_char, mention)
                 return string.format("@%s", mention.username)
@@ -116,6 +129,7 @@ local M = {
                 }
             end,
         },
+        ---@type cmp_git.FormatConfig<any>
         merge_requests = {
             label = function(trigger_char, mr)
                 return string.format("!%s: %s", mr.iid, mr.title)
@@ -136,7 +150,19 @@ local M = {
     },
 }
 
-M.item = function(config, trigger_char, item)
+---@class cmp_git.CompletionItem : lsp.CompletionItem
+---@field label string
+---@field filterText string
+---@field insertText string
+---@field sortText string
+---@field documentation lsp.MarkupContent
+---@field data any
+
+---@generic TItem
+---@param config { format: cmp_git.FormatConfig<TItem>, sort_by: string | fun(item: TItem): string }
+---@param trigger_char string
+---@return cmp_git.CompletionItem
+function M.item(config, trigger_char, item)
     return {
         label = config.format.label(trigger_char, item),
         filterText = config.format.filterText(trigger_char, item),
