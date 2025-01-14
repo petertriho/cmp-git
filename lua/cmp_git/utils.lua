@@ -90,7 +90,7 @@ function M.get_git_info(remotes, opts)
                 host = "github.com"
             end
             local filename = vim.fn.expand("%:p:h")
-            owner, repo = string.match(filename, "^octo://(.+)/(.+)/.+$")
+            owner, repo = string.match(filename, "^octo://([^/]+)/([^/]+)")
         else
             for _, remote in ipairs(remotes) do
                 local cmd
