@@ -136,39 +136,48 @@ end
 ---@field title string
 ---@field body string
 ---@field updatedAt string
+---@field updated_at string
 
 ---@param callback fun(list: cmp_git.CompletionList)
 ---@param git_info cmp_git.GitInfo
 ---@param trigger_char string
 ---@param config cmp_git.Config.GitHub.Issue
 local function get_issues_job(callback, git_info, trigger_char, config)
+    local gh_args = {
+        "issue",
+        "list",
+        "--repo",
+        string.format("%s/%s/%s", git_info.host, git_info.owner, git_info.repo),
+        "--limit",
+        config.limit,
+        "--state",
+        config.state,
+        "--json",
+        table.concat(config.fields, ","),
+    }
+    local curl_path = string.format(
+        "repos/%s/%s/issues?state=%s&per_page=%d&page=%d",
+        git_info.owner,
+        git_info.repo,
+        config.state,
+        config.limit,
+        1
+    )
+    if config.filter == "mentioned" then
+        gh_args = vim.list_extend(gh_args, { "--mention", "@me" })
+        curl_path = string.format("%s&mentioned=@me", curl_path)
+    elseif config.filter == "assigned" then
+        gh_args = vim.list_extend(gh_args, { "--assignee", "@me" })
+        curl_path = string.format("%s&assignee=@me", curl_path)
+    elseif config.filter == "created" then
+        gh_args = vim.list_extend(gh_args, { "--author", "@me" })
+        curl_path = string.format("%s&creator=@me", curl_path)
+    end
     return get_items(
         callback,
-        {
-            "issue",
-            "list",
-            "--repo",
-            string.format("%s/%s/%s", git_info.host, git_info.owner, git_info.repo),
-            "--limit",
-            config.limit,
-            "--state",
-            config.state,
-            "--json",
-            table.concat(config.fields, ","),
-        },
-        github_url(
-            git_info.host,
-            string.format(
-                "repos/%s/%s/issues?filter=%s&state=%s&per_page=%d&page=%d",
-                git_info.owner,
-                git_info.repo,
-                config.filter,
-                config.state,
-                config.limit,
-                1
-            )
-        ),
-        function(issue)
+        gh_args,
+        github_url(git_info.host, curl_path),
+        function(issue) ---@param issue cmp_git.GitHub.Issue
             if issue.body ~= vim.NIL then
                 issue.body = string.gsub(issue.body or "", "\r", "")
             else
