@@ -56,11 +56,7 @@ end
 
 ---@param params cmp.SourceCompletionApiParams
 ---@param callback fun(args: cmp_git.CompletionList)
-function Source:complete(params, callback)
-    if not utils.is_git_repo() then
-        return
-    end
-
+function Source:_complete(params, callback)
     ---@type string?
     local trigger_character = nil
 
@@ -71,18 +67,31 @@ function Source:complete(params, callback)
         trigger_character = params.completion_context.triggerCharacter
     end
 
-    for _, trigger in pairs(self.trigger_actions) do
-        if trigger.trigger_character == trigger_character then
-            local git_info = utils.get_git_info(self.config.remotes, {
-                enableRemoteUrlRewrites = self.config.enableRemoteUrlRewrites,
-                ssh_aliases = self.config.ssh_aliases,
-            })
-
-            if trigger.action(self.sources, trigger_character, callback, params, git_info) then
-                break
+    utils.get_git_info(self.config.remotes, {
+        enableRemoteUrlRewrites = self.config.enableRemoteUrlRewrites,
+        ssh_aliases = self.config.ssh_aliases,
+        on_complete = function(git_info)
+            for _, trigger in pairs(self.trigger_actions) do
+                if trigger.trigger_character == trigger_character then
+                    if trigger.action(self.sources, trigger_character, callback, params, git_info) then
+                        break
+                    end
+                end
             end
+        end,
+    })
+end
+
+---@module 'cmp'
+---@param params cmp.SourceCompletionApiParams
+---@param callback fun(args: cmp_git.CompletionList)
+function Source:complete(params, callback)
+    utils.is_git_repo(function(is_git_repo)
+        if not is_git_repo then
+            return
         end
-    end
+        self:_complete(params, callback)
+    end)
 end
 
 function Source:get_keyword_pattern()
