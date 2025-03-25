@@ -8,6 +8,32 @@ local function char_to_hex(c)
     return string.format("%%%02X", string.byte(c))
 end
 
+---@param cmd string
+---@param opts { on_complete: fun(success: boolean, output: string[]): nil; cwd?: string }
+---@return nil
+local function run_cmd_async(cmd, opts)
+    ---@type string[]
+    local output = {}
+    vim.fn.jobstart(cmd, {
+        on_stdout = function(_, data)
+            if not data then
+                return
+            end
+            vim.list_extend(output, data)
+        end,
+        on_stderr = function(_, data)
+            if not data then
+                return
+            end
+            vim.list_extend(output, data)
+        end,
+        on_exit = function(_, exit_code)
+            opts.on_complete(exit_code == 0, output)
+        end,
+        cwd = opts.cwd,
+    })
+end
+
 ---@param value string
 function M.url_encode(value)
     return string.gsub(value, "([^%w _%%%-%.~])", char_to_hex)
@@ -48,21 +74,25 @@ function M.parse_github_date(d)
     })
 end
 
-function M.is_git_repo()
-    local function is_inside_git_repo()
+---@param on_result fun(is_git_repo: boolean): nil
+---@return nil
+function M.is_git_repo(on_result)
+    local cwd = M.get_cwd() ---@type string?
+    local function check_in_git_repo()
         local cmd = "git rev-parse --is-inside-work-tree --is-inside-git-dir"
-        return string.find(vim.fn.system(cmd), "true") ~= nil
+        run_cmd_async(cmd, {
+            on_complete = function(success, output)
+                local is_git_repo = success and #output > 0 and output[1]:find("true") ~= nil
+                if not is_git_repo and cwd ~= nil then
+                    cwd = nil
+                    check_in_git_repo()
+                    return
+                end
+                on_result(is_git_repo)
+            end,
+        })
     end
-
-    -- buffer cwd
-    local is_git_repo = M.run_in_cwd(M.get_cwd(), is_inside_git_repo)
-
-    if not is_git_repo then
-        -- fallback to cwd
-        is_git_repo = is_inside_git_repo()
-    end
-
-    return is_git_repo
+    check_in_git_repo()
 end
 
 ---@class cmp_git.GitInfo
@@ -71,17 +101,36 @@ end
 ---@field repo string?
 
 ---@param remotes string|string[]
----@param opts {enableRemoteUrlRewrites: boolean, ssh_aliases: {[string]: string}}
----@return cmp_git.GitInfo
+---@param opts {enableRemoteUrlRewrites: boolean, ssh_aliases: {[string]: string}, on_complete: fun(git_info: cmp_git.GitInfo): nil}
+---@return nil
 function M.get_git_info(remotes, opts)
     opts = opts or {}
+    local cwd = M.get_cwd() ---@type string?
 
-    ---@return cmp_git.GitInfo
-    local function get_git_info()
+    local get_git_info ---@type fun(): nil
+
+    ---@param git_info cmp_git.GitInfo
+    local function handle_git_info(git_info)
+        if git_info.host == nil and cwd ~= nil then
+            cwd = nil
+            get_git_info()
+            return
+        end
+        if git_info.host ~= nil then
+            for alias, rhost in pairs(opts.ssh_aliases) do
+                git_info.host = git_info.host:gsub("^" .. alias:gsub("%-", "%%-"):gsub("%.", "%%.") .. "$", rhost, 1)
+            end
+        end
+
+        opts.on_complete(git_info)
+    end
+
+    get_git_info = function()
         if type(remotes) == "string" then
             remotes = { remotes }
         end
 
+        ---@type string?, string?, string?
         local host, owner, repo = nil, nil, nil
 
         if vim.bo.filetype == "octo" then
@@ -91,77 +140,62 @@ function M.get_git_info(remotes, opts)
             end
             local filename = vim.fn.expand("%:p:h")
             owner, repo = string.match(filename, "^octo://([^/]+)/([^/]+)")
-        else
-            for _, remote in ipairs(remotes) do
-                local cmd
-                if opts.enableRemoteUrlRewrites then
-                    cmd = "git remote get-url " .. remote
-                else
-                    cmd = "git config --get remote." .. remote .. ".url"
-                end
-                local remote_origin_url = vim.fn.system(cmd)
-
-                if remote_origin_url ~= "" then
-                    local clean_remote_origin_url = remote_origin_url:gsub("%.git", ""):gsub("%s", "")
-
-                    host, owner, repo = string.match(clean_remote_origin_url, "^git.*@(.+):(.+)/(.+)$")
-
-                    if host == nil then
-                        host, owner, repo = string.match(clean_remote_origin_url, "^https?://(.+)/(.+)/(.+)$")
-                    end
-
-                    if host == nil then
-                        host, owner, repo = string.match(clean_remote_origin_url, "^ssh://git@([^:]+):*.*/(.+)/(.+)$")
-                    end
-
-                    if host == nil then
-                        host, owner, repo = string.match(clean_remote_origin_url, "^([^:]+):(.+)/(.+)$")
-                    end
-
-                    if host ~= nil and owner ~= nil and repo ~= nil then
-                        break
-                    end
-                end
-            end
+            handle_git_info({ host = host, owner = owner, repo = repo })
+            return
         end
-
-        if host ~= nil then
-            for alias, rhost in pairs(opts.ssh_aliases) do
-                host = host:gsub("^" .. alias:gsub("%-", "%%-"):gsub("%.", "%%.") .. "$", rhost, 1)
+        local remote_index = 1
+        local function check_remote()
+            if remote_index > #remotes then
+                handle_git_info({ host = host, owner = owner, repo = repo })
+                return
             end
+            local remote = remotes[remote_index]
+            local cmd ---@type string
+            if opts.enableRemoteUrlRewrites then
+                cmd = "git remote get-url " .. remote
+            else
+                cmd = "git config --get remote." .. remote .. ".url"
+            end
+            run_cmd_async(cmd, {
+                on_complete = function(success, output)
+                    remote_index = remote_index + 1
+                    if not success then
+                        check_remote()
+                        return
+                    end
+                    local remote_origin_url = output[1]
+                    if remote_origin_url ~= "" then
+                        local clean_remote_origin_url = remote_origin_url:gsub("%.git", ""):gsub("%s", "")
+
+                        host, owner, repo = string.match(clean_remote_origin_url, "^git.*@(.+):(.+)/(.+)$")
+
+                        if host == nil then
+                            host, owner, repo = string.match(clean_remote_origin_url, "^https?://(.+)/(.+)/(.+)$")
+                        end
+
+                        if host == nil then
+                            host, owner, repo =
+                                string.match(clean_remote_origin_url, "^ssh://git@([^:]+):*.*/(.+)/(.+)$")
+                        end
+
+                        if host == nil then
+                            host, owner, repo = string.match(clean_remote_origin_url, "^([^:]+):(.+)/(.+)$")
+                        end
+
+                        if host ~= nil and owner ~= nil and repo ~= nil then
+                            handle_git_info({ host = host, owner = owner, repo = repo })
+                            return
+                        end
+                    end
+                end,
+                cwd = cwd,
+            })
         end
+        check_remote()
 
         return { host = host, owner = owner, repo = repo }
     end
-
-    -- buffer cwd
-    local git_info = M.run_in_cwd(M.get_cwd(), get_git_info)
-
-    if git_info.host == nil then
-        -- fallback to cwd
-        git_info = get_git_info()
-    end
-
-    return git_info
-end
-
----@generic TResult
----@param cwd string
----@param callback fun(...): TResult
----@return TResult
-function M.run_in_cwd(cwd, callback, ...)
-    local args = ...
-    local old_cwd = vim.fn.getcwd()
-
-    local ok, result = pcall(function()
-        vim.cmd(([[lcd %s]]):format(cwd))
-        return callback(args)
-    end)
-    vim.cmd(([[lcd %s]]):format(old_cwd))
-    if not ok then
-        error(result)
-    end
-    return result
+    get_git_info()
 end
 
 function M.get_cwd()
