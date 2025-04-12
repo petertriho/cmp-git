@@ -205,12 +205,11 @@ function M.get_cwd()
     return vim.fn.getcwd()
 end
 
----@generic TItem
----@param callback fun(list: cmp_git.CompletionList)
----@param handle_item fun(item: TItem): cmp_git.CompletionItem
----@param handle_parsed? fun(parsed: any): TItem[]
----@return Job?
-function M.build_job(exec, args, env, callback, handle_item, handle_parsed)
+---@param exec string
+---@param args string[]
+---@param env table<string, string | integer>?
+---@param callback fun(result: string, success: boolean): nil
+function M.build_simple_job(exec, args, env, callback)
     -- TODO: Find a nicer way, that we can keep chaining jobs at call side
     if vim.fn.executable(exec) ~= 1 or not args then
         log.fmt_debug("Can't work with %s for this call", exec)
@@ -231,19 +230,35 @@ function M.build_job(exec, args, env, callback, handle_item, handle_parsed)
         args = args,
         env = job_env,
         cwd = M.get_cwd(),
-        on_exit = vim.schedule_wrap(function(job, code)
+        on_exit = vim.schedule_wrap(function(job, code) ---@param job Job
             if code ~= 0 then
                 log.fmt_debug("%s returned with exit code %d", exec, code)
             else
                 log.fmt_debug("%s returned with a result", exec)
-                local result = table.concat(job:result(), "")
-
-                local items = M.handle_response(result, handle_item, handle_parsed)
-
-                callback({ items = items, isIncomplete = false })
             end
+            local result_str = table.concat(job:result(), "")
+            callback(result_str, code == 0)
         end),
     })
+end
+
+---@generic TItem
+---@param exec string
+---@param args string[]
+---@param env table<string, string | integer>?
+---@param callback fun(list: cmp_git.CompletionList)
+---@param handle_item fun(item: TItem): cmp_git.CompletionItem
+---@param handle_parsed? fun(parsed: any): TItem[]
+---@return Job?
+function M.build_job(exec, args, env, callback, handle_item, handle_parsed)
+    return M.build_simple_job(exec, args, env, function(result, success)
+        if not success then
+            return
+        end
+        local items = M.handle_response(result, handle_item, handle_parsed)
+
+        callback({ items = items, isIncomplete = false })
+    end)
 end
 
 ---Start the second job if the first on fails, handle cases if the first or second job is nil.
@@ -276,6 +291,7 @@ function M.chain_fallback(first, second)
 end
 
 ---@generic TItem
+---@param response string
 ---@param handle_item fun(item: TItem): cmp_git.CompletionItem
 ---@param handle_parsed fun(parsed: any): TItem[]
 ---@return cmp_git.CompletionItem[]

@@ -50,18 +50,17 @@ local function github_url(git_host, path)
     end
 end
 
----@generic TItem
----@param handle_item fun(item: TItem): cmp_git.CompletionItem
----@param handle_parsed? fun(parsed: any): TItem[]
----@param callback fun(list: cmp_git.CompletionList)
-local function get_items(callback, gh_args, curl_url, handle_item, handle_parsed)
-    local gh_job = utils.build_job("gh", gh_args, {
+---@return table<string, string|number>
+local function get_gh_env()
+    return {
         GITHUB_API_TOKEN = vim.fn.getenv("GITHUB_API_TOKEN"),
         CLICOLOR = 0, -- disables color output to avoid parsing errors
-    }, callback, handle_item, handle_parsed)
+    }
+end
 
+---@return string[]
+local function get_curl_args(curl_url)
     local curl_args = {
-        "curl",
         "-s",
         "-L",
         "-H",
@@ -76,7 +75,32 @@ local function get_items(callback, gh_args, curl_url, handle_item, handle_parsed
         table.insert(curl_args, authorization_header)
     end
 
-    local curl_job = utils.build_job("curl", curl_args, nil, callback, handle_item, handle_parsed)
+    return curl_args
+end
+
+---Used for fetching non-list data from GitHub
+---@param callback fun(result: string, success: boolean): nil
+---@param gh_args string[]
+---@param curl_url string
+---@return nil
+local function fetch_data(callback, gh_args, curl_url)
+    local gh_job = utils.build_simple_job("gh", gh_args, get_gh_env(), callback)
+
+    local curl_job = utils.build_simple_job("curl", get_curl_args(curl_url), nil, callback)
+
+    utils.chain_fallback(gh_job, curl_job):start()
+end
+
+---@generic TItem
+---@param callback fun(list: cmp_git.CompletionList)
+---@param gh_args string[]
+---@param curl_url string
+---@param handle_item fun(item: TItem): cmp_git.CompletionItem
+---@param handle_parsed? fun(parsed: any): TItem[]
+local function get_items(callback, gh_args, curl_url, handle_item, handle_parsed)
+    local gh_job = utils.build_job("gh", gh_args, get_gh_env(), callback, handle_item, handle_parsed)
+
+    local curl_job = utils.build_job("curl", get_curl_args(curl_url), nil, callback, handle_item, handle_parsed)
 
     return utils.chain_fallback(gh_job, curl_job)
 end
@@ -354,25 +378,14 @@ end
 ---@class cmp_git.GitHub.Mention
 ---@field login string
 
----@param callback fun(list: cmp_git.CompletionList)
+---@param callback fun(list: cmp_git.CompletionList): nil
 ---@param git_info cmp_git.GitInfo
 ---@param trigger_char string
-function GitHub:get_mentions(callback, git_info, trigger_char)
-    if not GitHub:is_valid_host(git_info) then
-        return false
-    end
-
+---@param member_type 'collaborators' | 'contributors'
+function GitHub:_get_mentions(callback, git_info, trigger_char, member_type)
     local config = self.config.mentions
     local bufnr = vim.api.nvim_get_current_buf()
 
-    if self.cache.mentions[bufnr] then
-        local mentionsCache = self.cache.mentions[bufnr]
-        -- Immediately return in progress results to prevent multiple concurrent requests
-        callback({ items = mentionsCache.items, isIncomplete = mentionsCache.in_progress })
-        return true
-    end
-
-    self.cache.mentions[bufnr] = { items = {}, in_progress = true }
     ---@param page integer
     local function fetch_mentions(page)
         local page_size = math.min(config.limit - #self.cache.mentions[bufnr].items, 100)
@@ -391,9 +404,10 @@ function GitHub:get_mentions(callback, git_info, trigger_char)
             {
                 "api",
                 string.format(
-                    "repos/%s/%s/contributors?per_page=%d&page=%d",
+                    "repos/%s/%s/%s?per_page=%d&page=%d",
                     git_info.owner,
                     git_info.repo,
+                    member_type,
                     page_size,
                     page
                 ),
@@ -402,7 +416,14 @@ function GitHub:get_mentions(callback, git_info, trigger_char)
             },
             github_url(
                 git_info.host,
-                string.format("%s/%s/contributors?per_page=%d&page=%d", git_info.owner, git_info.repo, page_size, page)
+                string.format(
+                    "%s/%s/%s?per_page=%d&page=%d",
+                    git_info.owner,
+                    git_info.repo,
+                    member_type,
+                    page_size,
+                    page
+                )
             ),
             ---@param mention cmp_git.GitHub.Mention
             function(mention)
@@ -419,6 +440,50 @@ function GitHub:get_mentions(callback, git_info, trigger_char)
     end
 
     fetch_mentions(1)
+end
+
+---@param callback fun(list: cmp_git.CompletionList)
+---@param git_info cmp_git.GitInfo
+---@param trigger_char string
+---@return boolean
+function GitHub:get_mentions(callback, git_info, trigger_char)
+    if not GitHub:is_valid_host(git_info) then
+        return false
+    end
+
+    local bufnr = vim.api.nvim_get_current_buf()
+
+    if self.cache.mentions[bufnr] then
+        local mentionsCache = self.cache.mentions[bufnr]
+        -- Immediately return in progress results to prevent multiple concurrent requests
+        callback({ items = mentionsCache.items, isIncomplete = mentionsCache.in_progress })
+        return true
+    end
+
+    self.cache.mentions[bufnr] = { items = {}, in_progress = true }
+    fetch_data(
+        function(result)
+            local ok, parsed = pcall(vim.json.decode, result)
+            local member_type = "contributors"
+            if ok then
+                -- If the user has permission to see the collaborators, use the collaborators endpoint
+                -- Note that "404" is considered a success, since the dummy user likely doesn't exist
+                member_type = (parsed.status ~= "403" and parsed.status ~= "401") and "collaborators" or "contributors"
+            end
+            self:_get_mentions(callback, git_info, trigger_char, member_type)
+        end,
+        {
+            "api",
+            -- Using a dummy username to check if the user has permission to see the collaborators
+            string.format("repos/%s/%s/collaborators/testing/permission", git_info.owner, git_info.repo),
+            "--hostname",
+            git_info.host,
+        },
+        github_url(
+            git_info.host,
+            string.format("repos/%s/%s/collaborators/testing/permission", git_info.owner, git_info.repo)
+        )
+    )
 
     return true
 end
