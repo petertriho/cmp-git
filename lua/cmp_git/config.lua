@@ -48,6 +48,7 @@ local M = {
             format = format.github.issues,
         },
         mentions = {
+            -- Use math.huge to fetch until there are no more results
             limit = 100,
             sort_by = sort.github.mentions,
             format = format.github.mentions,
