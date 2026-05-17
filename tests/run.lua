@@ -1,6 +1,7 @@
 package.path = vim.fn.getcwd() .. "/lua/?.lua;" .. vim.fn.getcwd() .. "/lua/?/init.lua;" .. package.path
 
 local command = require("cmp_git.command")
+local config = require("cmp_git.config")
 local response = require("cmp_git.response")
 local log = require("cmp_git.log")
 local remote_url = require("cmp_git.repository.remote_url")
@@ -567,9 +568,159 @@ local function test_legacy_trigger_action_arguments()
     assert_eq(received.git_info, git_info, "legacy trigger action receives git info")
 end
 
+local function test_config_normalize_fills_defaults_and_hosts()
+    local normalized = config.normalize({
+        github = {
+            issues = {
+                limit = 7,
+            },
+        },
+    })
+
+    assert_eq(normalized.github.issues.limit, 7, "normalized config keeps nested override")
+    assert_eq(normalized.github.issues.state, "open", "normalized config fills issue defaults")
+    assert_eq(type(normalized.github.issues.format.label), "function", "normalized config fills format defaults")
+    assert_eq(type(normalized.github.pull_requests.format.label), "function", "normalized config fills sibling defaults")
+    assert_true(vim.tbl_contains(normalized.github.hosts, "github.com"), "normalized config adds github host")
+    assert_true(vim.tbl_contains(normalized.gitlab.hosts, "gitlab.com"), "normalized config adds gitlab host")
+end
+
+local function test_config_normalize_nested_filter_and_sort_overrides()
+    local issue_filter = function()
+        return "issue-filter"
+    end
+    local sort_by = function(issue)
+        return issue.title
+    end
+
+    local normalized = config.normalize({
+        github = {
+            issues = {
+                sort_by = sort_by,
+                format = {
+                    filterText = issue_filter,
+                },
+            },
+        },
+    })
+
+    assert_eq(normalized.github.issues.format.filterText, issue_filter, "nested issue filter is preserved")
+    assert_true(
+        normalized.github.mentions.format.filterText ~= issue_filter,
+        "nested issue filter does not affect mentions"
+    )
+    assert_eq(normalized.github.issues.sort_by, sort_by, "custom sort is preserved")
+end
+
+local function test_config_normalize_provider_filter_alias()
+    local git_filter = function()
+        return "git"
+    end
+    local github_filter = function()
+        return "github"
+    end
+    local gitlab_filter = function()
+        return "gitlab"
+    end
+
+    local normalized = config.normalize({
+        git = {
+            filter_fn = git_filter,
+        },
+        github = {
+            filter_fn = github_filter,
+        },
+        gitlab = {
+            filter_fn = gitlab_filter,
+        },
+    })
+
+    assert_eq(normalized.git.commits.format.filterText, git_filter, "git filter alias applies to commits")
+    assert_eq(normalized.github.issues.format.filterText, github_filter, "github filter alias applies to issues")
+    assert_eq(normalized.github.mentions.format.filterText, github_filter, "github filter alias applies to mentions")
+    assert_eq(
+        normalized.github.pull_requests.format.filterText,
+        github_filter,
+        "github filter alias applies to pull requests"
+    )
+    assert_eq(normalized.gitlab.issues.format.filterText, gitlab_filter, "gitlab filter alias applies to issues")
+    assert_eq(normalized.gitlab.mentions.format.filterText, gitlab_filter, "gitlab filter alias applies to mentions")
+    assert_eq(
+        normalized.gitlab.merge_requests.format.filterText,
+        gitlab_filter,
+        "gitlab filter alias applies to merge requests"
+    )
+end
+
+local function test_config_normalize_provider_filter_alias_overrides_nested_filter()
+    local nested_filter = function()
+        return "nested"
+    end
+    local provider_filter = function()
+        return "provider"
+    end
+
+    local normalized = config.normalize({
+        github = {
+            filter_fn = provider_filter,
+            issues = {
+                format = {
+                    filterText = nested_filter,
+                },
+            },
+        },
+    })
+
+    assert_eq(
+        normalized.github.issues.format.filterText,
+        provider_filter,
+        "provider filter alias overrides nested filter"
+    )
+end
+
+local function test_config_normalize_does_not_leak_hosts_between_instances()
+    local first = config.normalize({
+        github = {
+            hosts = { "github.example.com" },
+        },
+    })
+    local second = config.normalize({
+        github = {
+            hosts = { "github.other.com" },
+        },
+    })
+
+    assert_true(vim.tbl_contains(first.github.hosts, "github.example.com"), "first normalized config keeps own host")
+    assert_true(not vim.tbl_contains(first.github.hosts, "github.other.com"), "first normalized config rejects second host")
+    assert_true(vim.tbl_contains(second.github.hosts, "github.other.com"), "second normalized config keeps own host")
+    assert_true(vim.tbl_contains(second.github.hosts, "github.com"), "second normalized config keeps default host")
+end
+
+local function test_source_new_uses_normalized_config()
+    local source = Source.new({
+        github = {
+            issues = {
+                limit = 5,
+            },
+        },
+    })
+
+    assert_eq(source.config.github.issues.limit, 5, "source config keeps normalized override")
+    assert_eq(source.sources.github.config.issues.limit, 5, "github source receives normalized override")
+    assert_eq(
+        type(source.sources.github.config.pull_requests.format.label),
+        "function",
+        "github source receives normalized defaults"
+    )
+    assert_true(
+        source.sources.github:is_valid_host({ host = "github.com", owner = "owner", repo = "repo" }),
+        "github source receives normalized default host"
+    )
+end
+
 local function test_github_instance_state_isolation()
-    local first = GitHub.new({ hosts = { "github.example.com" } })
-    local second = GitHub.new({ hosts = { "github.other.com" } })
+    local first = GitHub.new(config.normalize({ github = { hosts = { "github.example.com" } } }).github)
+    local second = GitHub.new(config.normalize({ github = { hosts = { "github.other.com" } } }).github)
 
     assert_true(
         first:is_valid_host({ host = "github.example.com", owner = "owner", repo = "repo" }),
@@ -595,8 +746,8 @@ local function test_github_instance_state_isolation()
 end
 
 local function test_gitlab_instance_state_isolation()
-    local first = GitLab.new({ hosts = { "gitlab.example.com" } })
-    local second = GitLab.new({ hosts = { "gitlab.other.com" } })
+    local first = GitLab.new(config.normalize({ gitlab = { hosts = { "gitlab.example.com" } } }).gitlab)
+    local second = GitLab.new(config.normalize({ gitlab = { hosts = { "gitlab.other.com" } } }).gitlab)
 
     assert_true(
         first:is_valid_host({ host = "gitlab.example.com", owner = "owner", repo = "repo" }),
@@ -622,8 +773,8 @@ local function test_gitlab_instance_state_isolation()
 end
 
 local function test_git_instance_state_isolation()
-    local first = Git.new({})
-    local second = Git.new({})
+    local first = Git.new(config.normalize({}).git)
+    local second = Git.new(config.normalize({}).git)
 
     first.cache_commits[1] = { { label = "first" } }
 
@@ -643,6 +794,12 @@ test_trigger_action_first_handled_wins()
 test_preferred_trigger_action_names()
 test_legacy_trigger_action_aliases()
 test_legacy_trigger_action_arguments()
+test_config_normalize_fills_defaults_and_hosts()
+test_config_normalize_nested_filter_and_sort_overrides()
+test_config_normalize_provider_filter_alias()
+test_config_normalize_provider_filter_alias_overrides_nested_filter()
+test_config_normalize_does_not_leak_hosts_between_instances()
+test_source_new_uses_normalized_config()
 test_issue_capability_uses_cache_and_runner()
 test_mention_capability_preflight_and_pagination()
 test_commit_capability_parse_nul_records()

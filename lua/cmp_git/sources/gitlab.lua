@@ -24,15 +24,7 @@ function GitLab.new(overrides)
         merge_requests = change_requests_cache,
     }
 
-    self.config = vim.tbl_deep_extend("force", require("cmp_git.config").gitlab, overrides or {})
-
-    if overrides.filter_fn then
-        self.config.format.filterText = overrides.filter_fn
-    end
-
-    if not vim.tbl_contains(self.config.hosts, "gitlab.com") then
-        table.insert(self.config.hosts, "gitlab.com")
-    end
+    self.config = overrides or {}
 
     return self
 end

@@ -29,15 +29,7 @@ function GitHub.new(overrides)
         pull_requests = change_requests_cache,
     }
 
-    self.config = vim.tbl_deep_extend("force", require("cmp_git.config").github, overrides or {})
-
-    if overrides.filter_fn then
-        self.config.format.filterText = overrides.filter_fn
-    end
-
-    if not vim.tbl_contains(self.config.hosts, "github.com") then
-        table.insert(self.config.hosts, "github.com")
-    end
+    self.config = overrides or {}
 
     return self
 end

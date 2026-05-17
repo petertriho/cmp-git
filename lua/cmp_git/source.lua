@@ -1,6 +1,7 @@
 local github = require("cmp_git.sources.github")
 local gitlab = require("cmp_git.sources.gitlab")
 local git = require("cmp_git.sources.git")
+local config = require("cmp_git.config")
 local repository = require("cmp_git.repository")
 
 local ROUTE_HANDLED = "handled"
@@ -103,7 +104,7 @@ function Source.new(overrides)
         __index = Source,
     })
 
-    self.config = vim.tbl_extend("force", require("cmp_git.config"), overrides or {})
+    self.config = config.normalize(overrides)
     self.filetypes = {}
     self.sources = {}
     self.trigger_actions = {}

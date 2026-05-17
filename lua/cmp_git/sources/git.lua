@@ -12,11 +12,7 @@ function Git.new(overrides)
     ---@type table<integer, cmp_git.Commit[]>
     self.cache_commits = {}
 
-    self.config = vim.tbl_deep_extend("force", require("cmp_git.config").git, overrides or {})
-
-    if overrides.filter_fn then
-        self.config.format.filterText = overrides.filter_fn
-    end
+    self.config = overrides or {}
 
     return self
 end

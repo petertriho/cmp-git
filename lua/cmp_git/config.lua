@@ -11,7 +11,7 @@ local sort = require("cmp_git.sort")
 ---@field actions string[]
 
 ---@class cmp_git.Config
-local M = {
+local defaults = {
     ---@type string[]
     filetypes = { "gitcommit", "octo", "NeogitCommitMessage" },
     ---@type string[]
@@ -21,8 +21,7 @@ local M = {
     ---@type table<string, string>
     ssh_aliases = {},
     ---@class cmp_git.Config.Git
-    ---@field filter_fn? fun(trigger_char: string, item: cmp_git.Commit): string
-    ---@field format? cmp_git.FormatConfig<cmp_git.Commit>
+    ---@field filter_fn? fun(trigger_char: string, item: cmp_git.Commit): string Compatibility alias for all git capability format.filterText functions.
     git = {
         ---@class cmp_git.Config.GitCommits
         commits = {
@@ -33,8 +32,7 @@ local M = {
         },
     },
     ---@class cmp_git.Config.GitHub
-    ---@field format? cmp_git.FormatConfig<cmp_git.GitHub.Issue | cmp_git.GitHub.Mention | cmp_git.GitHub.PullRequest>
-    ---@field filter_fn? fun(trigger_char: string, item: cmp_git.GitHub.Issue | cmp_git.GitHub.Mention | cmp_git.GitHub.PullRequest): string
+    ---@field filter_fn? fun(trigger_char: string, item: cmp_git.GitHub.Issue | cmp_git.GitHub.Mention | cmp_git.GitHub.PullRequest): string Compatibility alias for all GitHub capability format.filterText functions.
     github = {
         ---@type string[]
         hosts = {},
@@ -68,8 +66,7 @@ local M = {
         },
     },
     ---@class cmp_git.Config.Gitlab
-    ---@field filter_fn? fun(trigger_char: string, item: any): string
-    ---@field format? cmp_git.FormatConfig<any>
+    ---@field filter_fn? fun(trigger_char: string, item: any): string Compatibility alias for all GitLab capability format.filterText functions.
     gitlab = {
         hosts = {},
         issues = {
@@ -110,5 +107,41 @@ local M = {
         },
     },
 }
+
+local M = vim.tbl_deep_extend("force", {}, defaults)
+
+local function ensure_contains(list, item)
+    if not vim.tbl_contains(list, item) then
+        table.insert(list, item)
+    end
+end
+
+local function apply_filter_fn(provider_config, capability_names)
+    if not provider_config.filter_fn then
+        return
+    end
+
+    for _, capability_name in ipairs(capability_names) do
+        local capability = provider_config[capability_name]
+        if capability and capability.format then
+            capability.format.filterText = provider_config.filter_fn
+        end
+    end
+end
+
+---@param overrides? cmp_git.Config Partial user config.
+---@return cmp_git.Config
+function M.normalize(overrides)
+    local normalized = vim.tbl_deep_extend("force", {}, defaults, overrides or {})
+
+    ensure_contains(normalized.github.hosts, "github.com")
+    ensure_contains(normalized.gitlab.hosts, "gitlab.com")
+
+    apply_filter_fn(normalized.git, { "commits" })
+    apply_filter_fn(normalized.github, { "issues", "mentions", "pull_requests" })
+    apply_filter_fn(normalized.gitlab, { "issues", "mentions", "merge_requests" })
+
+    return normalized
+end
 
 return M

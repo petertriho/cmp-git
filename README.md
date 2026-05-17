@@ -174,6 +174,9 @@ require("cmp_git").setup({
 )
 ```
 
+Capability-level `format.filterText` is the preferred way to customize completion filtering. Provider-level
+`filter_fn` is supported as a compatibility alias and is applied to every capability for that provider.
+
 ---
 
 **NOTE**
