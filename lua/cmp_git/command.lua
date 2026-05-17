@@ -7,6 +7,7 @@ local M = {}
 ---@class cmp_git.SystemJob
 ---@field command string
 ---@field start fun(self: cmp_git.SystemJob, on_complete?: fun(success: boolean): nil, suppress_failure_callback?: boolean): nil
+---@field cancel? fun(self: cmp_git.SystemJob): nil
 
 ---@class cmp_git.CommandSpec
 ---@field exec string
@@ -43,13 +44,23 @@ function M.build(spec, callback)
 
     return {
         command = spec.exec,
+        handle = nil,
+        cancelled = false,
         start = function(_, on_complete, suppress_failure_callback)
-            vim.system(vim.list_extend({ spec.exec }, spec.args), {
+            local job = _
+            job.handle = vim.system(vim.list_extend({ spec.exec }, spec.args), {
                 text = true,
                 env = job_env,
                 cwd = repository.get_cwd(),
             }, function(result)
                 vim.schedule(function()
+                    if job.cancelled then
+                        if on_complete then
+                            on_complete(false)
+                        end
+                        return
+                    end
+
                     local success = result.code == 0
                     if not success then
                         log.fmt_debug("%s returned with exit code %d", spec.exec, result.code)
@@ -67,6 +78,12 @@ function M.build(spec, callback)
                     end
                 end)
             end)
+        end,
+        cancel = function(_)
+            _.cancelled = true
+            if _.handle and _.handle.kill then
+                _.handle:kill(15)
+            end
         end,
     }
 end
@@ -99,7 +116,10 @@ function M.fallback(first, second)
 
     return {
         command = first and first.command or second.command,
+        active = nil,
+        cancelled = false,
         start = function(_, on_complete)
+            local job = _
             local function done(success)
                 if on_complete then
                     on_complete(success)
@@ -107,22 +127,40 @@ function M.fallback(first, second)
             end
 
             if not first then
+                if job.cancelled then
+                    done(false)
+                    return
+                end
+                job.active = second
                 second:start(done)
                 return
             end
 
+            job.active = first
             first:start(function(success)
+                if job.cancelled then
+                    done(false)
+                    return
+                end
+
                 if success then
                     done(true)
                     return
                 end
 
                 if second then
+                    job.active = second
                     second:start(done)
                 else
                     done(false)
                 end
             end, true)
+        end,
+        cancel = function(_)
+            _.cancelled = true
+            if _.active and _.active.cancel then
+                _.active:cancel()
+            end
         end,
     }
 end

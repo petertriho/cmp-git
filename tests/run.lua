@@ -5,6 +5,8 @@ local config = require("cmp_git.config")
 local response = require("cmp_git.response")
 local log = require("cmp_git.log")
 local remote_url = require("cmp_git.repository.remote_url")
+local Core = require("cmp_git.core")
+local Blink = require("cmp_git.blink")
 local Source = require("cmp_git.source")
 local Git = require("cmp_git.sources.git")
 local GitHub = require("cmp_git.sources.github")
@@ -12,6 +14,7 @@ local GitLab = require("cmp_git.sources.gitlab")
 local issue_capability = require("cmp_git.provider.capabilities.issues")
 local mention_capability = require("cmp_git.provider.capabilities.mentions")
 local commit_capability = require("cmp_git.provider.capabilities.commits")
+local change_request_capability = require("cmp_git.provider.capabilities.change_requests")
 
 local failures = {}
 
@@ -107,6 +110,45 @@ local function test_fallback()
 
     assert_eq(result.stdout, "fallback", "fallback stdout")
     assert_eq(result.success, true, "fallback success")
+end
+
+local function test_command_fallback_cancels_active_job()
+    local first_cancelled = false
+    local second_started = false
+    local first = {
+        command = "first",
+        start = function() end,
+        cancel = function()
+            first_cancelled = true
+        end,
+    }
+    local second = {
+        command = "second",
+        start = function()
+            second_started = true
+        end,
+    }
+
+    local job = command.fallback(first, second)
+    job:start()
+    job:cancel()
+
+    assert_true(first_cancelled, "fallback cancellation cancels active job")
+    assert_true(not second_started, "fallback cancellation does not start later job")
+end
+
+local function test_command_build_cancel_suppresses_callback()
+    local called = false
+    local job = command.build({ exec = "sh", args = { "-c", "sleep 0.2; printf done" } }, function()
+        called = true
+    end)
+
+    assert_true(job ~= nil, "cancellable command job is created")
+    job:start()
+    job:cancel()
+    vim.wait(350)
+
+    assert_true(not called, "cancelled command suppresses callback")
 end
 
 local function test_build_job()
@@ -308,13 +350,15 @@ local function test_issue_capability_uses_cache_and_runner()
         bufnr = 42,
     }
 
-    issue_capability.complete(args)
-    issue_capability.complete(args)
+    local job = issue_capability.complete(args)
+    local cached_job = issue_capability.complete(args)
 
     assert_eq(request_count, 1, "issue capability requests once")
     assert_eq(runner_count, 1, "issue capability runs once")
     assert_eq(callback_count, 2, "issue capability callbacks on miss and hit")
     assert_eq(last_list.items[1].label, "one", "issue capability caches mapped items")
+    assert_true(job ~= nil, "issue capability returns started job")
+    assert_eq(cached_job, nil, "issue capability cache hit returns no job")
 end
 
 local function test_mention_capability_preflight_and_pagination()
@@ -382,6 +426,41 @@ local function test_mention_capability_preflight_and_pagination()
     assert_eq(#callbacks, 2, "mention capability returns partial and final callbacks")
     assert_eq(callbacks[1].isIncomplete, true, "first mention callback is incomplete")
     assert_eq(callbacks[2].isIncomplete, false, "final mention callback is complete")
+end
+
+local function test_change_request_capability_returns_job()
+    local runner = {
+        build_fallback_list = function(_commands, callback, handle_item)
+            return {
+                start = function()
+                    callback({ items = { handle_item({ name = "pr" }) }, isIncomplete = false })
+                end,
+            }
+        end,
+    }
+    local adapter = {
+        change_requests_request = function()
+            return {
+                commands = { { exec = "fake", args = {} } },
+                handle_item = function(item)
+                    return { label = item.name }
+                end,
+            }
+        end,
+    }
+
+    local job = change_request_capability.complete({
+        adapter = adapter,
+        cache = {},
+        callback = function() end,
+        config = {},
+        git_info = {},
+        trigger_char = "#",
+        runner = runner,
+        bufnr = 45,
+    })
+
+    assert_true(job ~= nil, "change request capability returns started job")
 end
 
 local function commit_test_config()
@@ -525,13 +604,109 @@ end
 local function test_git_commit_edit_range_is_preserved()
     local items = { { insertText = "abcdef1" } }
 
-    Git._update_edit_range(items, { row = 3, character = 5 }, 99)
+    Core.apply_text_edits(items, { cursor = { row = 3, character = 5 }, line = ":abcd", trigger_character = ":" })
 
     assert_eq(items[1].textEdit.range.start.line, 2, "commit edit range start line")
-    assert_eq(items[1].textEdit.range.start.character, 4, "commit edit range start character")
+    assert_eq(items[1].textEdit.range.start.character, 0, "commit edit range start character")
     assert_eq(items[1].textEdit.range["end"].line, 2, "commit edit range end line")
-    assert_eq(items[1].textEdit.range["end"].character, 12, "commit edit range end character")
+    assert_eq(items[1].textEdit.range["end"].character, 5, "commit edit range end character")
     assert_eq(items[1].textEdit.newText, "abcdef1", "commit edit range new text")
+end
+
+local function test_core_text_edit_ranges_for_all_triggers()
+    local cases = {
+        { trigger = ":", line = "refs :abc", cursor = 9, insert = "abcdef1" },
+        { trigger = "#", line = "fix #12", cursor = 7, insert = "#123" },
+        { trigger = "@", line = "cc @ad", cursor = 6, insert = "@ada" },
+        { trigger = "!", line = "see !4", cursor = 6, insert = "!42" },
+    }
+
+    for _, case in ipairs(cases) do
+        local items = { { insertText = case.insert } }
+        Core.apply_text_edits(items, {
+            cursor = { row = 1, character = case.cursor },
+            line = case.line,
+            trigger_character = case.trigger,
+        })
+
+        local expected_start = string.find(case.line, case.trigger, 1, true) - 1
+        assert_eq(items[1].textEdit.range.start.character, expected_start, case.trigger .. " range starts at trigger")
+        assert_eq(items[1].textEdit.range["end"].character, case.cursor, case.trigger .. " range ends at cursor")
+        assert_eq(items[1].textEdit.newText, case.insert, case.trigger .. " range inserts text")
+    end
+end
+
+local function test_blink_adapter_api_and_cancellation()
+    local blink = Blink.new({})
+    local cancelled = false
+    local callback_result
+    blink.core = {
+        is_available = function()
+            return true
+        end,
+        get_trigger_characters = function()
+            return { "#" }
+        end,
+        complete = function(_, context, callback)
+            assert_eq(context.trigger_character, "#", "blink forwards trigger character")
+            assert_eq(context.cursor.row, 1, "blink forwards cursor row")
+            assert_eq(context.cursor.character, 5, "blink forwards cursor character")
+            callback({ items = { { label = "#1", insertText = "#1" } }, isIncomplete = true })
+            return {
+                cancel = function()
+                    cancelled = true
+                end,
+            }
+        end,
+    }
+
+    assert_true(blink:enabled(), "blink enabled delegates to core")
+    assert_eq(blink:get_trigger_characters()[1], "#", "blink trigger characters delegate to core")
+
+    local cancel = blink:get_completions({
+        trigger = { character = "#" },
+        cursor = { line = 0, character = 5 },
+        line = "fix #",
+        bufnr = 1,
+    }, function(result)
+        callback_result = result
+    end)
+
+    assert_eq(callback_result.items[1].label, "#1", "blink maps completion items")
+    assert_eq(callback_result.is_incomplete_backward, false, "blink disables backward incomplete requests")
+    assert_eq(callback_result.is_incomplete_forward, true, "blink forwards incomplete state")
+
+    cancel()
+    assert_true(cancelled, "blink cancellation delegates to core job")
+end
+
+local function test_blink_adapter_suppresses_stale_callbacks_after_cancel()
+    local blink = Blink.new({})
+    local pending_callback
+    local called = false
+    blink.core = {
+        is_available = function()
+            return true
+        end,
+        get_trigger_characters = function()
+            return { "#" }
+        end,
+        complete = function(_, _context, callback)
+            pending_callback = callback
+            return { cancel = function() end }
+        end,
+    }
+
+    local cancel = blink:get_completions(
+        { trigger = { character = "#" }, cursor = { line = 0, character = 1 }, line = "#" },
+        function()
+            called = true
+        end
+    )
+    cancel()
+    pending_callback({ items = { { label = "stale" } }, isIncomplete = false })
+
+    assert_true(not called, "blink suppresses stale callback after cancellation")
 end
 
 local function test_legacy_trigger_action_arguments()
@@ -580,7 +755,11 @@ local function test_config_normalize_fills_defaults_and_hosts()
     assert_eq(normalized.github.issues.limit, 7, "normalized config keeps nested override")
     assert_eq(normalized.github.issues.state, "open", "normalized config fills issue defaults")
     assert_eq(type(normalized.github.issues.format.label), "function", "normalized config fills format defaults")
-    assert_eq(type(normalized.github.pull_requests.format.label), "function", "normalized config fills sibling defaults")
+    assert_eq(
+        type(normalized.github.pull_requests.format.label),
+        "function",
+        "normalized config fills sibling defaults"
+    )
     assert_true(vim.tbl_contains(normalized.github.hosts, "github.com"), "normalized config adds github host")
     assert_true(vim.tbl_contains(normalized.gitlab.hosts, "gitlab.com"), "normalized config adds gitlab host")
 end
@@ -691,7 +870,10 @@ local function test_config_normalize_does_not_leak_hosts_between_instances()
     })
 
     assert_true(vim.tbl_contains(first.github.hosts, "github.example.com"), "first normalized config keeps own host")
-    assert_true(not vim.tbl_contains(first.github.hosts, "github.other.com"), "first normalized config rejects second host")
+    assert_true(
+        not vim.tbl_contains(first.github.hosts, "github.other.com"),
+        "first normalized config rejects second host"
+    )
     assert_true(vim.tbl_contains(second.github.hosts, "github.other.com"), "second normalized config keeps own host")
     assert_true(vim.tbl_contains(second.github.hosts, "github.com"), "second normalized config keeps default host")
 end
@@ -786,6 +968,8 @@ test_handle_response()
 test_parse_remote_url()
 test_missing_executable()
 test_fallback()
+test_command_fallback_cancels_active_job()
+test_command_build_cancel_suppresses_callback()
 test_build_job()
 test_logger()
 test_trigger_action_fallback_for_hash()
@@ -802,11 +986,15 @@ test_config_normalize_does_not_leak_hosts_between_instances()
 test_source_new_uses_normalized_config()
 test_issue_capability_uses_cache_and_runner()
 test_mention_capability_preflight_and_pagination()
+test_change_request_capability_returns_job()
 test_commit_capability_parse_nul_records()
 test_commit_capability_parse_marker_collision_and_malformed_records()
 test_commit_capability_maps_items_without_cmp_params()
 test_commit_capability_uses_parsed_cache_and_runner()
 test_git_commit_edit_range_is_preserved()
+test_core_text_edit_ranges_for_all_triggers()
+test_blink_adapter_api_and_cancellation()
+test_blink_adapter_suppresses_stale_callbacks_after_cancel()
 test_github_instance_state_isolation()
 test_gitlab_instance_state_isolation()
 test_git_instance_state_isolation()

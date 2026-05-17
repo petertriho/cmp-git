@@ -50,7 +50,7 @@ function GitLab:complete_issues(callback, git_info, trigger_char)
         return false
     end
 
-    issues.complete({
+    local job = issues.complete({
         adapter = adapter,
         cache = self.cache.issues,
         callback = callback,
@@ -59,7 +59,7 @@ function GitLab:complete_issues(callback, git_info, trigger_char)
         trigger_char = trigger_char,
     })
 
-    return true
+    return true, job
 end
 
 ---@param callback fun(list: cmp_git.CompletionList)
@@ -70,7 +70,7 @@ function GitLab:complete_mentions(callback, git_info, trigger_char)
         return false
     end
 
-    mentions.complete({
+    local job = mentions.complete({
         adapter = adapter,
         cache = self.cache.mentions,
         callback = callback,
@@ -79,7 +79,7 @@ function GitLab:complete_mentions(callback, git_info, trigger_char)
         trigger_char = trigger_char,
     })
 
-    return true
+    return true, job
 end
 
 ---@param callback fun(list: cmp_git.CompletionList)
@@ -90,7 +90,7 @@ function GitLab:complete_change_requests(callback, git_info, trigger_char)
         return false
     end
 
-    change_requests.complete({
+    local job = change_requests.complete({
         adapter = adapter,
         cache = self.cache.change_requests,
         callback = callback,
@@ -99,7 +99,7 @@ function GitLab:complete_change_requests(callback, git_info, trigger_char)
         trigger_char = trigger_char,
     })
 
-    return true
+    return true, job
 end
 
 function GitLab:get_issues(callback, git_info, trigger_char)

@@ -1,6 +1,6 @@
 # cmp-git
 
-Git source for [hrsh7th/nvim-cmp](https://github.com/hrsh7th/nvim-cmp)
+Git source for [hrsh7th/nvim-cmp](https://github.com/hrsh7th/nvim-cmp) and [Saghen/blink.cmp](https://github.com/Saghen/blink.cmp).
 
 ## Features
 
@@ -56,6 +56,8 @@ use("petertriho/cmp-git")
 
 [lazy.nvim](https://github.com/folke/lazy.nvim)
 
+With `nvim-cmp`:
+
 ```lua
 return {
     "petertriho/cmp-git",
@@ -69,7 +71,17 @@ return {
 }
 ```
 
+With `blink.cmp`:
+
+```lua
+return {
+    "petertriho/cmp-git",
+}
+```
+
 ## Setup
+
+### nvim-cmp
 
 ```lua
 require("cmp").setup({
@@ -81,6 +93,29 @@ require("cmp").setup({
 
 require("cmp_git").setup()
 ```
+
+### blink.cmp
+
+`blink.cmp` support is optional and configured from your `blink.cmp` setup. Do not call `require("cmp_git").setup()` for blink; that function registers the `nvim-cmp` source.
+
+```lua
+require("blink.cmp").setup({
+    sources = {
+        default = { "git" },
+        providers = {
+            git = {
+                name = "git",
+                module = "cmp_git.blink",
+                opts = {
+                    -- cmp-git options go here
+                },
+            },
+        },
+    },
+})
+```
+
+To enable `cmp-git` only for commit-related filetypes while keeping your normal blink sources elsewhere, add it through blink's `sources.per_filetype` configuration for filetypes such as `gitcommit`, `octo`, or `NeogitCommitMessage`.
 
 ## Development
 

@@ -41,6 +41,7 @@ function M.complete(args)
     if job then
         job:start()
     end
+    return job
 end
 
 return M

@@ -6,16 +6,30 @@ local M = {}
 function M.complete(args)
     local bufnr = args.bufnr or vim.api.nvim_get_current_buf()
     local runner = args.runner or command
+    local state = { cancelled = false, active = nil }
+    local controller = {
+        command = "mentions",
+        cancel = function()
+            state.cancelled = true
+            if state.active and state.active.cancel then
+                state.active:cancel()
+            end
+        end,
+    }
 
     if args.cache[bufnr] then
         local mentions_cache = args.cache[bufnr]
         args.callback({ items = mentions_cache.items, isIncomplete = mentions_cache.in_progress })
-        return
+        return nil
     end
 
     args.cache[bufnr] = { items = {}, in_progress = true }
 
     local function fetch_mentions(page, context)
+        if state.cancelled then
+            return
+        end
+
         local mentions_cache = args.cache[bufnr]
         local remaining = args.config.limit - #mentions_cache.items
         if remaining <= 0 then
@@ -32,6 +46,10 @@ function M.complete(args)
         })
 
         local job = runner.build_fallback_list(request.commands, function(list)
+            if state.cancelled then
+                return
+            end
+
             vim.list_extend(mentions_cache.items, list.items)
 
             if args.adapter.mentions_has_more then
@@ -49,6 +67,7 @@ function M.complete(args)
         end, request.handle_item, request.handle_parsed)
 
         if job then
+            state.active = job
             job:start()
         else
             args.cache[bufnr] = nil
@@ -60,10 +79,14 @@ function M.complete(args)
 
     if not preflight then
         fetch_mentions(1, nil)
-        return
+        return controller
     end
 
     local job = runner.build_fallback(preflight.commands, function(result, success)
+        if state.cancelled then
+            return
+        end
+
         local context = nil
         if preflight.handle_result then
             context = preflight.handle_result(result, success)
@@ -72,10 +95,13 @@ function M.complete(args)
     end)
 
     if job then
+        state.active = job
         job:start()
     else
         args.cache[bufnr] = nil
     end
+
+    return controller
 end
 
 return M

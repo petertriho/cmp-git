@@ -107,7 +107,7 @@ function GitHub:complete_issues(callback, git_info, trigger_char)
     if job then
         job:start()
     end
-    return true
+    return true, job
 end
 
 ---@param callback fun(list: cmp_git.CompletionList)
@@ -123,7 +123,7 @@ function GitHub:complete_change_requests(callback, git_info, trigger_char)
     if job then
         job:start()
     end
-    return true
+    return true, job
 end
 
 ---@param callback fun(list: cmp_git.CompletionList)
@@ -143,16 +143,33 @@ function GitHub:complete_issues_and_change_requests(callback, git_info, trigger_
         items = vim.list_extend(items, self.cache.change_requests[bufnr])
         log.fmt_debug("Got %d issues and prs from cache", #items)
         callback({ items = self.cache.issues[bufnr], isIncomplete = false })
-        return true
+        return true, nil
     end
 
     local items = {}
+    local state = { cancelled = false, active = nil }
+    local controller = {
+        command = "github_issues_and_change_requests",
+        cancel = function()
+            state.cancelled = true
+            if state.active and state.active.cancel then
+                state.active:cancel()
+            end
+        end,
+    }
+
     local issues_job = self:_issues_job(function(args)
+        if state.cancelled then
+            return
+        end
         items = args.items
         self.cache.issues[bufnr] = args.items
     end, git_info, trigger_char)
 
     local change_requests_job = self:_change_requests_job(function(args)
+        if state.cancelled then
+            return
+        end
         local prs = args.items
         self.cache.change_requests[bufnr] = args.items
         items = vim.list_extend(items, prs)
@@ -162,16 +179,22 @@ function GitHub:complete_issues_and_change_requests(callback, git_info, trigger_
     end, git_info, trigger_char)
 
     if issues_job then
+        state.active = issues_job
         issues_job:start(function()
+            if state.cancelled then
+                return
+            end
             if change_requests_job then
+                state.active = change_requests_job
                 change_requests_job:start()
             end
         end)
     elseif change_requests_job then
+        state.active = change_requests_job
         change_requests_job:start()
     end
 
-    return true
+    return true, controller
 end
 
 ---@param callback fun(list: cmp_git.CompletionList)
@@ -182,7 +205,7 @@ function GitHub:complete_mentions(callback, git_info, trigger_char)
         return false
     end
 
-    mentions.complete({
+    local job = mentions.complete({
         adapter = adapter,
         cache = self.cache.mentions,
         callback = callback,
@@ -191,7 +214,7 @@ function GitHub:complete_mentions(callback, git_info, trigger_char)
         trigger_char = trigger_char,
     })
 
-    return true
+    return true, job
 end
 
 function GitHub:get_issues(callback, git_info, trigger_char)
