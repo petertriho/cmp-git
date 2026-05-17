@@ -5,6 +5,9 @@ local response = require("cmp_git.response")
 local log = require("cmp_git.log")
 local remote_url = require("cmp_git.repository.remote_url")
 local Source = require("cmp_git.source")
+local Git = require("cmp_git.sources.git")
+local GitHub = require("cmp_git.sources.github")
+local GitLab = require("cmp_git.sources.gitlab")
 
 local failures = {}
 
@@ -239,6 +242,70 @@ local function test_legacy_trigger_action_arguments()
     assert_eq(received.git_info, git_info, "legacy trigger action receives git info")
 end
 
+local function test_github_instance_state_isolation()
+    local first = GitHub.new({ hosts = { "github.example.com" } })
+    local second = GitHub.new({ hosts = { "github.other.com" } })
+
+    assert_true(
+        first:is_valid_host({ host = "github.example.com", owner = "owner", repo = "repo" }),
+        "first GitHub instance validates own host"
+    )
+    assert_true(
+        not first:is_valid_host({ host = "github.other.com", owner = "owner", repo = "repo" }),
+        "first GitHub instance rejects second host"
+    )
+    assert_true(
+        second:is_valid_host({ host = "github.other.com", owner = "owner", repo = "repo" }),
+        "second GitHub instance validates own host"
+    )
+    assert_true(
+        second:is_valid_host({ host = "github.com", owner = "owner", repo = "repo" }),
+        "GitHub instance validates default host"
+    )
+
+    first.cache.issues[1] = { { label = "first" } }
+    assert_eq(second.cache.issues[1], nil, "GitHub issue cache is instance-local")
+    assert_true(first.cache.mentions ~= second.cache.mentions, "GitHub mention cache table is instance-local")
+    assert_true(first.cache.pull_requests ~= second.cache.pull_requests, "GitHub PR cache table is instance-local")
+end
+
+local function test_gitlab_instance_state_isolation()
+    local first = GitLab.new({ hosts = { "gitlab.example.com" } })
+    local second = GitLab.new({ hosts = { "gitlab.other.com" } })
+
+    assert_true(
+        first:is_valid_host({ host = "gitlab.example.com", owner = "owner", repo = "repo" }),
+        "first GitLab instance validates own host"
+    )
+    assert_true(
+        not first:is_valid_host({ host = "gitlab.other.com", owner = "owner", repo = "repo" }),
+        "first GitLab instance rejects second host"
+    )
+    assert_true(
+        second:is_valid_host({ host = "gitlab.other.com", owner = "owner", repo = "repo" }),
+        "second GitLab instance validates own host"
+    )
+    assert_true(
+        second:is_valid_host({ host = "gitlab.com", owner = "owner", repo = "repo" }),
+        "GitLab instance validates default host"
+    )
+
+    first.cache.issues[1] = { { label = "first" } }
+    assert_eq(second.cache.issues[1], nil, "GitLab issue cache is instance-local")
+    assert_true(first.cache.mentions ~= second.cache.mentions, "GitLab mention cache table is instance-local")
+    assert_true(first.cache.merge_requests ~= second.cache.merge_requests, "GitLab MR cache table is instance-local")
+end
+
+local function test_git_instance_state_isolation()
+    local first = Git.new({})
+    local second = Git.new({})
+
+    first.cache_commits[1] = { { label = "first" } }
+
+    assert_eq(second.cache_commits[1], nil, "Git commit cache is instance-local")
+    assert_true(first.cache_commits ~= second.cache_commits, "Git commit cache table is instance-local")
+end
+
 test_handle_response()
 test_parse_remote_url()
 test_missing_executable()
@@ -249,6 +316,9 @@ test_trigger_action_fallback_for_hash()
 test_trigger_action_ordering_for_at()
 test_trigger_action_first_handled_wins()
 test_legacy_trigger_action_arguments()
+test_github_instance_state_isolation()
+test_gitlab_instance_state_isolation()
+test_git_instance_state_isolation()
 
 if #failures > 0 then
     for _, failure in ipairs(failures) do

@@ -8,19 +8,7 @@ local format = require("cmp_git.format")
 ---@field items cmp_git.CompletionItem[]
 
 ---@class cmp_git.Source.GitHub
-local GitHub = {
-    cache = {
-        ---@type table<integer, cmp_git.CompletionItem[]>
-        issues = {},
-        ---@type table<integer, cmp_git.AsyncItemList>
-        mentions = {},
-        ---@type table<integer, cmp_git.CompletionItem[]>
-        pull_requests = {},
-    },
-    ---@type cmp_git.Config.GitHub
-    ---@diagnostic disable-next-line: missing-fields
-    config = {},
-}
+local GitHub = {}
 
 ---@param overrides cmp_git.Config.GitHub
 function GitHub.new(overrides)
@@ -28,14 +16,25 @@ function GitHub.new(overrides)
         __index = GitHub,
     })
 
+    self.cache = {
+        ---@type table<integer, cmp_git.CompletionItem[]>
+        issues = {},
+        ---@type table<integer, cmp_git.AsyncItemList>
+        mentions = {},
+        ---@type table<integer, cmp_git.CompletionItem[]>
+        pull_requests = {},
+    }
+
     self.config = vim.tbl_deep_extend("force", require("cmp_git.config").github, overrides or {})
 
     if overrides.filter_fn then
         self.config.format.filterText = overrides.filter_fn
     end
 
-    table.insert(self.config.hosts, "github.com")
-    GitHub.config = self.config
+    if not vim.tbl_contains(self.config.hosts, "github.com") then
+        table.insert(self.config.hosts, "github.com")
+    end
+
     return self
 end
 
@@ -242,7 +241,7 @@ function GitHub:is_valid_host(git_info)
         git_info.host == nil
         or git_info.owner == nil
         or git_info.repo == nil
-        or not vim.tbl_contains(GitHub.config.hosts, git_info.host)
+        or not vim.tbl_contains(self.config.hosts, git_info.host)
     then
         return false
     end
@@ -293,7 +292,7 @@ end
 ---@param git_info cmp_git.GitInfo
 ---@param trigger_char string
 function GitHub:get_issues(callback, git_info, trigger_char)
-    if not GitHub:is_valid_host(git_info) then
+    if not self:is_valid_host(git_info) then
         return false
     end
 
@@ -312,7 +311,7 @@ end
 ---@param git_info cmp_git.GitInfo
 ---@param trigger_char string
 function GitHub:get_pull_requests(callback, git_info, trigger_char)
-    if not GitHub:is_valid_host(git_info) then
+    if not self:is_valid_host(git_info) then
         return false
     end
 
@@ -331,7 +330,7 @@ end
 ---@param git_info cmp_git.GitInfo
 ---@param trigger_char string
 function GitHub:get_issues_and_prs(callback, git_info, trigger_char)
-    if not GitHub:is_valid_host(git_info) then
+    if not self:is_valid_host(git_info) then
         return false
     end
 
@@ -458,7 +457,7 @@ end
 ---@param trigger_char string
 ---@return boolean
 function GitHub:get_mentions(callback, git_info, trigger_char)
-    if not GitHub:is_valid_host(git_info) then
+    if not self:is_valid_host(git_info) then
         return false
     end
 

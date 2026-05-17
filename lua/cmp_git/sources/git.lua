@@ -2,19 +2,16 @@ local format = require("cmp_git.format")
 local command = require("cmp_git.command")
 
 ---@class cmp_git.Source.Git
-local Git = {
-    ---@type table<integer, cmp_git.CompletionItem[]>
-    cache_commits = {},
-    ---@type cmp_git.Config.Git
-    ---@diagnostic disable-next-line: missing-fields
-    config = {},
-}
+local Git = {}
 
 ---@param overrides cmp_git.Config.Git
 function Git.new(overrides)
     local self = setmetatable({}, {
         __index = Git,
     })
+
+    ---@type table<integer, cmp_git.CompletionItem[]>
+    self.cache_commits = {}
 
     self.config = vim.tbl_deep_extend("force", require("cmp_git.config").git, overrides or {})
 
@@ -84,62 +81,59 @@ local function parse_commits(trigger_char, callback, config)
     local end_entry_marker = "###CMP_GIT_END###"
 
     -- Extract abbreviated commit sha, subject, body, author name, author email, commit timestamp
-    local job = command.build(
-        {
-            exec = "git",
-            args = {
-                "log",
-                "-n",
-                config.limit,
-                "--date=unix",
-                string.format(
-                    "--pretty=format:%%H%s%%s%s%%b%s%%cn%s%%ce%s%%cd%s%s",
-                    end_part_marker,
-                    end_part_marker,
-                    end_part_marker,
-                    end_part_marker,
-                    end_part_marker,
-                    end_part_marker,
-                    end_entry_marker
-                ),
-            },
+    local job = command.build({
+        exec = "git",
+        args = {
+            "log",
+            "-n",
+            config.limit,
+            "--date=unix",
+            string.format(
+                "--pretty=format:%%H%s%%s%s%%b%s%%cn%s%%ce%s%%cd%s%s",
+                end_part_marker,
+                end_part_marker,
+                end_part_marker,
+                end_part_marker,
+                end_part_marker,
+                end_part_marker,
+                end_entry_marker
+            ),
         },
-        function(result, success)
-            if not success then
-                return
-            end
-
-            local commits = {}
-            local entries = split_by(result, end_entry_marker)
-
-            for _, e in ipairs(entries) do
-                local part = split_by(e, end_part_marker)
-
-                local sha = trim(part[1]):sub(0, config.sha_length)
-                local title = trim(part[2])
-                local description = trim(part[3]) or ""
-                local author_name = part[4] or ""
-                local author_mail = part[5] or ""
-                local commit_timestamp = part[6] or ""
-                local diff = os.difftime(os.time(), commit_timestamp)
-
-                ---@class cmp_git.Commit
-                local commit = {
-                    sha = sha,
-                    title = title,
-                    description = description,
-                    author_name = author_name,
-                    author_mail = author_mail,
-                    commit_timestamp = commit_timestamp,
-                    diff = diff,
-                }
-
-                table.insert(commits, format.item(config, trigger_char, commit))
-            end
-
-            callback(commits)
+    }, function(result, success)
+        if not success then
+            return
         end
-    )
+
+        local commits = {}
+        local entries = split_by(result, end_entry_marker)
+
+        for _, e in ipairs(entries) do
+            local part = split_by(e, end_part_marker)
+
+            local sha = trim(part[1]):sub(0, config.sha_length)
+            local title = trim(part[2])
+            local description = trim(part[3]) or ""
+            local author_name = part[4] or ""
+            local author_mail = part[5] or ""
+            local commit_timestamp = part[6] or ""
+            local diff = os.difftime(os.time(), commit_timestamp)
+
+            ---@class cmp_git.Commit
+            local commit = {
+                sha = sha,
+                title = title,
+                description = description,
+                author_name = author_name,
+                author_mail = author_mail,
+                commit_timestamp = commit_timestamp,
+                diff = diff,
+            }
+
+            table.insert(commits, format.item(config, trigger_char, commit))
+        end
+
+        callback(commits)
+    end)
 
     if job then
         job:start()
