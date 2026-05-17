@@ -1,6 +1,4 @@
 local log = require("cmp_git.log")
-local Job = require("plenary.job")
-
 local M = {}
 
 ---@param c integer|string
@@ -12,26 +10,15 @@ end
 ---@param opts { on_complete: fun(success: boolean, output: string[]): nil; cwd?: string }
 ---@return nil
 local function run_cmd_async(cmd, opts)
-    ---@type string[]
-    local output = {}
-    vim.fn.jobstart(cmd, {
-        on_stdout = function(_, data)
-            if not data then
-                return
-            end
-            vim.list_extend(output, data)
-        end,
-        on_stderr = function(_, data)
-            if not data then
-                return
-            end
-            vim.list_extend(output, data)
-        end,
-        on_exit = function(_, exit_code)
-            opts.on_complete(exit_code == 0, output)
-        end,
+    vim.system({ "sh", "-c", cmd }, {
+        text = true,
         cwd = opts.cwd,
-    })
+    }, function(result)
+        vim.schedule(function()
+            local output = vim.split(result.stdout or "", "\n", { trimempty = true })
+            opts.on_complete(result.code == 0, output)
+        end)
+    end)
 end
 
 ---@param value string
@@ -205,12 +192,16 @@ function M.get_cwd()
     return vim.fn.getcwd()
 end
 
+---@class cmp_git.SystemJob
+---@field command string
+---@field start fun(self: cmp_git.SystemJob, on_complete?: fun(success: boolean): nil, suppress_failure_callback?: boolean): nil
+
 ---@param exec string
 ---@param args string[]
 ---@param env table<string, string | integer>?
 ---@param callback fun(result: string, success: boolean): nil
+---@return cmp_git.SystemJob?
 function M.build_simple_job(exec, args, env, callback)
-    -- TODO: Find a nicer way, that we can keep chaining jobs at call side
     if vim.fn.executable(exec) ~= 1 or not args then
         log.fmt_debug("Can't work with %s for this call", exec)
         return nil
@@ -219,27 +210,42 @@ function M.build_simple_job(exec, args, env, callback)
     local job_env = nil
     if env ~= nil then
         -- NOTE: setting env causes it to not inherit it from the parent environment
-        vim.tbl_extend("force", env, {
-            path = vim.fn.getenv("PATH"),
+        job_env = vim.tbl_extend("force", env, {
+            PATH = vim.fn.getenv("PATH"),
         })
+        for key, value in pairs(job_env) do
+            job_env[key] = tostring(value)
+        end
     end
 
-    ---@diagnostic disable-next-line: missing-fields
-    return Job:new({
+    return {
         command = exec,
-        args = args,
-        env = job_env,
-        cwd = M.get_cwd(),
-        on_exit = vim.schedule_wrap(function(job, code) ---@param job Job
-            if code ~= 0 then
-                log.fmt_debug("%s returned with exit code %d", exec, code)
-            else
-                log.fmt_debug("%s returned with a result", exec)
-            end
-            local result_str = table.concat(job:result(), "")
-            callback(result_str, code == 0)
-        end),
-    })
+        start = function(_, on_complete, suppress_failure_callback)
+            vim.system(vim.list_extend({ exec }, args), {
+                text = true,
+                env = job_env,
+                cwd = M.get_cwd(),
+            }, function(result)
+                vim.schedule(function()
+                    local success = result.code == 0
+                    if not success then
+                        log.fmt_debug("%s returned with exit code %d", exec, result.code)
+                        if result.stderr and result.stderr ~= "" then
+                            log.fmt_debug("%s stderr: %s", exec, result.stderr)
+                        end
+                    else
+                        log.fmt_debug("%s returned with a result", exec)
+                    end
+                    if success or not suppress_failure_callback then
+                        callback(result.stdout or "", success)
+                    end
+                    if on_complete then
+                        on_complete(success)
+                    end
+                end)
+            end)
+        end,
+    }
 end
 
 ---@generic TItem
@@ -249,7 +255,7 @@ end
 ---@param callback fun(list: cmp_git.CompletionList)
 ---@param handle_item fun(item: TItem): cmp_git.CompletionItem
 ---@param handle_parsed? fun(parsed: any): TItem[]
----@return Job?
+---@return cmp_git.SystemJob?
 function M.build_job(exec, args, env, callback, handle_item, handle_parsed)
     return M.build_simple_job(exec, args, env, function(result, success)
         if not success then
@@ -261,33 +267,44 @@ function M.build_job(exec, args, env, callback, handle_item, handle_parsed)
     end)
 end
 
----Start the second job if the first on fails, handle cases if the first or second job is nil.
----The last job debug prints on failure
----@param first Job?
----@param second Job?
----@return Job?
+---Start the second job if the first one fails, handle cases if the first or second job is nil.
+---@param first cmp_git.SystemJob?
+---@param second cmp_git.SystemJob?
+---@return cmp_git.SystemJob?
 function M.chain_fallback(first, second)
-    if first and second then
-        first:and_then_on_failure(second)
-        second:after_failure(function(_, code, _)
-            log.fmt_debug("%s failed with exit code %d, couldn't retrieve any completion info", second.command, code)
-        end)
-
-        return first
-    elseif first then
-        first:after_failure(function(_, code, _)
-            log.fmt_debug("%s failed with exit code %d, couldn't retrieve any completion info", first.command, code)
-        end)
-        return first
-    elseif second then
-        second:after_failure(function(_, code, _)
-            log.fmt_debug("%s failed with exit code %d, couldn't retrieve any completion info", second.command, code)
-        end)
-        return second
-    else
-        log.debug("Neither %s or %s could be found", first.command, second.command)
+    if not first and not second then
+        log.debug("No executable could be found for completion source")
         return nil
     end
+
+    return {
+        command = first and first.command or second.command,
+        start = function(_, on_complete)
+            local function done(success)
+                if on_complete then
+                    on_complete(success)
+                end
+            end
+
+            if not first then
+                second:start(done)
+                return
+            end
+
+            first:start(function(success)
+                if success then
+                    done(true)
+                    return
+                end
+
+                if second then
+                    second:start(done)
+                else
+                    done(false)
+                end
+            end, true)
+        end,
+    }
 end
 
 ---@generic TItem
@@ -313,15 +330,8 @@ function M.handle_response(response, handle_item, handle_parsed)
         end
     end
 
-    if vim.json and vim.json.decode then
-        local ok, parsed = pcall(vim.json.decode, response)
-        process_data(ok, parsed)
-    else
-        vim.schedule(function()
-            local ok, parsed = pcall(vim.fn.json_decode, response)
-            process_data(ok, parsed)
-        end)
-    end
+    local ok, parsed = pcall(vim.json.decode, response)
+    process_data(ok, parsed)
 
     return items
 end

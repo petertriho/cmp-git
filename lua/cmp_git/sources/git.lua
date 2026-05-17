@@ -1,6 +1,5 @@
-local Job = require("plenary.job")
-local log = require("cmp_git.log")
 local format = require("cmp_git.format")
+local utils = require("cmp_git.utils")
 
 ---@class cmp_git.Source.Git
 local Git = {
@@ -85,10 +84,9 @@ local function parse_commits(trigger_char, callback, config)
     local end_entry_marker = "###CMP_GIT_END###"
 
     -- Extract abbreviated commit sha, subject, body, author name, author email, commit timestamp
-    ---@diagnostic disable-next-line: missing-fields
-    local job = Job:new({
-        command = "git",
-        args = {
+    local job = utils.build_simple_job(
+        "git",
+        {
             "log",
             "-n",
             config.limit,
@@ -104,48 +102,47 @@ local function parse_commits(trigger_char, callback, config)
                 end_entry_marker
             ),
         },
-        on_exit = vim.schedule_wrap(function(job, code)
-            if code ~= 0 then
-                log.fmt_debug("%s returned with exit code %d", "git", code)
-            else
-                log.fmt_debug("%s returned with a result", "git")
-                local result = table.concat(job:result(), "")
-
-                local commits = {}
-
-                local entries = split_by(result, end_entry_marker)
-
-                for _, e in ipairs(entries) do
-                    local part = split_by(e, end_part_marker)
-
-                    local sha = trim(part[1]):sub(0, config.sha_length)
-                    local title = trim(part[2])
-                    local description = trim(part[3]) or ""
-                    local author_name = part[4] or ""
-                    local author_mail = part[5] or ""
-                    local commit_timestamp = part[6] or ""
-                    local diff = os.difftime(os.time(), commit_timestamp)
-
-                    ---@class cmp_git.Commit
-                    local commit = {
-                        sha = sha,
-                        title = title,
-                        description = description,
-                        author_name = author_name,
-                        author_mail = author_mail,
-                        commit_timestamp = commit_timestamp,
-                        diff = diff,
-                    }
-
-                    table.insert(commits, format.item(config, trigger_char, commit))
-                end
-
-                callback(commits)
+        nil,
+        function(result, success)
+            if not success then
+                return
             end
-        end),
-    })
 
-    job:start()
+            local commits = {}
+            local entries = split_by(result, end_entry_marker)
+
+            for _, e in ipairs(entries) do
+                local part = split_by(e, end_part_marker)
+
+                local sha = trim(part[1]):sub(0, config.sha_length)
+                local title = trim(part[2])
+                local description = trim(part[3]) or ""
+                local author_name = part[4] or ""
+                local author_mail = part[5] or ""
+                local commit_timestamp = part[6] or ""
+                local diff = os.difftime(os.time(), commit_timestamp)
+
+                ---@class cmp_git.Commit
+                local commit = {
+                    sha = sha,
+                    title = title,
+                    description = description,
+                    author_name = author_name,
+                    author_mail = author_mail,
+                    commit_timestamp = commit_timestamp,
+                    diff = diff,
+                }
+
+                table.insert(commits, format.item(config, trigger_char, commit))
+            end
+
+            callback(commits)
+        end
+    )
+
+    if job then
+        job:start()
+    end
 end
 
 ---@param callback fun(commits: cmp_git.CompletionList)

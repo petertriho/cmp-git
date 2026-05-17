@@ -22,7 +22,7 @@ Git source for [hrsh7th/nvim-cmp](https://github.com/hrsh7th/nvim-cmp)
 
 ## Requirements
 
-- Neovim >= 0.5.1
+- Neovim >= 0.12
 - git
 - curl
 - [GitHub CLI](https://cli.github.com/) (optional, will use curl instead if not avaliable)
@@ -45,14 +45,13 @@ Git source for [hrsh7th/nvim-cmp](https://github.com/hrsh7th/nvim-cmp)
 [vim-plug](https://github.com/junegunn/vim-plug)
 
 ```vim
-Plug 'nvim-lua/plenary.nvim'
 Plug 'petertriho/cmp-git'
 ```
 
 [packer.nvim](https://github.com/wbthomason/packer.nvim)
 
 ```lua
-use({"petertriho/cmp-git", requires = "nvim-lua/plenary.nvim"})
+use("petertriho/cmp-git")
 ```
 
 [lazy.nvim](https://github.com/folke/lazy.nvim)
@@ -81,6 +80,14 @@ require("cmp").setup({
 })
 
 require("cmp_git").setup()
+```
+
+## Development
+
+Run the tests with:
+
+```sh
+nvim --headless -u NONE -l tests/run.lua
 ```
 
 ## Config

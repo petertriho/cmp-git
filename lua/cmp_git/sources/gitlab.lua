@@ -122,7 +122,9 @@ function GitLab:get_issues(callback, git_info, trigger_char)
             return format.item(config, trigger_char, issue)
         end
     )
-    job:start()
+    if job then
+        job:start()
+    end
     return true
 end
 
@@ -158,7 +160,9 @@ function GitLab:get_mentions(callback, git_info, trigger_char)
             return format.item(config, trigger_char, mention)
         end
     )
-    job:start()
+    if job then
+        job:start()
+    end
 
     return true
 end
@@ -205,7 +209,9 @@ function GitLab:get_merge_requests(callback, git_info, trigger_char)
             return format.item(config, trigger_char, mr)
         end
     )
-    job:start()
+    if job then
+        job:start()
+    end
 
     return true
 end

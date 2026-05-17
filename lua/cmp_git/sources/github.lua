@@ -1,4 +1,3 @@
-local Job = require("plenary.job")
 local utils = require("cmp_git.utils")
 local log = require("cmp_git.log")
 local format = require("cmp_git.format")
@@ -88,7 +87,10 @@ local function fetch_data(callback, gh_args, curl_url)
 
     local curl_job = utils.build_simple_job("curl", get_curl_args(curl_url), nil, callback)
 
-    utils.chain_fallback(gh_job, curl_job):start()
+    local job = utils.chain_fallback(gh_job, curl_job)
+    if job then
+        job:start()
+    end
 end
 
 ---@generic TItem
@@ -368,7 +370,15 @@ function GitHub:get_issues_and_prs(callback, git_info, trigger_char)
             callback({ items = items, isIncomplete = false })
         end, git_info, trigger_char)
 
-        Job.chain(issues_job, pull_requests_job)
+        if issues_job then
+            issues_job:start(function()
+                if pull_requests_job then
+                    pull_requests_job:start()
+                end
+            end)
+        elseif pull_requests_job then
+            pull_requests_job:start()
+        end
     end
 
     return true
@@ -436,7 +446,9 @@ function GitHub:_get_mentions(callback, git_info, trigger_char, member_type)
                 return parsed
             end
         )
-        job:start()
+        if job then
+            job:start()
+        end
     end
 
     fetch_mentions(1)
