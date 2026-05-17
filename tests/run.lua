@@ -2,6 +2,7 @@ package.path = vim.fn.getcwd() .. "/lua/?.lua;" .. vim.fn.getcwd() .. "/lua/?/in
 
 local utils = require("cmp_git.utils")
 local log = require("cmp_git.log")
+local remote_url = require("cmp_git.repository.remote_url")
 
 local failures = {}
 
@@ -49,6 +50,28 @@ local function test_handle_response()
         return item
     end)
     assert_eq(#invalid, 0, "invalid JSON item count")
+end
+
+local function test_parse_remote_url()
+    local ssh = remote_url.parse("git@github.com:owner/repo.git")
+    assert_eq(ssh.host, "github.com", "ssh remote host")
+    assert_eq(ssh.owner, "owner", "ssh remote owner")
+    assert_eq(ssh.repo, "repo", "ssh remote repo")
+
+    local https = remote_url.parse("https://gitlab.com/group/project.git")
+    assert_eq(https.host, "gitlab.com", "https remote host")
+    assert_eq(https.owner, "group", "https remote owner")
+    assert_eq(https.repo, "project", "https remote repo")
+
+    local ssh_url = remote_url.parse("ssh://git@example.com/owner/repo.git")
+    assert_eq(ssh_url.host, "example.com", "ssh url remote host")
+    assert_eq(ssh_url.owner, "owner", "ssh url remote owner")
+    assert_eq(ssh_url.repo, "repo", "ssh url remote repo")
+
+    local alias = remote_url.parse("github-work:owner/repo.git")
+    assert_eq(alias.host, "github-work", "alias remote host")
+    assert_eq(alias.owner, "owner", "alias remote owner")
+    assert_eq(alias.repo, "repo", "alias remote repo")
 end
 
 local function test_missing_executable()
@@ -106,6 +129,7 @@ local function test_logger()
 end
 
 test_handle_response()
+test_parse_remote_url()
 test_missing_executable()
 test_fallback()
 test_build_job()

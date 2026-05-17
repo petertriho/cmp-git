@@ -1,24 +1,10 @@
 local log = require("cmp_git.log")
+local repository = require("cmp_git.repository")
 local M = {}
 
 ---@param c integer|string
 local function char_to_hex(c)
     return string.format("%%%02X", string.byte(c))
-end
-
----@param cmd string
----@param opts { on_complete: fun(success: boolean, output: string[]): nil; cwd?: string }
----@return nil
-local function run_cmd_async(cmd, opts)
-    vim.system({ "sh", "-c", cmd }, {
-        text = true,
-        cwd = opts.cwd,
-    }, function(result)
-        vim.schedule(function()
-            local output = vim.split(result.stdout or "", "\n", { trimempty = true })
-            opts.on_complete(result.code == 0, output)
-        end)
-    end)
 end
 
 ---@param value string
@@ -61,137 +47,6 @@ function M.parse_github_date(d)
     })
 end
 
----@param on_result fun(is_git_repo: boolean): nil
----@return nil
-function M.is_git_repo(on_result)
-    local cwd = M.get_cwd() ---@type string?
-    local function check_in_git_repo()
-        local cmd = "git rev-parse --is-inside-work-tree --is-inside-git-dir"
-        run_cmd_async(cmd, {
-            on_complete = function(success, output)
-                local is_git_repo = success and #output > 0 and output[1]:find("true") ~= nil
-                if not is_git_repo and cwd ~= nil then
-                    cwd = nil
-                    check_in_git_repo()
-                    return
-                end
-                on_result(is_git_repo)
-            end,
-        })
-    end
-    check_in_git_repo()
-end
-
----@class cmp_git.GitInfo
----@field host string?
----@field owner string?
----@field repo string?
-
----@param remotes string|string[]
----@param opts {enableRemoteUrlRewrites: boolean, ssh_aliases: {[string]: string}, on_complete: fun(git_info: cmp_git.GitInfo): nil}
----@return nil
-function M.get_git_info(remotes, opts)
-    opts = opts or {}
-    local cwd = M.get_cwd() ---@type string?
-
-    local get_git_info ---@type fun(): nil
-
-    ---@param git_info cmp_git.GitInfo
-    local function handle_git_info(git_info)
-        if git_info.host == nil and cwd ~= nil then
-            cwd = nil
-            get_git_info()
-            return
-        end
-        if git_info.host ~= nil then
-            for alias, rhost in pairs(opts.ssh_aliases) do
-                git_info.host = git_info.host:gsub("^" .. alias:gsub("%-", "%%-"):gsub("%.", "%%.") .. "$", rhost, 1)
-            end
-        end
-
-        opts.on_complete(git_info)
-    end
-
-    get_git_info = function()
-        if type(remotes) == "string" then
-            remotes = { remotes }
-        end
-
-        ---@type string?, string?, string?
-        local host, owner, repo = nil, nil, nil
-
-        if vim.bo.filetype == "octo" then
-            host = require("octo.config").values.github_hostname or ""
-            if host == "" then
-                host = "github.com"
-            end
-            local filename = vim.fn.expand("%:p:h")
-            owner, repo = string.match(filename, "^octo://([^/]+)/([^/]+)")
-            handle_git_info({ host = host, owner = owner, repo = repo })
-            return
-        end
-        local remote_index = 1
-        local function check_remote()
-            if remote_index > #remotes then
-                handle_git_info({ host = host, owner = owner, repo = repo })
-                return
-            end
-            local remote = remotes[remote_index]
-            local cmd ---@type string
-            if opts.enableRemoteUrlRewrites then
-                cmd = "git remote get-url " .. remote
-            else
-                cmd = "git config --get remote." .. remote .. ".url"
-            end
-            run_cmd_async(cmd, {
-                on_complete = function(success, output)
-                    remote_index = remote_index + 1
-                    if not success then
-                        check_remote()
-                        return
-                    end
-                    local remote_origin_url = output[1]
-                    if remote_origin_url ~= "" then
-                        local clean_remote_origin_url = remote_origin_url:gsub("%.git", ""):gsub("%s", "")
-
-                        host, owner, repo = string.match(clean_remote_origin_url, "^git.*@(.+):(.+)/(.+)$")
-
-                        if host == nil then
-                            host, owner, repo = string.match(clean_remote_origin_url, "^https?://(.+)/(.+)/(.+)$")
-                        end
-
-                        if host == nil then
-                            host, owner, repo =
-                                string.match(clean_remote_origin_url, "^ssh://git@([^:]+):*.*/(.+)/(.+)$")
-                        end
-
-                        if host == nil then
-                            host, owner, repo = string.match(clean_remote_origin_url, "^([^:]+):(.+)/(.+)$")
-                        end
-
-                        if host ~= nil and owner ~= nil and repo ~= nil then
-                            handle_git_info({ host = host, owner = owner, repo = repo })
-                            return
-                        end
-                    end
-                end,
-                cwd = cwd,
-            })
-        end
-        check_remote()
-
-        return { host = host, owner = owner, repo = repo }
-    end
-    get_git_info()
-end
-
-function M.get_cwd()
-    if vim.fn.getreg("%") ~= "" and vim.bo.filetype ~= "octo" then
-        return vim.fn.expand("%:p:h")
-    end
-    return vim.fn.getcwd()
-end
-
 ---@class cmp_git.SystemJob
 ---@field command string
 ---@field start fun(self: cmp_git.SystemJob, on_complete?: fun(success: boolean): nil, suppress_failure_callback?: boolean): nil
@@ -224,7 +79,7 @@ function M.build_simple_job(exec, args, env, callback)
             vim.system(vim.list_extend({ exec }, args), {
                 text = true,
                 env = job_env,
-                cwd = M.get_cwd(),
+                cwd = repository.get_cwd(),
             }, function(result)
                 vim.schedule(function()
                     local success = result.code == 0

@@ -1,7 +1,7 @@
 local github = require("cmp_git.sources.github")
 local gitlab = require("cmp_git.sources.gitlab")
 local git = require("cmp_git.sources.git")
-local utils = require("cmp_git.utils")
+local repository = require("cmp_git.repository")
 
 local Source = {
     ---@type cmp_git.Config
@@ -67,7 +67,7 @@ function Source:_complete(params, callback)
         trigger_character = params.completion_context.triggerCharacter
     end
 
-    utils.get_git_info(self.config.remotes, {
+    repository.discover(self.config.remotes, {
         enableRemoteUrlRewrites = self.config.enableRemoteUrlRewrites,
         ssh_aliases = self.config.ssh_aliases,
         on_complete = function(git_info)
@@ -86,7 +86,7 @@ end
 ---@param params cmp.SourceCompletionApiParams
 ---@param callback fun(args: cmp_git.CompletionList)
 function Source:complete(params, callback)
-    utils.is_git_repo(function(is_git_repo)
+    repository.is_git_repo(function(is_git_repo)
         if not is_git_repo then
             return
         end
