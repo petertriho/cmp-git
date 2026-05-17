@@ -4,6 +4,7 @@ local command = require("cmp_git.command")
 local response = require("cmp_git.response")
 local log = require("cmp_git.log")
 local remote_url = require("cmp_git.repository.remote_url")
+local Source = require("cmp_git.source")
 
 local failures = {}
 
@@ -129,12 +130,125 @@ local function test_logger()
     assert_true(true, "logger calls do not throw")
 end
 
+local function test_trigger_action_fallback_for_hash()
+    local source = Source.new({
+        trigger_actions = {
+            { trigger_character = "#", actions = { "gitlab_issues", "github_issues_and_prs" } },
+        },
+    })
+    local calls = {}
+    source.sources.gitlab = {
+        get_issues = function()
+            table.insert(calls, "gitlab")
+            return false
+        end,
+    }
+    source.sources.github = {
+        get_issues_and_prs = function()
+            table.insert(calls, "github")
+            return true
+        end,
+    }
+
+    source:_run_trigger_actions("#", function() end, {}, {})
+
+    assert_eq(table.concat(calls, ","), "gitlab,github", "hash trigger falls back in configured order")
+end
+
+local function test_trigger_action_ordering_for_at()
+    local source = Source.new({
+        trigger_actions = {
+            { trigger_character = "@", actions = { "gitlab_mentions", "github_mentions" } },
+        },
+    })
+    local calls = {}
+    source.sources.gitlab = {
+        get_mentions = function()
+            table.insert(calls, "gitlab")
+            return false
+        end,
+    }
+    source.sources.github = {
+        get_mentions = function()
+            table.insert(calls, "github")
+            return true
+        end,
+    }
+
+    source:_run_trigger_actions("@", function() end, {}, {})
+
+    assert_eq(table.concat(calls, ","), "gitlab,github", "at trigger falls back in configured order")
+end
+
+local function test_trigger_action_first_handled_wins()
+    local source = Source.new({
+        trigger_actions = {
+            { trigger_character = "#", actions = { "gitlab_issues", "github_issues_and_prs" } },
+        },
+    })
+    local calls = {}
+    source.sources.gitlab = {
+        get_issues = function()
+            table.insert(calls, "gitlab")
+            return true
+        end,
+    }
+    source.sources.github = {
+        get_issues_and_prs = function()
+            table.insert(calls, "github")
+            return true
+        end,
+    }
+
+    source:_run_trigger_actions("#", function() end, {}, {})
+
+    assert_eq(table.concat(calls, ","), "gitlab", "first handled trigger action wins")
+end
+
+local function test_legacy_trigger_action_arguments()
+    local received = nil
+    local callback = function() end
+    local params = { context = {} }
+    local git_info = { host = "github.com" }
+    local source = Source.new({
+        trigger_actions = {
+            {
+                debug_name = "legacy",
+                trigger_character = "#",
+                action = function(sources, trigger_char, actual_callback, actual_params, actual_git_info)
+                    received = {
+                        sources = sources,
+                        trigger_char = trigger_char,
+                        callback = actual_callback,
+                        params = actual_params,
+                        git_info = actual_git_info,
+                    }
+                    return true
+                end,
+            },
+        },
+    })
+
+    source:_run_trigger_actions("#", callback, params, git_info)
+
+    assert_true(received ~= nil, "legacy trigger action runs")
+    assert_eq(received.sources, source.sources, "legacy trigger action receives sources")
+    assert_eq(received.trigger_char, "#", "legacy trigger action receives trigger character")
+    assert_eq(received.callback, callback, "legacy trigger action receives callback")
+    assert_eq(received.params, params, "legacy trigger action receives params")
+    assert_eq(received.git_info, git_info, "legacy trigger action receives git info")
+end
+
 test_handle_response()
 test_parse_remote_url()
 test_missing_executable()
 test_fallback()
 test_build_job()
 test_logger()
+test_trigger_action_fallback_for_hash()
+test_trigger_action_ordering_for_at()
+test_trigger_action_first_handled_wins()
+test_legacy_trigger_action_arguments()
 
 if #failures > 0 then
     for _, failure in ipairs(failures) do

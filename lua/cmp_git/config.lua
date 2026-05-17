@@ -6,6 +6,10 @@ local sort = require("cmp_git.sort")
 ---@field trigger_character string
 ---@field action fun(sources: cmp_git.Sources, trigger_char: string, callback: fun(list: cmp_git.CompletionList), params: cmp.SourceCompletionApiParams, git_info: cmp_git.GitInfo): boolean
 
+---@class cmp_git.Config.NamedTriggerActions
+---@field trigger_character string
+---@field actions string[]
+
 ---@class cmp_git.Config
 local M = {
     ---@type string[]
@@ -86,49 +90,23 @@ local M = {
             format = format.gitlab.merge_requests,
         },
     },
-    ---@type cmp_git.Config.TriggerAction[]
+    ---@type (cmp_git.Config.NamedTriggerActions|cmp_git.Config.TriggerAction)[]
     trigger_actions = {
         {
-            debug_name = "git_commits",
             trigger_character = ":",
-            action = function(sources, trigger_char, callback, params, git_info)
-                return sources.git:get_commits(callback, params, trigger_char)
-            end,
+            actions = { "git_commits" },
         },
         {
-            debug_name = "gitlab_issues",
             trigger_character = "#",
-            action = function(sources, trigger_char, callback, params, git_info)
-                return sources.gitlab:get_issues(callback, git_info, trigger_char)
-            end,
+            actions = { "gitlab_issues", "github_issues_and_prs" },
         },
         {
-            debug_name = "gitlab_mentions",
             trigger_character = "@",
-            action = function(sources, trigger_char, callback, params, git_info)
-                return sources.gitlab:get_mentions(callback, git_info, trigger_char)
-            end,
+            actions = { "gitlab_mentions", "github_mentions" },
         },
         {
-            debug_name = "gitlab_mrs",
             trigger_character = "!",
-            action = function(sources, trigger_char, callback, params, git_info)
-                return sources.gitlab:get_merge_requests(callback, git_info, trigger_char)
-            end,
-        },
-        {
-            debug_name = "github_issues_and_pr",
-            trigger_character = "#",
-            action = function(sources, trigger_char, callback, params, git_info)
-                return sources.github:get_issues_and_prs(callback, git_info, trigger_char)
-            end,
-        },
-        {
-            debug_name = "github_mentions",
-            trigger_character = "@",
-            action = function(sources, trigger_char, callback, params, git_info)
-                return sources.github:get_mentions(callback, git_info, trigger_char)
-            end,
+            actions = { "gitlab_mrs" },
         },
     },
 }

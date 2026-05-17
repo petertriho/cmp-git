@@ -154,46 +154,20 @@ require("cmp_git").setup({
     },
     trigger_actions = {
         {
-            debug_name = "git_commits",
             trigger_character = ":",
-            action = function(sources, trigger_char, callback, params, git_info)
-                return sources.git:get_commits(callback, params, trigger_char)
-            end,
+            actions = { "git_commits" },
         },
         {
-            debug_name = "gitlab_issues",
             trigger_character = "#",
-            action = function(sources, trigger_char, callback, params, git_info)
-                return sources.gitlab:get_issues(callback, git_info, trigger_char)
-            end,
+            actions = { "gitlab_issues", "github_issues_and_prs" },
         },
         {
-            debug_name = "gitlab_mentions",
             trigger_character = "@",
-            action = function(sources, trigger_char, callback, params, git_info)
-                return sources.gitlab:get_mentions(callback, git_info, trigger_char)
-            end,
+            actions = { "gitlab_mentions", "github_mentions" },
         },
         {
-            debug_name = "gitlab_mrs",
             trigger_character = "!",
-            action = function(sources, trigger_char, callback, params, git_info)
-                return sources.gitlab:get_merge_requests(callback, git_info, trigger_char)
-            end,
-        },
-        {
-            debug_name = "github_issues_and_pr",
-            trigger_character = "#",
-            action = function(sources, trigger_char, callback, params, git_info)
-                return sources.github:get_issues_and_prs(callback, git_info, trigger_char)
-            end,
-        },
-        {
-            debug_name = "github_mentions",
-            trigger_character = "@",
-            action = function(sources, trigger_char, callback, params, git_info)
-                return sources.github:get_mentions(callback, git_info, trigger_char)
-            end,
+            actions = { "gitlab_mrs" },
         },
     },
   }
@@ -204,14 +178,18 @@ require("cmp_git").setup({
 
 **NOTE**
 
-If you want specific behaviour for a trigger or new behaviour for a trigger, you need to add
-an entry in the `trigger_actions` table of the config. The two necessary fields are the `trigger_character`
-and the `action`.
+If you want specific behaviour for a trigger, add an entry in the `trigger_actions` table of the config.
+The preferred fields are `trigger_character` and `actions`. `trigger_character` has to be a single
+character, and `actions` is an ordered list of named behaviours. Multiple actions can be used for the same
+character; they run in order until one handles the request.
 
-Currently, `trigger_character` has to be a single character. Multiple actions can be used for the same character.
-All actions are triggered until one returns true. The parameters to the `actions` function are the
-different sources (currently `git`, `gitlab` and `github`), the completion callback, the trigger character,
-the parameters passed to `complete` from `nvim-cmp`, and the current git info.
+Built-in actions are `git_commits`, `gitlab_issues`, `gitlab_mentions`, `gitlab_mrs`,
+`github_issues_and_prs`, and `github_mentions`.
+
+Legacy callback-style trigger actions are still supported for compatibility. These entries use
+`trigger_character` and `action`, where `action` receives the different sources (currently `git`, `gitlab`
+and `github`), the trigger character, the completion callback, the parameters passed to `complete` from
+`nvim-cmp`, and the current git info. New configuration should prefer named `actions` instead.
 
 All source functions take an optional config table as last argument, with which the configuration set
 in `setup` can be overwritten for a specific call.
