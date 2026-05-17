@@ -1,4 +1,5 @@
 local utils = require("cmp_git.utils")
+local command = require("cmp_git.command")
 local log = require("cmp_git.log")
 local format = require("cmp_git.format")
 
@@ -83,11 +84,10 @@ end
 ---@param curl_url string
 ---@return nil
 local function fetch_data(callback, gh_args, curl_url)
-    local gh_job = utils.build_simple_job("gh", gh_args, get_gh_env(), callback)
-
-    local curl_job = utils.build_simple_job("curl", get_curl_args(curl_url), nil, callback)
-
-    local job = utils.chain_fallback(gh_job, curl_job)
+    local job = command.build_fallback({
+        { exec = "gh", args = gh_args, env = get_gh_env() },
+        { exec = "curl", args = get_curl_args(curl_url) },
+    }, callback)
     if job then
         job:start()
     end
@@ -100,11 +100,10 @@ end
 ---@param handle_item fun(item: TItem): cmp_git.CompletionItem
 ---@param handle_parsed? fun(parsed: any): TItem[]
 local function get_items(callback, gh_args, curl_url, handle_item, handle_parsed)
-    local gh_job = utils.build_job("gh", gh_args, get_gh_env(), callback, handle_item, handle_parsed)
-
-    local curl_job = utils.build_job("curl", get_curl_args(curl_url), nil, callback, handle_item, handle_parsed)
-
-    return utils.chain_fallback(gh_job, curl_job)
+    return command.build_fallback_list({
+        { exec = "gh", args = gh_args, env = get_gh_env() },
+        { exec = "curl", args = get_curl_args(curl_url) },
+    }, callback, handle_item, handle_parsed)
 end
 
 ---Reference: https://docs.github.com/en/rest/pulls/pulls?apiVersion=2022-11-28#list-pull-requests

@@ -1,6 +1,7 @@
 package.path = vim.fn.getcwd() .. "/lua/?.lua;" .. vim.fn.getcwd() .. "/lua/?/init.lua;" .. package.path
 
-local utils = require("cmp_git.utils")
+local command = require("cmp_git.command")
+local response = require("cmp_git.response")
 local log = require("cmp_git.log")
 local remote_url = require("cmp_git.repository.remote_url")
 
@@ -27,13 +28,13 @@ local function wait_for(predicate, message)
 end
 
 local function test_handle_response()
-    local items = utils.handle_response('[{"name":"one"}]', function(item)
+    local items = response.handle_response('[{"name":"one"}]', function(item)
         return { label = item.name }
     end)
     assert_eq(#items, 1, "valid JSON item count")
     assert_eq(items[1].label, "one", "valid JSON item mapping")
 
-    local mapped = utils.handle_response('{"items":[{"name":"two"}]}', function(item)
+    local mapped = response.handle_response('{"items":[{"name":"two"}]}', function(item)
         return { label = item.name }
     end, function(parsed)
         return parsed.items
@@ -41,12 +42,12 @@ local function test_handle_response()
     assert_eq(#mapped, 1, "mapped JSON item count")
     assert_eq(mapped[1].label, "two", "mapped JSON item mapping")
 
-    local empty = utils.handle_response("[]", function(item)
+    local empty = response.handle_response("[]", function(item)
         return item
     end)
     assert_eq(#empty, 0, "empty JSON item count")
 
-    local invalid = utils.handle_response("not json", function(item)
+    local invalid = response.handle_response("not json", function(item)
         return item
     end)
     assert_eq(#invalid, 0, "invalid JSON item count")
@@ -75,20 +76,20 @@ local function test_parse_remote_url()
 end
 
 local function test_missing_executable()
-    local job = utils.build_simple_job("cmp-git-missing-executable", {}, nil, function() end)
+    local job = command.build({ exec = "cmp-git-missing-executable", args = {} }, function() end)
     assert_eq(job, nil, "missing executable returns nil")
 end
 
 local function test_fallback()
     local result
-    local first = utils.build_simple_job("sh", { "-c", "exit 7" }, nil, function()
+    local first = command.build({ exec = "sh", args = { "-c", "exit 7" } }, function()
         result = "first-callback"
     end)
-    local second = utils.build_simple_job("sh", { "-c", "printf fallback" }, nil, function(stdout, success)
+    local second = command.build({ exec = "sh", args = { "-c", "printf fallback" } }, function(stdout, success)
         result = { stdout = stdout, success = success }
     end)
 
-    local job = utils.chain_fallback(first, second)
+    local job = command.fallback(first, second)
     assert_true(job ~= nil, "fallback job is created")
     job:start()
 
@@ -102,7 +103,7 @@ end
 
 local function test_build_job()
     local list
-    local job = utils.build_job("sh", { "-c", 'printf \'[{"name":"item"}]\'' }, nil, function(result)
+    local job = command.build_list({ exec = "sh", args = { "-c", 'printf \'[{"name":"item"}]\'' } }, function(result)
         list = result
     end, function(item)
         return { label = item.name }

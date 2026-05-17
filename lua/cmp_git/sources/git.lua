@@ -1,5 +1,5 @@
 local format = require("cmp_git.format")
-local utils = require("cmp_git.utils")
+local command = require("cmp_git.command")
 
 ---@class cmp_git.Source.Git
 local Git = {
@@ -84,25 +84,26 @@ local function parse_commits(trigger_char, callback, config)
     local end_entry_marker = "###CMP_GIT_END###"
 
     -- Extract abbreviated commit sha, subject, body, author name, author email, commit timestamp
-    local job = utils.build_simple_job(
-        "git",
+    local job = command.build(
         {
-            "log",
-            "-n",
-            config.limit,
-            "--date=unix",
-            string.format(
-                "--pretty=format:%%H%s%%s%s%%b%s%%cn%s%%ce%s%%cd%s%s",
-                end_part_marker,
-                end_part_marker,
-                end_part_marker,
-                end_part_marker,
-                end_part_marker,
-                end_part_marker,
-                end_entry_marker
-            ),
+            exec = "git",
+            args = {
+                "log",
+                "-n",
+                config.limit,
+                "--date=unix",
+                string.format(
+                    "--pretty=format:%%H%s%%s%s%%b%s%%cn%s%%ce%s%%cd%s%s",
+                    end_part_marker,
+                    end_part_marker,
+                    end_part_marker,
+                    end_part_marker,
+                    end_part_marker,
+                    end_part_marker,
+                    end_entry_marker
+                ),
+            },
         },
-        nil,
         function(result, success)
             if not success then
                 return

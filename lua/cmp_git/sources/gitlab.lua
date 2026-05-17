@@ -1,4 +1,5 @@
 local utils = require("cmp_git.utils")
+local command = require("cmp_git.command")
 local log = require("cmp_git.log")
 local format = require("cmp_git.format")
 
@@ -42,11 +43,6 @@ end
 ---@param callback fun(list: cmp_git.CompletionList)
 ---@param handle_item fun(item: any): cmp_git.CompletionItem
 local function get_items(callback, glab_args, curl_url, handle_item)
-    local glab_job = utils.build_job("glab", glab_args, {
-        GITLAB_TOKEN = vim.fn.getenv("GITLAB_TOKEN"),
-        NO_COLOR = 1, -- disables color output to avoid parsing errors
-    }, callback, handle_item)
-
     local curl_args = {
         "-s",
         curl_url,
@@ -59,9 +55,17 @@ local function get_items(callback, glab_args, curl_url, handle_item)
         table.insert(curl_args, authorization_header)
     end
 
-    local curl_job = utils.build_job("curl", curl_args, nil, callback, handle_item)
-
-    return utils.chain_fallback(glab_job, curl_job)
+    return command.build_fallback_list({
+        {
+            exec = "glab",
+            args = glab_args,
+            env = {
+                GITLAB_TOKEN = vim.fn.getenv("GITLAB_TOKEN"),
+                NO_COLOR = 1, -- disables color output to avoid parsing errors
+            },
+        },
+        { exec = "curl", args = curl_args },
+    }, callback, handle_item)
 end
 
 ---@param git_info cmp_git.GitInfo
