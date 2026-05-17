@@ -159,7 +159,7 @@ require("cmp_git").setup({
         },
         {
             trigger_character = "#",
-            actions = { "gitlab_issues", "github_issues_and_prs" },
+            actions = { "gitlab_issues", "github_issues_and_change_requests" },
         },
         {
             trigger_character = "@",
@@ -167,7 +167,7 @@ require("cmp_git").setup({
         },
         {
             trigger_character = "!",
-            actions = { "gitlab_mrs" },
+            actions = { "gitlab_change_requests" },
         },
     },
   }
@@ -183,8 +183,10 @@ The preferred fields are `trigger_character` and `actions`. `trigger_character` 
 character, and `actions` is an ordered list of named behaviours. Multiple actions can be used for the same
 character; they run in order until one handles the request.
 
-Built-in actions are `git_commits`, `gitlab_issues`, `gitlab_mentions`, `gitlab_mrs`,
-`github_issues_and_prs`, and `github_mentions`.
+Built-in actions are `git_commits`, `gitlab_issues`, `gitlab_mentions`, `gitlab_change_requests`,
+`github_issues`, `github_change_requests`, `github_issues_and_change_requests`, and `github_mentions`.
+Compatibility aliases are also available: `gitlab_mrs` routes to `gitlab_change_requests`, and
+`github_issues_and_prs` routes to `github_issues_and_change_requests`.
 
 Legacy callback-style trigger actions are still supported for compatibility. These entries use
 `trigger_character` and `action`, where `action` receives the different sources (currently `git`, `gitlab`

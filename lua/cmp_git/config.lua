@@ -98,7 +98,7 @@ local M = {
         },
         {
             trigger_character = "#",
-            actions = { "gitlab_issues", "github_issues_and_prs" },
+            actions = { "gitlab_issues", "github_issues_and_change_requests" },
         },
         {
             trigger_character = "@",
@@ -106,7 +106,7 @@ local M = {
         },
         {
             trigger_character = "!",
-            actions = { "gitlab_mrs" },
+            actions = { "gitlab_change_requests" },
         },
     },
 }

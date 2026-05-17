@@ -16,23 +16,35 @@ local function route_status(handled)
 end
 
 local builtin_trigger_actions = {
-    git_commits = function(source, callback, params, git_info, trigger_char)
+    git_commits = function(source, callback, params, _git_info, trigger_char)
         return route_status(source.sources.git:get_commits(callback, params, trigger_char))
     end,
-    gitlab_issues = function(source, callback, params, git_info, trigger_char)
-        return route_status(source.sources.gitlab:get_issues(callback, git_info, trigger_char))
+    github_issues = function(source, callback, _params, git_info, trigger_char)
+        return route_status(source.sources.github:complete_issues(callback, git_info, trigger_char))
     end,
-    gitlab_mentions = function(source, callback, params, git_info, trigger_char)
-        return route_status(source.sources.gitlab:get_mentions(callback, git_info, trigger_char))
+    github_mentions = function(source, callback, _params, git_info, trigger_char)
+        return route_status(source.sources.github:complete_mentions(callback, git_info, trigger_char))
     end,
-    gitlab_mrs = function(source, callback, params, git_info, trigger_char)
-        return route_status(source.sources.gitlab:get_merge_requests(callback, git_info, trigger_char))
+    github_change_requests = function(source, callback, _params, git_info, trigger_char)
+        return route_status(source.sources.github:complete_change_requests(callback, git_info, trigger_char))
     end,
-    github_issues_and_prs = function(source, callback, params, git_info, trigger_char)
-        return route_status(source.sources.github:get_issues_and_prs(callback, git_info, trigger_char))
+    github_issues_and_change_requests = function(source, callback, _params, git_info, trigger_char)
+        return route_status(source.sources.github:complete_issues_and_change_requests(callback, git_info, trigger_char))
     end,
-    github_mentions = function(source, callback, params, git_info, trigger_char)
-        return route_status(source.sources.github:get_mentions(callback, git_info, trigger_char))
+    gitlab_issues = function(source, callback, _params, git_info, trigger_char)
+        return route_status(source.sources.gitlab:complete_issues(callback, git_info, trigger_char))
+    end,
+    gitlab_mentions = function(source, callback, _params, git_info, trigger_char)
+        return route_status(source.sources.gitlab:complete_mentions(callback, git_info, trigger_char))
+    end,
+    gitlab_change_requests = function(source, callback, _params, git_info, trigger_char)
+        return route_status(source.sources.gitlab:complete_change_requests(callback, git_info, trigger_char))
+    end,
+    gitlab_mrs = function(source, callback, _params, git_info, trigger_char)
+        return route_status(source.sources.gitlab:complete_change_requests(callback, git_info, trigger_char))
+    end,
+    github_issues_and_prs = function(source, callback, _params, git_info, trigger_char)
+        return route_status(source.sources.github:complete_issues_and_change_requests(callback, git_info, trigger_char))
     end,
 }
 

@@ -8,6 +8,8 @@ local Source = require("cmp_git.source")
 local Git = require("cmp_git.sources.git")
 local GitHub = require("cmp_git.sources.github")
 local GitLab = require("cmp_git.sources.gitlab")
+local issue_capability = require("cmp_git.provider.capabilities.issues")
+local mention_capability = require("cmp_git.provider.capabilities.mentions")
 
 local failures = {}
 
@@ -141,13 +143,13 @@ local function test_trigger_action_fallback_for_hash()
     })
     local calls = {}
     source.sources.gitlab = {
-        get_issues = function()
+        complete_issues = function()
             table.insert(calls, "gitlab")
             return false
         end,
     }
     source.sources.github = {
-        get_issues_and_prs = function()
+        complete_issues_and_change_requests = function()
             table.insert(calls, "github")
             return true
         end,
@@ -166,13 +168,13 @@ local function test_trigger_action_ordering_for_at()
     })
     local calls = {}
     source.sources.gitlab = {
-        get_mentions = function()
+        complete_mentions = function()
             table.insert(calls, "gitlab")
             return false
         end,
     }
     source.sources.github = {
-        get_mentions = function()
+        complete_mentions = function()
             table.insert(calls, "github")
             return true
         end,
@@ -191,13 +193,13 @@ local function test_trigger_action_first_handled_wins()
     })
     local calls = {}
     source.sources.gitlab = {
-        get_issues = function()
+        complete_issues = function()
             table.insert(calls, "gitlab")
             return true
         end,
     }
     source.sources.github = {
-        get_issues_and_prs = function()
+        complete_issues_and_change_requests = function()
             table.insert(calls, "github")
             return true
         end,
@@ -206,6 +208,178 @@ local function test_trigger_action_first_handled_wins()
     source:_run_trigger_actions("#", function() end, {}, {})
 
     assert_eq(table.concat(calls, ","), "gitlab", "first handled trigger action wins")
+end
+
+local function test_preferred_trigger_action_names()
+    local source = Source.new({
+        trigger_actions = {
+            { trigger_character = "#", actions = { "github_issues" } },
+            { trigger_character = "!", actions = { "gitlab_change_requests" } },
+        },
+    })
+    local calls = {}
+    source.sources.github = {
+        complete_issues = function()
+            table.insert(calls, "github_issues")
+            return true
+        end,
+    }
+    source.sources.gitlab = {
+        complete_change_requests = function()
+            table.insert(calls, "gitlab_change_requests")
+            return true
+        end,
+    }
+
+    source:_run_trigger_actions("#", function() end, {}, {})
+    source:_run_trigger_actions("!", function() end, {}, {})
+
+    assert_eq(table.concat(calls, ","), "github_issues,gitlab_change_requests", "preferred action names route")
+end
+
+local function test_legacy_trigger_action_aliases()
+    local source = Source.new({
+        trigger_actions = {
+            { trigger_character = "#", actions = { "github_issues_and_prs" } },
+            { trigger_character = "!", actions = { "gitlab_mrs" } },
+        },
+    })
+    local calls = {}
+    source.sources.github = {
+        complete_issues_and_change_requests = function()
+            table.insert(calls, "github_combined")
+            return true
+        end,
+    }
+    source.sources.gitlab = {
+        complete_change_requests = function()
+            table.insert(calls, "gitlab_cr")
+            return true
+        end,
+    }
+
+    source:_run_trigger_actions("#", function() end, {}, {})
+    source:_run_trigger_actions("!", function() end, {}, {})
+
+    assert_eq(table.concat(calls, ","), "github_combined,gitlab_cr", "legacy aliases route")
+end
+
+local function test_issue_capability_uses_cache_and_runner()
+    local callback_count = 0
+    local last_list
+    local request_count = 0
+    local runner_count = 0
+    local cache = {}
+    local adapter = {
+        issues_request = function()
+            request_count = request_count + 1
+            return {
+                commands = { { exec = "fake", args = { "issues" } } },
+                handle_item = function(item)
+                    return { label = item.name }
+                end,
+            }
+        end,
+    }
+    local runner = {
+        build_fallback_list = function(commands, callback, handle_item)
+            runner_count = runner_count + 1
+            assert_eq(commands[1].exec, "fake", "issue capability forwards commands")
+            return {
+                start = function()
+                    callback({ items = { handle_item({ name = "one" }) }, isIncomplete = false })
+                end,
+            }
+        end,
+    }
+    local args = {
+        adapter = adapter,
+        cache = cache,
+        callback = function(list)
+            callback_count = callback_count + 1
+            last_list = list
+        end,
+        config = {},
+        git_info = {},
+        trigger_char = "#",
+        runner = runner,
+        bufnr = 42,
+    }
+
+    issue_capability.complete(args)
+    issue_capability.complete(args)
+
+    assert_eq(request_count, 1, "issue capability requests once")
+    assert_eq(runner_count, 1, "issue capability runs once")
+    assert_eq(callback_count, 2, "issue capability callbacks on miss and hit")
+    assert_eq(last_list.items[1].label, "one", "issue capability caches mapped items")
+end
+
+local function test_mention_capability_preflight_and_pagination()
+    local callbacks = {}
+    local request_pages = {}
+    local runner = {
+        build_fallback = function(commands, callback)
+            assert_eq(commands[1].exec, "preflight", "mention preflight command forwarded")
+            return {
+                start = function()
+                    callback('{"status":"404"}', true)
+                end,
+            }
+        end,
+        build_fallback_list = function(commands, callback, handle_item)
+            local page = commands[1].page
+            table.insert(request_pages, page)
+            return {
+                start = function()
+                    local raw_items = page == 1 and { { name = "one" } } or {}
+                    local items = {}
+                    for _, item in ipairs(raw_items) do
+                        table.insert(items, handle_item(item))
+                    end
+                    callback({ items = items, isIncomplete = false })
+                end,
+            }
+        end,
+    }
+    local adapter = {
+        mentions_preflight_request = function()
+            return {
+                commands = { { exec = "preflight", args = {} } },
+                handle_result = function(result)
+                    local parsed = vim.json.decode(result)
+                    return { member_type = parsed.status == "404" and "collaborators" or "contributors" }
+                end,
+            }
+        end,
+        mentions_request = function(_git_info, _trigger_char, _config, opts)
+            assert_eq(opts.context.member_type, "collaborators", "mention context comes from preflight")
+            return {
+                commands = { { exec = "mentions", args = {}, page = opts.page } },
+                handle_item = function(item)
+                    return { label = item.name }
+                end,
+            }
+        end,
+    }
+
+    mention_capability.complete({
+        adapter = adapter,
+        cache = {},
+        callback = function(list)
+            table.insert(callbacks, list)
+        end,
+        config = { limit = 2 },
+        git_info = {},
+        trigger_char = "@",
+        runner = runner,
+        bufnr = 43,
+    })
+
+    assert_eq(table.concat(request_pages, ","), "1,2", "mention capability paginates")
+    assert_eq(#callbacks, 2, "mention capability returns partial and final callbacks")
+    assert_eq(callbacks[1].isIncomplete, true, "first mention callback is incomplete")
+    assert_eq(callbacks[2].isIncomplete, false, "final mention callback is complete")
 end
 
 local function test_legacy_trigger_action_arguments()
@@ -315,7 +489,11 @@ test_logger()
 test_trigger_action_fallback_for_hash()
 test_trigger_action_ordering_for_at()
 test_trigger_action_first_handled_wins()
+test_preferred_trigger_action_names()
+test_legacy_trigger_action_aliases()
 test_legacy_trigger_action_arguments()
+test_issue_capability_uses_cache_and_runner()
+test_mention_capability_preflight_and_pagination()
 test_github_instance_state_isolation()
 test_gitlab_instance_state_isolation()
 test_git_instance_state_isolation()
