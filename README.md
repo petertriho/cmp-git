@@ -106,6 +106,7 @@ require("blink.cmp").setup({
             git = {
                 name = "git",
                 module = "cmp_git.blink",
+                async = true,
                 opts = {
                     -- cmp-git options go here
                 },
