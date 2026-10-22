@@ -12,24 +12,7 @@ local M = {}
 ---@class cmp_git.CommandSpec
 ---@field exec string
 ---@field args string[]
----@field env? table<string, string | integer>
-
----@param spec cmp_git.CommandSpec
----@return table<string, string>? env
-local function command_env(spec)
-    if spec.env == nil then
-        return nil
-    end
-
-    -- NOTE: setting env causes it to not inherit it from the parent environment
-    local env = vim.tbl_extend("force", spec.env, {
-        PATH = vim.fn.getenv("PATH"),
-    })
-    for key, value in pairs(env) do
-        env[key] = tostring(value)
-    end
-    return env
-end
+---@field env? table<string, string | integer> Added to the environment of Neovim.
 
 ---@param spec cmp_git.CommandSpec
 ---@param callback fun(result: string, success: boolean): nil
@@ -40,44 +23,56 @@ function M.build(spec, callback)
         return nil
     end
 
-    local job_env = command_env(spec)
-
     return {
         command = spec.exec,
         handle = nil,
         cancelled = false,
         start = function(_, on_complete, suppress_failure_callback)
             local job = _
-            job.handle = vim.system(vim.list_extend({ spec.exec }, spec.args), {
+
+            ---@param result vim.SystemCompleted
+            local function complete(result)
+                if job.cancelled then
+                    if on_complete then
+                        on_complete(false)
+                    end
+                    return
+                end
+
+                local success = result.code == 0
+                if not success then
+                    log.fmt_debug("%s returned with exit code %d", spec.exec, result.code)
+                    if result.stderr and result.stderr ~= "" then
+                        log.fmt_debug("%s stderr: %s", spec.exec, result.stderr)
+                    end
+                else
+                    log.fmt_debug("%s returned with a result", spec.exec)
+                end
+                if success or not suppress_failure_callback then
+                    callback(result.stdout or "", success)
+                end
+                if on_complete then
+                    on_complete(success)
+                end
+            end
+
+            local ok, handle = pcall(vim.system, vim.list_extend({ spec.exec }, spec.args), {
                 text = true,
-                env = job_env,
+                env = spec.env,
                 cwd = repository.get_cwd(),
             }, function(result)
                 vim.schedule(function()
-                    if job.cancelled then
-                        if on_complete then
-                            on_complete(false)
-                        end
-                        return
-                    end
-
-                    local success = result.code == 0
-                    if not success then
-                        log.fmt_debug("%s returned with exit code %d", spec.exec, result.code)
-                        if result.stderr and result.stderr ~= "" then
-                            log.fmt_debug("%s stderr: %s", spec.exec, result.stderr)
-                        end
-                    else
-                        log.fmt_debug("%s returned with a result", spec.exec)
-                    end
-                    if success or not suppress_failure_callback then
-                        callback(result.stdout or "", success)
-                    end
-                    if on_complete then
-                        on_complete(success)
-                    end
+                    complete(result)
                 end)
             end)
+            if not ok then
+                -- For example, a cwd that does not exist. The caller gets a failed command, not an error.
+                vim.schedule(function()
+                    complete({ code = -1, signal = 0, stdout = "", stderr = tostring(handle) })
+                end)
+                return
+            end
+            job.handle = handle
         end,
         cancel = function(_)
             _.cancelled = true
