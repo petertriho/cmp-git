@@ -23,7 +23,13 @@ local function is_git_repo()
     return result
 end
 
----@param opts? { remotes?: string[], enableRemoteUrlRewrites?: boolean, ssh_aliases?: table<string, string> }
+---@class tests.DiscoverOptions
+---@field remotes? string[]
+---@field enableRemoteUrlRewrites? boolean
+---@field ssh_aliases? table<string, string>
+---@field hosts? string[]
+
+---@param opts? tests.DiscoverOptions
 ---@return cmp_git.RepositoryMetadata
 local function discover(opts)
     opts = opts or {}
@@ -31,6 +37,7 @@ local function discover(opts)
     repository.discover(opts.remotes or { "upstream", "origin" }, {
         enableRemoteUrlRewrites = opts.enableRemoteUrlRewrites or false,
         ssh_aliases = opts.ssh_aliases or {},
+        hosts = opts.hosts,
         on_complete = function(result)
             metadata = result
         end,
@@ -262,6 +269,148 @@ T["discover_with_ssh_aliases_as_plain_strings"] = function()
     eq(discover({ ssh_aliases = { ["gh.work"] = "github.com" } }).host, "gh+work", "a . in an alias is not a pattern")
 end
 
+---Make the cwd a repository with the remote `origin`, in a new buffer.
+---@param url string
+local function with_origin(url)
+    require_git()
+    local repo = helpers.git_repo({ remotes = { { "origin", url } } })
+    new_buffer()
+    vim.fn.chdir(repo.dir)
+end
+
+T["discover_with_host_prefix"] = function()
+    with_origin("https://example.com/gitlab/group/repo.git")
+    local hosts = { "github.com", "gitlab.com", "example.com/gitlab" }
+
+    eq(discover(), { host = "example.com", owner = "gitlab/group", repo = "repo" }, "the URL without hosts")
+    eq(
+        discover({ hosts = hosts }),
+        { host = "example.com/gitlab", owner = "group", repo = "repo" },
+        "the prefix moves from the owner to the host"
+    )
+    eq(discover().owner, "gitlab/group", "the prefix does not change the cache")
+end
+
+T["discover_with_host_prefix_of_several_segments"] = function()
+    with_origin("https://example.com/tools/gitlab/group/repo.git")
+
+    eq(
+        discover({ hosts = { "example.com/tools/gitlab" } }),
+        { host = "example.com/tools/gitlab", owner = "group", repo = "repo" },
+        "a prefix with two segments"
+    )
+end
+
+T["discover_with_longest_host_prefix"] = function()
+    with_origin("https://example.com/gitlab/internal/group/repo.git")
+    local expected = { host = "example.com/gitlab/internal", owner = "group", repo = "repo" }
+
+    eq(
+        discover({ hosts = { "example.com/gitlab", "example.com/gitlab/internal" } }),
+        expected,
+        "the longer prefix last"
+    )
+    eq(
+        discover({ hosts = { "example.com/gitlab/internal", "example.com/gitlab" } }),
+        expected,
+        "the longer prefix first"
+    )
+end
+
+T["discover_with_host_prefix_and_subgroups"] = function()
+    with_origin("https://example.com/gitlab/group/sub/repo.git")
+
+    eq(
+        discover({ hosts = { "example.com/gitlab" } }),
+        { host = "example.com/gitlab", owner = "group/sub", repo = "repo" },
+        "the subgroups stay in the owner"
+    )
+end
+
+T["discover_with_host_prefix_and_port"] = function()
+    with_origin("https://example.com:8443/gitlab/group/repo.git")
+
+    eq(
+        discover({ hosts = { "example.com/gitlab", "example.com:8443/gitlab" } }),
+        { host = "example.com:8443/gitlab", owner = "group", repo = "repo" },
+        "the entry with the port"
+    )
+    eq(
+        discover({ hosts = { "example.com/gitlab" } }),
+        { host = "example.com:8443", owner = "gitlab/group", repo = "repo" },
+        "an entry without the port does not apply"
+    )
+end
+
+T["discover_with_host_prefix_and_ipv6_address"] = function()
+    with_origin("https://[::1]:8443/gitlab/group/repo.git")
+
+    eq(
+        discover({ hosts = { "[::1]:8443/gitlab" } }),
+        { host = "[::1]:8443/gitlab", owner = "group", repo = "repo" },
+        "an IPv6 address is not a pattern"
+    )
+end
+
+T["discover_ssh_remote_with_host_prefix"] = function()
+    with_origin("git@example.com:group/repo.git")
+    local expected = { host = "example.com/gitlab", owner = "group", repo = "repo" }
+
+    eq(discover({ hosts = { "github.com", "gitlab.com", "example.com/gitlab" } }), expected, "the only prefixed entry")
+    eq(discover({ hosts = { "example.com/gitlab", "example.com/gitlab" } }), expected, "the same entry two times")
+    eq(
+        discover({ hosts = { "example.com/gitlab", "example.com/tools/gitlab" } }),
+        { host = "example.com", owner = "group", repo = "repo" },
+        "two prefixed entries"
+    )
+end
+
+T["discover_ssh_alias_with_host_prefix"] = function()
+    with_origin("git@gitlab-work:group/repo.git")
+
+    eq(
+        discover({ ssh_aliases = { ["gitlab-work"] = "example.com" }, hosts = { "example.com/gitlab" } }),
+        { host = "example.com/gitlab", owner = "group", repo = "repo" },
+        "the prefix applies to the real host"
+    )
+end
+
+T["discover_with_plain_host_and_host_prefix"] = function()
+    with_origin("git@example.com:group/repo.git")
+
+    eq(
+        discover({ hosts = { "example.com", "example.com/gitlab" } }),
+        { host = "example.com", owner = "group", repo = "repo" },
+        "the plain host is an instance too"
+    )
+end
+
+T["discover_with_owner_equal_to_host_prefix"] = function()
+    with_origin("https://example.com/gitlab/repo.git")
+
+    eq(
+        discover({ hosts = { "example.com", "example.com/gitlab" } }),
+        { host = "example.com", owner = "gitlab", repo = "repo" },
+        "no owner is left after the prefix"
+    )
+    eq(
+        discover({ hosts = { "example.com/gitlab" } }),
+        { host = "example.com/gitlab", owner = "gitlab", repo = "repo" },
+        "the only prefixed entry keeps the owner"
+    )
+end
+
+T["discover_with_host_prefix_of_other_host"] = function()
+    with_origin("https://gitlab.com/gitlab/group/repo.git")
+
+    eq(
+        discover({ hosts = { "github.com", "gitlab.com", "example.com/gitlab", "gitlab.co/gitlab" } }),
+        { host = "gitlab.com", owner = "gitlab/group", repo = "repo" },
+        "the entries of other hosts do not apply"
+    )
+    eq(discover({ hosts = { "gitlabXcom/gitlab" } }).host, "gitlab.com", "a . in a host is not a pattern")
+end
+
 T["discover_octo_buffer"] = function()
     local octo_config = { values = { github_hostname = "" } }
     helpers.stub(package.loaded, "octo.config", octo_config)
@@ -303,7 +452,7 @@ T["discover_inside_git_dir"] = function()
 end
 
 ---What core does for each completion request.
----@param opts? { remotes?: string[], enableRemoteUrlRewrites?: boolean, ssh_aliases?: table<string, string> }
+---@param opts? tests.DiscoverOptions
 ---@return cmp_git.RepositoryMetadata?
 local function request(opts)
     if not is_git_repo() then

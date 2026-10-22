@@ -330,6 +330,57 @@ local function apply_ssh_aliases(metadata, ssh_aliases)
     return metadata
 end
 
+---Give the metadata the host entry of an instance under a path prefix, such as `example.com/gitlab`. The URL path of
+---such an instance starts with the prefix, which is then not part of the owner.
+---@param metadata cmp_git.RepositoryMetadata
+---@param hosts string[]? The configured hosts.
+---@return cmp_git.RepositoryMetadata
+local function apply_host_prefixes(metadata, hosts)
+    local host, owner = metadata.host, metadata.owner
+    if host == nil or owner == nil or hosts == nil then
+        return metadata
+    end
+
+    -- Plain comparisons, because a host can have Lua pattern characters, such as `.`, `-`, or `[`
+    local host_slash = host .. "/"
+    local has_plain_host = false
+    local prefixed_entry ---@type string?
+    local has_other_prefixed_entries = false
+    local match_prefix ---@type string?
+    for _, entry in ipairs(hosts) do
+        if entry == host then
+            has_plain_host = true
+        elseif #entry > #host_slash and entry:sub(1, #host_slash) == host_slash then
+            -- The GitHub and GitLab lists can both have the same entry
+            if prefixed_entry == nil then
+                prefixed_entry = entry
+            elseif entry ~= prefixed_entry then
+                has_other_prefixed_entries = true
+            end
+
+            local prefix = entry:sub(#host_slash + 1)
+            -- The longest prefix wins, and an owner must be left after it
+            if
+                #owner > #prefix + 1
+                and owner:sub(1, #prefix + 1) == prefix .. "/"
+                and (match_prefix == nil or #prefix > #match_prefix)
+            then
+                match_prefix = prefix
+            end
+        end
+    end
+
+    if match_prefix ~= nil then
+        metadata.host = host_slash .. match_prefix
+        metadata.owner = owner:sub(#match_prefix + 2)
+    elseif prefixed_entry ~= nil and not has_other_prefixed_entries and not has_plain_host then
+        -- The path of an SSH remote has no prefix, for example `git@example.com:group/repo.git`
+        metadata.host = prefixed_entry
+    end
+
+    return metadata
+end
+
 ---@param bufnr integer
 ---@return cmp_git.RepositoryMetadata?
 local function discover_octo(bufnr)
@@ -349,6 +400,7 @@ end
 ---@class cmp_git.DiscoverOptions
 ---@field enableRemoteUrlRewrites boolean
 ---@field ssh_aliases {[string]: string}
+---@field hosts? string[] The configured GitHub and GitLab hosts. An entry can have a path prefix.
 ---@field on_complete fun(metadata: cmp_git.RepositoryMetadata): nil
 ---@field bufnr? integer The buffer, by default the current one.
 
@@ -366,7 +418,7 @@ function M.discover(remotes, opts)
 
     ---@param metadata cmp_git.RepositoryMetadata
     local function complete(metadata)
-        opts.on_complete(apply_ssh_aliases(metadata, opts.ssh_aliases))
+        opts.on_complete(apply_host_prefixes(apply_ssh_aliases(metadata, opts.ssh_aliases), opts.hosts))
     end
 
     if not vim.api.nvim_buf_is_valid(bufnr) then
