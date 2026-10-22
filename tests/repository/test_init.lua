@@ -96,6 +96,17 @@ T["is_git_repo_falls_back_to_cwd"] = function()
     eq(is_git_repo(), true, "the cwd is checked when the buffer directory is not in a repository")
 end
 
+T["get_cwd_buffer_in_missing_directory"] = function()
+    require_git()
+    local repo = helpers.git_repo({ remotes = { { "origin", "https://github.com/owner/repo.git" } } })
+    vim.fn.chdir(repo.dir)
+    edit(helpers.tempdir() .. "/new/dir/notes.md", "markdown")
+
+    eq(repository.get_cwd(), repo.dir, "a directory that does not exist falls back to the cwd")
+    eq(is_git_repo(), true, "the cwd repository")
+    eq(discover(), { host = "github.com", owner = "owner", repo = "repo" }, "the cwd repository")
+end
+
 T["discover_first_remote_matches"] = function()
     require_git()
     local repo = helpers.git_repo({
