@@ -276,8 +276,33 @@ require("cmp_git").setup({
 })
 ```
 
-The host must be the same as the host in the URL of the remote. cmp-git always adds `github.com` and `gitlab.com`.
-With curl, cmp-git uses `https://<host>/api/v3` for GitHub Enterprise and `https://<host>/api/v4` for GitLab.
+Each entry must be the same as the host in the URL of the remote. A GitLab entry can also have a path prefix.
+cmp-git always adds `github.com` and `gitlab.com`. With curl, cmp-git uses `https://<host>/api/v3` for GitHub
+Enterprise and `https://<host>/api/v4` for GitLab.
+
+A GitLab instance can have a path prefix in its URL, for example `https://example.com/gitlab`. For this instance, add
+the host and the path prefix to `gitlab.hosts`:
+
+```lua
+require("cmp_git").setup({
+    gitlab = {
+        hosts = { "example.com/gitlab" },
+    },
+})
+```
+
+With this setup, cmp-git reads the remote `https://example.com/gitlab/group/repo.git` as the project `group/repo` on
+the instance `example.com/gitlab`. With curl, cmp-git uses `https://example.com/gitlab/api/v4`. A path prefix can
+have more than one segment. If more than one entry matches the URL, cmp-git uses the entry with the longest path
+prefix.
+
+The path of an SSH remote, such as `git@example.com:group/repo.git`, has no path prefix. cmp-git uses the entry with
+the path prefix for this remote when these conditions are true:
+
+- `github.hosts` and `gitlab.hosts` have only one entry with a path prefix for `example.com`.
+- `github.hosts` and `gitlab.hosts` do not have `example.com` without a path prefix.
+
+Path prefixes are only for GitLab. GitHub Enterprise does not use a path prefix.
 
 ## Troubleshooting
 

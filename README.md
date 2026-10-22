@@ -195,7 +195,7 @@ require("cmp_git").setup({
         },
     },
     gitlab = {
-        hosts = {},  -- list of private instances of gitlab
+        hosts = {},  -- list of private instances of gitlab, with the path prefix if any, such as "example.com/gitlab"
         issues = {
             limit = 100,
             state = "opened", -- opened, closed, all
