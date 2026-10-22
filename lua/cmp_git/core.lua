@@ -10,6 +10,13 @@ local ROUTE_HANDLED = "handled"
 local ROUTE_UNSUPPORTED_HOST = "unsupported_host"
 local ROUTE_UNAVAILABLE = "unavailable"
 
+---A final list without items. The completion engines wait for a final list: blink.cmp holds back the items of all
+---sources until its timeout, and nvim-cmp waits when cmp-git is its first source.
+---@return cmp_git.CompletionList
+local function empty_list()
+    return { items = {}, isIncomplete = false }
+end
+
 local function route_status(handled, job)
     if handled then
         return ROUTE_HANDLED, job
@@ -330,6 +337,9 @@ function Core:_run_trigger_actions(trigger_character, callback, context, git_inf
             return job
         end
     end
+
+    -- No action handled the request, for example `#` with a remote on another host
+    callback(empty_list())
 end
 
 ---@param routes? cmp_git.Route[] The routes of the context, when the caller has them.
@@ -374,7 +384,7 @@ function Core:complete(context, callback)
     -- Routing once for each request matches each regex once
     local routes = self:_route(context)
     if #routes == 0 then
-        callback({ items = {}, isIncomplete = false })
+        callback(empty_list())
         return controller
     end
 
@@ -383,6 +393,7 @@ function Core:complete(context, callback)
             return
         end
         if not is_git_repo then
+            callback(empty_list())
             return
         end
         state.active = self:_complete(context, callback, routes)
