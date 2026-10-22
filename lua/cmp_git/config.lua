@@ -193,7 +193,9 @@ end
 ---@param overrides? cmp_git.Config Partial user config.
 ---@return cmp_git.Config
 function M.normalize(overrides)
-    local normalized = vim.tbl_deep_extend("force", {}, defaults, overrides or {})
+    -- `tbl_deep_extend` keeps references to nested tables that only one side has, so copy the defaults before
+    -- `apply_filter_fn` writes into them
+    local normalized = vim.tbl_deep_extend("force", vim.deepcopy(defaults), overrides or {})
 
     ensure_contains(normalized.github.hosts, "github.com")
     ensure_contains(normalized.gitlab.hosts, "gitlab.com")
