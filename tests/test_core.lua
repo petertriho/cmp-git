@@ -360,6 +360,77 @@ T["core_pre_route_skips_repository"] = function()
     eq(checks, 1, "matched request checks the repository")
 end
 
+---A request for a trigger character on line 1 of a scratch buffer.
+---@param trigger string
+---@return table context
+local function trigger_context(trigger)
+    local line = "see " .. trigger
+    return {
+        trigger_character = trigger,
+        cursor = { row = 1, character = #line },
+        line = line,
+        bufnr = helpers.buffer({ line }),
+    }
+end
+
+---@param git_info cmp_git.GitInfo
+local function stub_repository(git_info)
+    helpers.stub(repository, "is_git_repo", function(on_result)
+        on_result(true)
+    end)
+    helpers.stub(repository, "discover", function(_, opts)
+        opts.on_complete(git_info)
+    end)
+end
+
+---@param lists cmp_git.CompletionList[]
+---@param reason string
+local function expect_one_empty_list(lists, reason)
+    eq(#lists, 1, reason .. ": one callback")
+    eq(#lists[1].items, 0, reason .. ": no items")
+    eq(lists[1].isIncomplete, false, reason .. ": final list")
+end
+
+T["complete_answers_when_no_action_handles_the_request"] = function()
+    helpers.stub(repository, "is_git_repo", function(on_result)
+        on_result(false)
+    end)
+    local core = Core.new({})
+    local callback, lists = helpers.recorder()
+    core:complete(trigger_context("#"), callback)
+    expect_one_empty_list(lists, "outside a git repository")
+
+    -- Neither GitHub nor GitLab handles these hosts, so the sources decline without a process
+    for _, git_info in ipairs({ { host = "gitea.com", owner = "owner", repo = "repo" }, {} }) do
+        stub_repository(git_info)
+        for _, trigger in ipairs({ "#", "@", "!" }) do
+            callback, lists = helpers.recorder()
+            core:complete(trigger_context(trigger), callback)
+            expect_one_empty_list(lists, string.format("%s with host %s", trigger, git_info.host))
+        end
+    end
+
+    local unknown = Core.new({ trigger_actions = { { trigger_character = "#", actions = { "no_such_action" } } } })
+    callback, lists = helpers.recorder()
+    unknown:complete(trigger_context("#"), callback)
+    expect_one_empty_list(lists, "unknown action")
+end
+
+T["complete_does_not_answer_after_cancel"] = function()
+    local pending
+    helpers.stub(repository, "is_git_repo", function(on_result)
+        pending = on_result
+    end)
+    local core = Core.new({})
+    local callback, lists = helpers.recorder()
+
+    local controller = core:complete(trigger_context("#"), callback)
+    controller:cancel()
+    pending(false)
+
+    eq(#lists, 0, "cancelled request does not call back")
+end
+
 T["trailer_text_edits"] = function()
     local core = Core.new({})
     local bufnr = helpers.buffer({ "subject", "", "" })
