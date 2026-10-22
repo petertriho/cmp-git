@@ -6,6 +6,16 @@ local log = require("cmp_git.log")
 local repository = require("cmp_git.repository")
 local trailers = require("cmp_git.provider.capabilities.trailers")
 
+---A completion request from the nvim-cmp or blink.cmp adapter.
+---@class cmp_git.CompletionContext
+---@field trigger_character? string
+---@field cursor? { row: integer, character: integer } A 1-based row and a 0-based byte column. The text edits use bytes, and the nvim-cmp source says so in `get_position_encoding_kind`.
+---@field line? string The text before the cursor.
+---@field bufnr? integer
+---@field params? cmp_git.CmpCompletionParams The nvim-cmp parameters, for legacy `action` entries.
+---@field original_callback? fun(list: cmp_git.CompletionList)
+---@field edit_start? integer The match start of the pattern entry that runs.
+
 local ROUTE_HANDLED = "handled"
 local ROUTE_UNSUPPORTED_HOST = "unsupported_host"
 local ROUTE_UNAVAILABLE = "unavailable"
@@ -266,13 +276,13 @@ end
 ---items to each request, and blink.cmp writes into the items that it gets (`pos` and `score_offset`), so each request
 ---needs its own tables.
 ---@param items? cmp_git.CompletionItem[]
----@param context? table
+---@param context? cmp_git.CompletionContext
 ---@return cmp_git.CompletionItem[]
 function Core.apply_text_edits(items, context)
     local range = nil
     if context and context.cursor then
-        local row = context.cursor.row or context.cursor.line or 1
-        local character = context.cursor.character or context.cursor.col or 0
+        local row = context.cursor.row
+        local character = context.cursor.character
         local start_character = context.edit_start
             or find_trigger_start(context.line, context.trigger_character, character)
         -- One range for all the items, which halves the cost. blink.cmp copies a range before it changes it, and
@@ -428,6 +438,8 @@ function Core:_complete(context, callback, routes)
     return controller
 end
 
+---@param context cmp_git.CompletionContext
+---@param callback fun(list: cmp_git.CompletionList)
 function Core:complete(context, callback)
     local state = { cancelled = false, active = nil }
     local controller = {
