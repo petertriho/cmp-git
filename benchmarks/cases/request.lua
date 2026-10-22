@@ -4,6 +4,15 @@ local fixtures = require("benchmarks.fixtures")
 
 local COMMITS = 1000
 
+---Remove the cmp-git modules from the module cache, so that the next `require` loads them again.
+local function unload()
+    for name in pairs(package.loaded) do
+        if name == "cmp_git" or name:find("^cmp_git%.") then
+            package.loaded[name] = nil
+        end
+    end
+end
+
 ---@type bench.Case[]
 return {
     {
@@ -180,13 +189,37 @@ return {
     {
         name = "startup/require",
         run = function()
-            for name in pairs(package.loaded) do
-                if name == "cmp_git" or name:find("^cmp_git%.") then
-                    package.loaded[name] = nil
-                end
-            end
+            unload()
             require("cmp_git.source")
             require("cmp_git.blink")
+        end,
+    },
+    {
+        -- What `setup` costs: the modules of the nvim-cmp source and a new source
+        name = "startup/setup",
+        run = function()
+            unload()
+            require("cmp_git.source").new({})
+        end,
+    },
+    {
+        -- All the code, also the modules that load on the first request that needs them
+        name = "startup/require_all",
+        setup = function()
+            local modules = {}
+            for _, path in ipairs(vim.api.nvim_get_runtime_file("lua/cmp_git/**/*.lua", true)) do
+                local name = path:match("/lua/(cmp_git/.*)%.lua$"):gsub("/init$", ""):gsub("/", ".")
+                if not vim.tbl_contains(modules, name) then
+                    table.insert(modules, name)
+                end
+            end
+            return { modules = modules }
+        end,
+        run = function(state)
+            unload()
+            for _, name in ipairs(state.modules) do
+                require(name)
+            end
         end,
     },
     {
