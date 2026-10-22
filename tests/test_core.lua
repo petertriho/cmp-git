@@ -663,4 +663,31 @@ T["trailer_text_edits"] = function()
     eq(attached_value.filterText, ": Codex", "attached trailer value filters on the colon")
 end
 
+T["complete_discovers_the_repository_of_the_request_buffer"] = function()
+    local core = Core.new({})
+    local request_bufnr = helpers.buffer({ "See #" })
+    vim.api.nvim_set_current_buf(helpers.buffer({ "Another buffer" }))
+
+    local seen = {}
+    helpers.stub(repository, "is_git_repo", function(on_result, bufnr)
+        seen.is_git_repo = bufnr
+        on_result(true)
+    end)
+    helpers.stub(repository, "discover", function(_, opts)
+        seen.discover = opts.bufnr
+        opts.on_complete({})
+    end)
+
+    local callback, lists = helpers.recorder()
+    core:complete({
+        trigger_character = "#",
+        cursor = { row = 1, character = 5 },
+        line = "See #",
+        bufnr = request_bufnr,
+    }, callback)
+
+    eq(seen, { is_git_repo = request_bufnr, discover = request_bufnr }, "discovery reads the request buffer")
+    eq(#lists, 1, "the request answers")
+end
+
 return T

@@ -457,6 +457,7 @@ function Core:_complete(context, callback, routes)
         enableRemoteUrlRewrites = self.config.enableRemoteUrlRewrites,
         ssh_aliases = self.config.ssh_aliases,
         on_complete = run,
+        bufnr = context.bufnr,
     })
 
     return controller
@@ -490,6 +491,7 @@ function Core:complete(context, callback)
         return controller
     end
 
+    -- The buffer of the request, because the current buffer can change while git runs
     repository.is_git_repo(function(is_git_repo)
         if state.cancelled then
             return
@@ -499,7 +501,7 @@ function Core:complete(context, callback)
             return
         end
         state.active = self:_complete(context, callback, routes)
-    end)
+    end, context.bufnr)
 
     return controller
 end
