@@ -774,4 +774,30 @@ T["setup_and_a_declined_request_load_only_the_core_modules"] = function()
     }, "the request answers without the sources, the repository, or the trailer parsers")
 end
 
+T["complete_passes_the_github_and_gitlab_hosts_to_discovery"] = function()
+    local core = Core.new({
+        github = { hosts = { "github.example.com" } },
+        gitlab = { hosts = { "example.com/gitlab" } },
+    })
+    local hosts
+    helpers.stub(repository, "is_git_repo", function(on_result)
+        on_result(true)
+    end)
+    helpers.stub(repository, "discover", function(_, opts)
+        hosts = opts.hosts
+        opts.on_complete({})
+    end)
+
+    local callback, lists = helpers.recorder()
+    core:complete(trigger_context("#"), callback)
+
+    eq(
+        hosts,
+        { "github.example.com", "github.com", "example.com/gitlab", "gitlab.com" },
+        "the GitHub hosts, then the GitLab hosts"
+    )
+    eq(core.config.github.hosts, { "github.example.com", "github.com" }, "the GitHub hosts do not change")
+    expect_one_empty_list(lists, "no source handles a request without a repository")
+end
+
 return T

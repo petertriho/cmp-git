@@ -230,6 +230,7 @@ function Core.new(overrides)
     })
 
     self.config = config.normalize(overrides)
+    self.hosts = vim.list_extend(vim.list_extend({}, self.config.github.hosts), self.config.gitlab.hosts)
     self.filetypes = {}
     self.sources = lazy_sources(self.config)
     self.trigger_actions = {}
@@ -473,6 +474,7 @@ function Core:_complete(context, callback, routes)
     require("cmp_git.repository").discover(self.config.remotes, {
         enableRemoteUrlRewrites = self.config.enableRemoteUrlRewrites,
         ssh_aliases = self.config.ssh_aliases,
+        hosts = self.hosts,
         on_complete = run,
         bufnr = context.bufnr,
     })
