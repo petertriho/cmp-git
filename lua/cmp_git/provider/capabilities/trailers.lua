@@ -5,6 +5,12 @@ local utils = require("cmp_git.utils")
 local UNIT_SEPARATOR = "\031"
 local KEY_PATTERN = "^[%w-]+$"
 
+local find = string.find
+local lower = string.lower
+local match = string.match
+local sub = string.sub
+local trim_range = utils.trim_range
+
 local M = {
     keys = {},
     identities = {},
@@ -48,15 +54,66 @@ local function contains_key(keys, key)
     return false
 end
 
----@param value string
----@return string? name
----@return string? email
-local function parse_ident(value)
-    local name, email = string.match(value, "^%s*(.-)%s*<([^>]+)>")
-    if not name or name == "" or utils.trim(email) == "" then
-        return nil, nil
+---Calls `on_field` for each field of `output`, a `git log` output whose records end with NUL and whose fields end
+---with the unit separator or the NUL of the record. Each record has at least one field, which can be empty. A
+---trailing record without a NUL is dropped, like `utils.split_nul` does. The fields are read in place, so that a
+---parse makes no table or string for each record.
+---@param output string
+---@param on_field fun(first: integer, last: integer, index: integer) The field is `output:sub(first, last)`, and
+---`index` counts the fields of the record from 1.
+local function each_field(output, on_field)
+    local first = 1
+    local index = 1
+    local record_end = find(output, "\0", 1, true)
+    -- The next separator at or after `first`. It can be in a later record, so it is kept until a field reaches it,
+    -- and each byte is searched once.
+    local separator = 0
+
+    while record_end do
+        if separator < first then
+            separator = find(output, UNIT_SEPARATOR, first, true) or math.huge
+        end
+
+        if separator < record_end then
+            on_field(first, separator - 1, index)
+            first = separator + 1
+            index = index + 1
+        else
+            on_field(first, record_end - 1, index)
+            first = record_end + 1
+            index = 1
+            record_end = find(output, "\0", first, true)
+        end
     end
-    return name, utils.trim(email)
+end
+
+---Parses the identity that `^%s*(.-)%s*<([^>]+)>` would match, without the whitespace around the name and the email.
+---Unlike the pattern, which is quadratic on long runs of whitespace, it takes linear time.
+---@param value string
+---@return string? name nil when there is no identity. The name and the email can be empty.
+---@return string email
+local function parse_ident(value)
+    local from = 1
+
+    while true do
+        local open = find(value, "<", from, true)
+        if not open then
+            return nil, ""
+        end
+
+        local close = find(value, ">", open + 1, true)
+        -- A later `<` has no `>` after it either
+        if not close then
+            return nil, ""
+        end
+
+        -- `[^>]+` needs one character, so `<>` is part of the name, and a later `<` can start the email
+        if close > open + 1 then
+            return sub(value, trim_range(value, 1, open - 1)), sub(value, trim_range(value, open + 1, close - 1))
+        end
+
+        from = close + 1
+    end
 end
 
 ---@param line string?
@@ -148,21 +205,32 @@ function M.keys.parse(result, config)
         end
     end
 
-    for _, record in ipairs(utils.split_nul(result)) do
-        for _, key in ipairs(vim.split(record, UNIT_SEPARATOR, { plain = true })) do
-            key = utils.trim(key)
-            -- Skips git versions that print the unknown `%(trailers:keyonly)` placeholder as text
-            if key:match(KEY_PATTERN) then
-                local trailer = by_key[key:lower()]
-                if not trailer then
-                    trailer = { key = key, count = 0 }
-                    by_key[key:lower()] = trailer
-                    table.insert(keys, trailer)
-                end
-                trailer.count = trailer.count + 1
-            end
+    -- The lowercase form of each key as written, so that each casing is lowered once
+    local ids = {}
+
+    each_field(result, function(first, last)
+        first, last = trim_range(result, first, last)
+        local _, key_last = find(result, "^[%w-]+", first)
+        -- Skips git versions that print the unknown `%(trailers:keyonly)` placeholder as text
+        if first > last or key_last ~= last then
+            return
         end
-    end
+
+        local key = sub(result, first, last)
+        local id = ids[key]
+        if not id then
+            id = lower(key)
+            ids[key] = id
+        end
+
+        local trailer = by_key[id]
+        if not trailer then
+            trailer = { key = key, count = 0 }
+            by_key[id] = trailer
+            keys[#keys + 1] = trailer
+        end
+        trailer.count = trailer.count + 1
+    end)
 
     return keys
 end
@@ -208,21 +276,25 @@ function M.identities.parse(log_result, ident_result)
     local now = os.time()
     local identities = {}
     local by_email = {}
+    -- The log repeats a few identities many times, and a repeat from the log changes nothing. These skip a repeat
+    -- before the parse of its trailer value or the lowercase copy of its email.
+    local known_values = {}
+    local known_emails = {}
 
-    ---@param name string
-    ---@param email string
+    ---@param name string Without surrounding whitespace.
+    ---@param email string Without surrounding whitespace.
     ---@param timestamp integer?
     ---@param source string
     ---@param is_self boolean
     local function add(name, email, timestamp, source, is_self)
-        name = utils.trim(name)
-        email = utils.trim(email)
-        if name == "" or email == "" then
+        if name == "" or email == "" or (known_emails[email] and not is_self) then
             return
         end
+        known_emails[email] = true
 
         -- The log is newest first, so the first record for an email has the most recent name
-        local existing = by_email[email:lower()]
+        local id = lower(email)
+        local existing = by_email[id]
         if existing then
             existing.is_self = existing.is_self or is_self
             return
@@ -239,28 +311,51 @@ function M.identities.parse(log_result, ident_result)
             source = source, -- "author", the trailer key, or "self"
             is_self = is_self,
         }
-        by_email[email:lower()] = entry
-        table.insert(identities, entry)
+        by_email[id] = entry
+        identities[#identities + 1] = entry
     end
 
-    for _, record in ipairs(utils.split_nul(log_result)) do
-        local fields = vim.split(record, UNIT_SEPARATOR, { plain = true })
-        if #fields >= 3 then
-            local timestamp = tonumber(utils.trim(fields[1]))
-            add(fields[2], fields[3], timestamp, "author", false)
+    -- The fields of the current record: the time, the author name and email, then the trailers
+    local time_first, time_last, author_first, author_last = 1, 0, 1, 0
+    local timestamp
 
-            for i = 4, #fields do
-                local key, value = string.match(fields[i], "^%s*([%w-]+):%s*(.-)%s*$")
-                local name, email = parse_ident(value or "")
-                if name and email then
-                    add(name, email, timestamp, key, false)
-                end
-            end
+    ---@param first integer
+    ---@param last integer
+    local function add_trailer(first, last)
+        local key, value_first = match(log_result, "^%s*([%w-]+):()", first)
+        if not key then
+            return
+        end
+
+        local value = sub(log_result, value_first, last)
+        if known_values[value] then
+            return
+        end
+        known_values[value] = true
+
+        local name, email = parse_ident(value)
+        if name then
+            add(name, email, timestamp, key, false)
         end
     end
 
+    each_field(log_result, function(first, last, index)
+        if index == 1 then
+            time_first, time_last = first, last
+        elseif index == 2 then
+            author_first, author_last = first, last
+        elseif index == 3 then
+            -- `tonumber` ignores the newline that ends the previous record
+            timestamp = tonumber(sub(log_result, time_first, time_last))
+            local name = sub(log_result, trim_range(log_result, author_first, author_last))
+            add(name, sub(log_result, trim_range(log_result, first, last)), timestamp, "author", false)
+        else
+            add_trailer(first, last)
+        end
+    end)
+
     local name, email = parse_ident(ident_result)
-    if name and email then
+    if name then
         add(name, email, nil, "self", true)
     end
 
@@ -287,34 +382,51 @@ function M.values.parse(result)
     local now = os.time()
     local by_key = {}
     local by_value = {}
+    -- The lowercase form of each key as written, so that each casing is lowered once
+    local ids = {}
+    local timestamp
 
-    for _, record in ipairs(utils.split_nul(result)) do
-        local fields = vim.split(record, UNIT_SEPARATOR, { plain = true })
-        local timestamp = tonumber(utils.trim(fields[1] or ""))
-
-        for i = 2, #fields do
-            local key, value = string.match(fields[i], "^%s*([%w-]+):%s*(.-)%s*$")
-            if key and value ~= "" then
-                local id = key:lower()
-                by_key[id] = by_key[id] or {}
-                by_value[id] = by_value[id] or {}
-
-                local entry = by_value[id][value]
-                if not entry then
-                    entry = {
-                        key = key,
-                        value = value,
-                        count = 0,
-                        timestamp = timestamp,
-                        diff = timestamp and os.difftime(now, timestamp) or 0,
-                    }
-                    by_value[id][value] = entry
-                    table.insert(by_key[id], entry)
-                end
-                entry.count = entry.count + 1
-            end
+    each_field(result, function(first, last, index)
+        if index == 1 then
+            -- `tonumber` ignores the newline that ends the previous record
+            timestamp = tonumber(sub(result, first, last))
+            return
         end
-    end
+
+        local key, value_first = match(result, "^%s*([%w-]+):()", first)
+        if not key then
+            return
+        end
+        local value_last
+        value_first, value_last = trim_range(result, value_first, last)
+        if value_first > value_last then
+            return
+        end
+
+        local id = ids[key]
+        if not id then
+            id = lower(key)
+            ids[key] = id
+            by_key[id] = by_key[id] or {}
+            by_value[id] = by_value[id] or {}
+        end
+
+        local value = sub(result, value_first, value_last)
+        local entry = by_value[id][value]
+        if not entry then
+            entry = {
+                key = key,
+                value = value,
+                count = 0,
+                timestamp = timestamp,
+                diff = timestamp and os.difftime(now, timestamp) or 0,
+            }
+            by_value[id][value] = entry
+            local values = by_key[id]
+            values[#values + 1] = entry
+        end
+        entry.count = entry.count + 1
+    end)
 
     return by_key
 end
