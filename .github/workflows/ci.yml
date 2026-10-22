@@ -69,8 +69,7 @@ jobs:
   nightly:
     name: Neovim nightly
     runs-on: ubuntu-latest
-    # A cache miss builds Neovim from source
-    timeout-minutes: 60
+    timeout-minutes: 30
     continue-on-error: true
     steps:
       - name: Checkout
@@ -81,16 +80,28 @@ jobs:
           extra_nix_config: |
             extra-substituters = https://nix-community.cachix.org
             extra-trusted-public-keys = nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs=
-      # The overrides use the latest overlay instead of the locked one, so the job tests the current nightly
+      # The overlay updates each day at 00:00 UTC, and its CI then pushes the build to the cache. The job uses the newest
+      # overlay commit that is in the cache, not the locked one, so it tests a recent nightly without a source build.
+      - name: Find the newest cached nightly
+        id: overlay
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rev=$(scripts/nightly-cache.sh latest)
+          echo "rev=$rev" >> "$GITHUB_OUTPUT"
       - name: Show Neovim version
+        env:
+          OVERLAY: github:nix-community/neovim-nightly-overlay/${{ steps.overlay.outputs.rev }}
         run: >-
           nix develop .#nightly
-          --override-input neovim-nightly-overlay github:nix-community/neovim-nightly-overlay
+          --override-input neovim-nightly-overlay "$OVERLAY"
           --no-write-lock-file
           -c nvim --version
       - name: Test
+        env:
+          OVERLAY: github:nix-community/neovim-nightly-overlay/${{ steps.overlay.outputs.rev }}
         run: >-
           nix develop .#nightly
-          --override-input neovim-nightly-overlay github:nix-community/neovim-nightly-overlay
+          --override-input neovim-nightly-overlay "$OVERLAY"
           --no-write-lock-file
           -c make test

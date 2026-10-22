@@ -40,6 +40,8 @@
                 pkgs.gnumake
                 pkgs.git
               ];
+              # scripts/nightly-cache.sh reads the store path of Neovim from here
+              passthru = { inherit neovim; };
             };
         in
         {
