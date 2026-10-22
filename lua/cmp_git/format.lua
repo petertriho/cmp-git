@@ -260,4 +260,17 @@ function M.item(config, trigger_char, item)
     }
 end
 
+---@generic TItem
+---@param config { format: cmp_git.FormatConfig<TItem>, sort_by: string | fun(item: TItem): string }
+---@param trigger_char string? nil for pattern trigger actions without a trigger character
+---@param items TItem[]
+---@return cmp_git.CompletionItem[]
+function M.items(config, trigger_char, items)
+    local result = {}
+    for index, item in ipairs(items) do
+        result[index] = M.item(config, trigger_char, item)
+    end
+    return result
+end
+
 return M

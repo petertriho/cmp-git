@@ -215,7 +215,7 @@ local function lazy_sources(core_config)
                 return nil
             end
 
-            local source = require(module).new(core_config[name])
+            local source = require(module).new(core_config[name], core_config.cache)
             rawset(sources, name, source)
             return source
         end,
@@ -314,7 +314,7 @@ local function find_trigger_start(line, trigger_character, cursor_character)
     return trigger_start or cursor_character
 end
 
----Copy the items, and give each copy a text edit that replaces the typed text. The capabilities give the same cached
+---Copy the items, and give each copy a text edit that replaces the typed text. A legacy `action` can give the same
 ---items to each request, and blink.cmp writes into the items that it gets (`pos` and `score_offset`), so each request
 ---needs its own tables.
 ---@param items? cmp_git.CompletionItem[]

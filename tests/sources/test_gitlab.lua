@@ -1,4 +1,5 @@
 local helpers = require("tests.helpers")
+local cache = require("cmp_git.cache")
 local config = require("cmp_git.config")
 local GitLab = require("cmp_git.sources.gitlab")
 
@@ -27,11 +28,6 @@ T["gitlab_instance_state_isolation"] = function()
         second:is_valid_host({ host = "gitlab.com", owner = "owner", repo = "repo" }),
         "GitLab instance validates default host"
     )
-
-    first.cache.issues[1] = {}
-    eq(second.cache.issues[1], nil, "GitLab issue cache is instance-local")
-    ok(first.cache.mentions ~= second.cache.mentions, "GitLab mention cache table is instance-local")
-    ok(first.cache.merge_requests ~= second.cache.merge_requests, "GitLab MR cache table is instance-local")
 end
 
 local git_info = { host = "gitlab.com", owner = "owner", repo = "repo" }
@@ -70,14 +66,13 @@ end
 T["failed_commands_give_an_empty_list"] = function()
     fake_commands({ glab = "exit 1", curl = "exit 22" })
     local source = GitLab.new(config.normalize({}).gitlab)
-    local bufnr = vim.api.nvim_get_current_buf()
 
     eq(answers(source, "complete_issues", "#"), { EMPTY }, "issues")
     eq(answers(source, "complete_change_requests", "!"), { EMPTY }, "merge requests")
     eq(answers(source, "complete_mentions", "@"), { EMPTY }, "mentions")
-    eq(source.cache.issues[bufnr], nil, "failed issues are not cached")
-    eq(source.cache.change_requests[bufnr], nil, "failed merge requests are not cached")
-    eq(source.cache.mentions[bufnr], nil, "failed mentions are not cached")
+    eq(source:_entry("issues", git_info):get(), nil, "failed issues are not cached")
+    eq(source:_entry("merge_requests", git_info):get(), nil, "failed merge requests are not cached")
+    eq(source:_entry("mentions", git_info):get(), nil, "failed mentions are not cached")
 end
 
 T["missing_commands_give_an_empty_list"] = function()
@@ -87,6 +82,51 @@ T["missing_commands_give_an_empty_list"] = function()
     eq(answers(source, "complete_issues", "#"), { EMPTY }, "issues")
     eq(answers(source, "complete_change_requests", "!"), { EMPTY }, "merge requests")
     eq(answers(source, "complete_mentions", "@"), { EMPTY }, "mentions")
+end
+
+---@param list cmp_git.CompletionList
+---@return string[]
+local function labels(list)
+    return vim.tbl_map(function(item)
+        return item.label
+    end, list.items)
+end
+
+T["glab_items_are_cached_for_the_next_session"] = function()
+    fake_commands({
+        glab = [[printf '%s' '[{"iid":1,"title":"an issue","description":null,"updated_at":"2024-01-01T00:00:00Z"}]']],
+    })
+    local source = GitLab.new(config.normalize({}).gitlab)
+    eq(labels(answers(source, "complete_issues", "#")[1]), { "#1: an issue" }, "the issues of glab")
+
+    cache.forget()
+    fake_commands({ glab = "exit 1" })
+    local callback, lists = helpers.recorder()
+    GitLab.new(config.normalize({}).gitlab):complete_issues(callback, git_info, "#")
+
+    eq(#lists, 1, "a new session answers at once")
+    eq(labels(lists[1]), { "#1: an issue" }, "with the issues of the file")
+    eq(lists[1].items[1].data.description, "", "the null description of the API is still empty")
+end
+
+T["stale_items_refresh_in_the_background"] = function()
+    fake_commands({
+        glab = [[printf '%s' '[{"iid":2,"title":"a new issue","description":"","updated_at":"2024-01-01T00:00:00Z"}]']],
+    })
+    local source = GitLab.new(config.normalize({}).gitlab, { ttl = 60 })
+    local entry = source:_entry("issues", git_info)
+    entry:set({ { iid = 1, title = "an issue", description = "", updated_at = "2024-01-01T00:00:00Z" } })
+    entry.fetched_at = os.time() - 60
+    local callback, lists = helpers.recorder()
+
+    source:complete_issues(callback, git_info, "#")
+    eq(labels(lists[1]), { "#1: an issue" }, "the request answers at once with the stale items")
+
+    helpers.wait_for(function()
+        return not entry.refreshing
+    end, "the refresh ends")
+    source:complete_issues(callback, git_info, "#")
+    eq(labels(lists[2]), { "#2: a new issue" }, "the next request gets the new items")
 end
 
 return T

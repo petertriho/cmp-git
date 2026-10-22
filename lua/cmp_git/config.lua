@@ -52,6 +52,14 @@ local defaults = {
     enableRemoteUrlRewrites = false, -- enable git url rewrites, see https://git-scm.com/docs/git-config#Documentation/git-config.txt-urlltbasegtinsteadOf
     ---@type table<string, string>
     ssh_aliases = {},
+    ---The disk cache of the GitHub and GitLab items
+    ---@class cmp_git.Config.Cache
+    cache = {
+        ---Seconds after which a request also refreshes the items in the background. 0 refreshes after each request,
+        ---and math.huge never refreshes.
+        ---@type number
+        ttl = 300,
+    },
     ---@class cmp_git.Config.Git
     ---@field filter_fn? fun(trigger_char: string, item: cmp_git.Commit): string Compatibility alias for the commits format.filterText function. It does not apply to trailers.
     git = {

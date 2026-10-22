@@ -5,10 +5,7 @@ local M = {}
 ---@param args cmp_git.Provider.CapabilityArgs
 ---@return cmp_git.SystemJob?
 function M.job(args)
-    local bufnr = args.bufnr or vim.api.nvim_get_current_buf()
-
-    if args.cache[bufnr] then
-        args.callback({ items = args.cache[bufnr], isIncomplete = false })
+    if issues.from_cache(args) then
         return nil
     end
 
@@ -22,6 +19,12 @@ function M.complete(args)
         job:start()
     end
     return job
+end
+
+---@param args cmp_git.Provider.RefreshArgs
+---@param done fun(items: table[]?)
+function M.refresh(args, done)
+    issues.fetch(args.runner, args.adapter.change_requests_request(args.git_info, args.trigger_char, args.config), done)
 end
 
 return M
