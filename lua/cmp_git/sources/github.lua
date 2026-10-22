@@ -4,10 +4,6 @@ local mentions = require("cmp_git.provider.capabilities.mentions")
 local change_requests = require("cmp_git.provider.capabilities.change_requests")
 local log = require("cmp_git.log")
 
----@class cmp_git.AsyncItemList
----@field in_progress boolean
----@field items cmp_git.CompletionItem[]
-
 ---@class cmp_git.Source.GitHub.Cache
 ---@field issues table<integer, cmp_git.CompletionItem[]>
 ---@field mentions table<integer, cmp_git.AsyncItemList>
