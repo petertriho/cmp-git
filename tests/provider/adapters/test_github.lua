@@ -243,6 +243,18 @@ T["mentions_request"] = function()
     eq(request.handle_item({ login = "octocat" }).label, "@octocat", "mention item")
 end
 
+T["issues_request_drops_pull_requests"] = function()
+    local request = adapter.issues_request(github, "#", github_config().issues)
+
+    eq(
+        request.handle_parsed({ { number = 1 }, { number = 2, pull_request = { url = "u" } }, { number = 3 } }),
+        { { number = 1 }, { number = 3 } },
+        "the REST issues endpoint also returns pull requests"
+    )
+    eq(request.handle_parsed({ message = "Not Found" }), {}, "an error response gives no issues")
+    eq(request.handle_parsed(vim.NIL), {}, "a null response gives no issues")
+end
+
 T["handle_item_normalizes_body"] = function()
     local request = adapter.issues_request(github, "#", github_config().issues)
 
