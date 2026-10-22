@@ -262,37 +262,51 @@ local function find_trigger_start(line, trigger_character, cursor_character)
     return trigger_start or cursor_character
 end
 
+---Copy the items, and give each copy a text edit that replaces the typed text. The capabilities give the same cached
+---items to each request, and blink.cmp writes into the items that it gets (`pos` and `score_offset`), so each request
+---needs its own tables.
+---@param items? cmp_git.CompletionItem[]
+---@param context? table
+---@return cmp_git.CompletionItem[]
 function Core.apply_text_edits(items, context)
-    if not context or not context.cursor then
-        return
-    end
-
-    local row = context.cursor.row or context.cursor.line or 1
-    local character = context.cursor.character or context.cursor.col or 0
-    local start_character = context.edit_start or find_trigger_start(context.line, context.trigger_character, character)
-
-    for _, item in ipairs(items or {}) do
-        local new_text = item.insertText or item.label
-        item.textEdit = {
-            range = {
-                start = {
-                    line = row - 1,
-                    character = start_character,
-                },
-                ["end"] = {
-                    line = row - 1,
-                    character = character,
-                },
+    local range = nil
+    if context and context.cursor then
+        local row = context.cursor.row or context.cursor.line or 1
+        local character = context.cursor.character or context.cursor.col or 0
+        local start_character = context.edit_start
+            or find_trigger_start(context.line, context.trigger_character, character)
+        -- One range for all the items, which halves the cost. blink.cmp copies a range before it changes it, and
+        -- nvim-cmp shares equal ranges between its entries anyway.
+        range = {
+            start = {
+                line = row - 1,
+                character = start_character,
             },
-            newText = new_text,
+            ["end"] = {
+                line = row - 1,
+                character = character,
+            },
         }
     end
+
+    local edited = {}
+    for index, item in ipairs(items or {}) do
+        local copy = {}
+        for key, value in pairs(item) do
+            copy[key] = value
+        end
+        if range then
+            copy.textEdit = { range = range, newText = item.insertText or item.label }
+        end
+        edited[index] = copy
+    end
+
+    return edited
 end
 
 function Core:_wrap_callback(context, callback)
     return function(list)
-        Core.apply_text_edits(list.items, context)
-        callback(list)
+        callback({ items = Core.apply_text_edits(list.items, context), isIncomplete = list.isIncomplete })
     end
 end
 
