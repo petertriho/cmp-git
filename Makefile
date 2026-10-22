@@ -4,7 +4,7 @@ SELENE ?= selene
 LUA_LANGUAGE_SERVER ?= lua-language-server
 MINI_VERSION := v0.18.0
 MINI_DIR := deps/mini.nvim
-LUA_PATHS := lua tests benchmarks
+LUA_PATHS := lua plugin tests benchmarks
 REF ?= main
 
 .PHONY: test-deps test test-file bench bench-compare format format-check lint typecheck ci
