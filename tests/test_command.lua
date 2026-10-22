@@ -250,4 +250,25 @@ T["env_adds_to_the_environment"] = function()
     eq(seen, "inherited 1", "the command gets the variables of Neovim and of the spec")
 end
 
+T["build_runs_in_the_repository_of_the_spec_buffer"] = function()
+    local dir = helpers.tempdir()
+    local seen
+    helpers.stub(repository, "get_cwd", function(bufnr)
+        seen = bufnr
+        return dir
+    end)
+    local result
+    local job = helpers.not_nil(command.build({ exec = "sh", args = { "-c", "pwd -P" }, bufnr = 42 }, function(stdout)
+        result = stdout
+    end))
+
+    job:start()
+    helpers.wait_for(function()
+        return result ~= nil
+    end, "the job completes")
+
+    eq(seen, 42, "the directory comes from the buffer of the spec")
+    eq(vim.trim(result), dir, "the command runs in that directory")
+end
+
 return T

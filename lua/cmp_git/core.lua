@@ -48,32 +48,42 @@ local builtin_trigger_actions = {
     git_trailer_values = function(core, callback, context, _git_info, trigger_char)
         return route_status(core.sources.git:get_trailer_values(callback, context, trigger_char))
     end,
-    github_issues = function(core, callback, _context, git_info, trigger_char)
-        return route_status(core.sources.github:complete_issues(callback, git_info, trigger_char))
+    github_issues = function(core, callback, context, git_info, trigger_char)
+        return route_status(core.sources.github:complete_issues(callback, git_info, trigger_char, context.bufnr))
     end,
-    github_mentions = function(core, callback, _context, git_info, trigger_char)
-        return route_status(core.sources.github:complete_mentions(callback, git_info, trigger_char))
+    github_mentions = function(core, callback, context, git_info, trigger_char)
+        return route_status(core.sources.github:complete_mentions(callback, git_info, trigger_char, context.bufnr))
     end,
-    github_change_requests = function(core, callback, _context, git_info, trigger_char)
-        return route_status(core.sources.github:complete_change_requests(callback, git_info, trigger_char))
+    github_change_requests = function(core, callback, context, git_info, trigger_char)
+        return route_status(
+            core.sources.github:complete_change_requests(callback, git_info, trigger_char, context.bufnr)
+        )
     end,
-    github_issues_and_change_requests = function(core, callback, _context, git_info, trigger_char)
-        return route_status(core.sources.github:complete_issues_and_change_requests(callback, git_info, trigger_char))
+    github_issues_and_change_requests = function(core, callback, context, git_info, trigger_char)
+        return route_status(
+            core.sources.github:complete_issues_and_change_requests(callback, git_info, trigger_char, context.bufnr)
+        )
     end,
-    gitlab_issues = function(core, callback, _context, git_info, trigger_char)
-        return route_status(core.sources.gitlab:complete_issues(callback, git_info, trigger_char))
+    gitlab_issues = function(core, callback, context, git_info, trigger_char)
+        return route_status(core.sources.gitlab:complete_issues(callback, git_info, trigger_char, context.bufnr))
     end,
-    gitlab_mentions = function(core, callback, _context, git_info, trigger_char)
-        return route_status(core.sources.gitlab:complete_mentions(callback, git_info, trigger_char))
+    gitlab_mentions = function(core, callback, context, git_info, trigger_char)
+        return route_status(core.sources.gitlab:complete_mentions(callback, git_info, trigger_char, context.bufnr))
     end,
-    gitlab_change_requests = function(core, callback, _context, git_info, trigger_char)
-        return route_status(core.sources.gitlab:complete_change_requests(callback, git_info, trigger_char))
+    gitlab_change_requests = function(core, callback, context, git_info, trigger_char)
+        return route_status(
+            core.sources.gitlab:complete_change_requests(callback, git_info, trigger_char, context.bufnr)
+        )
     end,
-    gitlab_mrs = function(core, callback, _context, git_info, trigger_char)
-        return route_status(core.sources.gitlab:complete_change_requests(callback, git_info, trigger_char))
+    gitlab_mrs = function(core, callback, context, git_info, trigger_char)
+        return route_status(
+            core.sources.gitlab:complete_change_requests(callback, git_info, trigger_char, context.bufnr)
+        )
     end,
-    github_issues_and_prs = function(core, callback, _context, git_info, trigger_char)
-        return route_status(core.sources.github:complete_issues_and_change_requests(callback, git_info, trigger_char))
+    github_issues_and_prs = function(core, callback, context, git_info, trigger_char)
+        return route_status(
+            core.sources.github:complete_issues_and_change_requests(callback, git_info, trigger_char, context.bufnr)
+        )
     end,
 }
 

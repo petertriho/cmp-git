@@ -121,8 +121,10 @@ function M.job(args)
         args.callback({ items = {}, isIncomplete = false })
     end
 
+    local spec = M.request(args.config)
+    spec.bufnr = bufnr
     local runner = args.runner or command
-    local job = runner.build(M.request(args.config), function(result, success)
+    local job = runner.build(spec, function(result, success)
         if not success then
             fail()
             return

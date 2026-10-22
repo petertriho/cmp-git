@@ -108,6 +108,10 @@ end
 ---@return string
 function M.get_cwd(bufnr)
     bufnr = resolve_bufnr(bufnr)
+    -- The buffer of a request can be wiped while the request waits for git
+    if not vim.api.nvim_buf_is_valid(bufnr) then
+        return vim.fn.getcwd()
+    end
     local dir = buffer_dir(bufnr)
     local state = states[bufnr]
     -- The commands must see the repository that discovery found, which can be in Neovim's cwd
@@ -293,6 +297,10 @@ end
 ---@return nil
 function M.is_git_repo(on_result, bufnr)
     bufnr = resolve_bufnr(bufnr)
+    if not vim.api.nvim_buf_is_valid(bufnr) then
+        on_result(false)
+        return
+    end
     -- An octo buffer gets its repository from its name
     if vim.bo[bufnr].filetype == "octo" then
         on_result(true)
@@ -359,6 +367,11 @@ function M.discover(remotes, opts)
     ---@param metadata cmp_git.RepositoryMetadata
     local function complete(metadata)
         opts.on_complete(apply_ssh_aliases(metadata, opts.ssh_aliases))
+    end
+
+    if not vim.api.nvim_buf_is_valid(bufnr) then
+        complete({})
+        return
     end
 
     local octo_metadata = discover_octo(bufnr)

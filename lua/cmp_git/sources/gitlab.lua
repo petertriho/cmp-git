@@ -49,7 +49,8 @@ end
 ---@param callback fun(list: cmp_git.CompletionList)
 ---@param git_info cmp_git.GitInfo
 ---@param trigger_char string
-function GitLab:complete_issues(callback, git_info, trigger_char)
+---@param bufnr? integer The buffer of the request, by default the current one.
+function GitLab:complete_issues(callback, git_info, trigger_char, bufnr)
     if not self:is_valid_host(git_info) then
         return false
     end
@@ -61,6 +62,7 @@ function GitLab:complete_issues(callback, git_info, trigger_char)
         config = self.config.issues,
         git_info = git_info,
         trigger_char = trigger_char,
+        bufnr = bufnr,
     })
 
     return true, job
@@ -69,7 +71,8 @@ end
 ---@param callback fun(list: cmp_git.CompletionList)
 ---@param git_info cmp_git.GitInfo
 ---@param trigger_char string
-function GitLab:complete_mentions(callback, git_info, trigger_char)
+---@param bufnr? integer The buffer of the request, by default the current one.
+function GitLab:complete_mentions(callback, git_info, trigger_char, bufnr)
     if not self:is_valid_host(git_info) then
         return false
     end
@@ -81,6 +84,7 @@ function GitLab:complete_mentions(callback, git_info, trigger_char)
         config = self.config.mentions,
         git_info = git_info,
         trigger_char = trigger_char,
+        bufnr = bufnr,
     })
 
     return true, job
@@ -89,7 +93,8 @@ end
 ---@param callback fun(list: cmp_git.CompletionList)
 ---@param git_info cmp_git.GitInfo
 ---@param trigger_char string
-function GitLab:complete_change_requests(callback, git_info, trigger_char)
+---@param bufnr? integer The buffer of the request, by default the current one.
+function GitLab:complete_change_requests(callback, git_info, trigger_char, bufnr)
     if not self:is_valid_host(git_info) then
         return false
     end
@@ -101,6 +106,7 @@ function GitLab:complete_change_requests(callback, git_info, trigger_char)
         config = self.config.merge_requests,
         git_info = git_info,
         trigger_char = trigger_char,
+        bufnr = bufnr,
     })
 
     return true, job

@@ -675,7 +675,16 @@ T["complete_discovers_the_repository_of_the_request_buffer"] = function()
     end)
     helpers.stub(repository, "discover", function(_, opts)
         seen.discover = opts.bufnr
-        opts.on_complete({})
+        opts.on_complete({ host = "github.com", owner = "owner", repo = "repo" })
+    end)
+    helpers.stub(core.sources.gitlab, "complete_issues", function(_, _, _, _, bufnr)
+        seen.gitlab = bufnr
+        return false
+    end)
+    helpers.stub(core.sources.github, "complete_issues_and_change_requests", function(_, on_list, _, _, bufnr)
+        seen.github = bufnr
+        on_list({ items = {}, isIncomplete = false })
+        return true
     end)
 
     local callback, lists = helpers.recorder()
@@ -686,7 +695,11 @@ T["complete_discovers_the_repository_of_the_request_buffer"] = function()
         bufnr = request_bufnr,
     }, callback)
 
-    eq(seen, { is_git_repo = request_bufnr, discover = request_bufnr }, "discovery reads the request buffer")
+    eq(
+        seen,
+        { is_git_repo = request_bufnr, discover = request_bufnr, gitlab = request_bufnr, github = request_bufnr },
+        "discovery and the sources use the request buffer"
+    )
     eq(#lists, 1, "the request answers")
 end
 
