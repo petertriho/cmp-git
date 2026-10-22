@@ -67,6 +67,14 @@ local builtin_trigger_actions = {
     end,
 }
 
+-- Built-in actions that read only the local repository. They need no remote, and they always handle the request.
+local LOCAL_ACTIONS = {
+    git_commits = true,
+    git_trailer_keys = true,
+    git_trailer_identities = true,
+    git_trailer_values = true,
+}
+
 -- Synchronous checks that run before repository discovery, so that a declined request starts no git process.
 local builtin_trigger_availability = {
     git_trailer_keys = function(core, context)
@@ -99,6 +107,8 @@ end
 ---@field regex? any The compiled `pattern`. Entries with the same pattern share it.
 ---@field keyword_pattern? string
 ---@field available? fun(core: table, context: table): boolean
+---@field needs_remote boolean The action reads `git_info`.
+---@field always_handles boolean The action never declines the request, so the actions after it never run.
 ---@field action fun(core: table, callback: fun(list: cmp_git.CompletionList), context: table, git_info: cmp_git.GitInfo, trigger_char: string?): string, table?
 
 ---@param configured_action table
@@ -114,6 +124,8 @@ local function normalize_trigger_action(configured_action, regexes)
             {
                 debug_name = configured_action.debug_name,
                 trigger_character = configured_action.trigger_character,
+                needs_remote = true,
+                always_handles = false,
                 action = function(core, _callback, context, git_info, trigger_char)
                     return route_status(
                         configured_action.action(
@@ -159,6 +171,8 @@ local function normalize_trigger_action(configured_action, regexes)
             keyword_pattern = keyword_pattern,
             regex = regex,
             available = builtin_trigger_availability[action_name],
+            needs_remote = action ~= nil and not LOCAL_ACTIONS[action_name],
+            always_handles = LOCAL_ACTIONS[action_name] == true,
             action = function(core, callback, context, git_info, trigger_char)
                 if not action then
                     return ROUTE_UNAVAILABLE
@@ -342,8 +356,24 @@ function Core:_run_trigger_actions(trigger_character, callback, context, git_inf
     callback(empty_list())
 end
 
+---Whether an action that can run reads `git_info`.
+---@param routes cmp_git.Route[]
+---@return boolean
+local function routes_need_remote(routes)
+    for _, route in ipairs(routes) do
+        if route.trigger_action.needs_remote then
+            return true
+        end
+        if route.trigger_action.always_handles then
+            return false
+        end
+    end
+    return false
+end
+
 ---@param routes? cmp_git.Route[] The routes of the context, when the caller has them.
 function Core:_complete(context, callback, routes)
+    routes = routes or self:_route(context)
     local state = { cancelled = false, active = nil }
     local controller = {
         command = "cmp_git_complete",
@@ -355,15 +385,23 @@ function Core:_complete(context, callback, routes)
         end,
     }
 
+    local function run(git_info)
+        if state.cancelled then
+            return
+        end
+        state.active = self:_run_trigger_actions(context.trigger_character, callback, context, git_info, routes)
+    end
+
+    -- Discovery starts a git process for each remote that it checks
+    if not routes_need_remote(routes) then
+        run({})
+        return controller
+    end
+
     repository.discover(self.config.remotes, {
         enableRemoteUrlRewrites = self.config.enableRemoteUrlRewrites,
         ssh_aliases = self.config.ssh_aliases,
-        on_complete = function(git_info)
-            if state.cancelled then
-                return
-            end
-            state.active = self:_run_trigger_actions(context.trigger_character, callback, context, git_info, routes)
-        end,
+        on_complete = run,
     })
 
     return controller

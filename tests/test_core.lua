@@ -431,6 +431,86 @@ T["complete_does_not_answer_after_cancel"] = function()
     eq(#lists, 0, "cancelled request does not call back")
 end
 
+---Stub the repository checks and the sources, and record the calls.
+---@param core table
+---@param is_git_repo boolean
+---@return string[] calls
+local function record_calls(core, is_git_repo)
+    local calls = {}
+    helpers.stub(repository, "is_git_repo", function(on_result)
+        table.insert(calls, "is_git_repo")
+        on_result(is_git_repo)
+    end)
+    helpers.stub(repository, "discover", function(_, opts)
+        table.insert(calls, "discover")
+        opts.on_complete({ host = "github.com", owner = "owner", repo = "repo" })
+    end)
+
+    local function record(name, handled)
+        return function()
+            table.insert(calls, name)
+            return handled
+        end
+    end
+    core.sources.git = {
+        get_commits = record("commits", true),
+        get_trailer_identities = record("identities", true),
+        may_have_trailer_values = function()
+            return true
+        end,
+    }
+    core.sources.gitlab = {
+        complete_issues = record("gitlab_issues", false),
+        complete_mentions = record("gitlab_mentions", false),
+    }
+    core.sources.github = {
+        complete_issues = record("github_issues", true),
+        complete_issues_and_change_requests = record("github_issues", true),
+        complete_mentions = record("github_mentions", true),
+    }
+    return calls
+end
+
+T["complete_discovers_the_remote_only_for_actions_that_need_it"] = function()
+    local core = Core.new({})
+    local calls = record_calls(core, true)
+    local function run(context)
+        for key in pairs(calls) do
+            calls[key] = nil
+        end
+        core:complete(context, function() end)
+        return table.concat(calls, ",")
+    end
+
+    eq(run(trigger_context(":")), "is_git_repo,commits", "commits need no remote")
+    eq(run(trigger_context("#")), "is_git_repo,discover,gitlab_issues,github_issues", "issues need the remote")
+
+    -- The identities action handles the request, so the mention actions after it never run
+    local line = "Co-authored-by: Ada <ada@"
+    local bufnr = helpers.buffer({ "feat: subject", "", line })
+    eq(
+        run({ trigger_character = "@", cursor = { row = 3, character = #line }, line = line, bufnr = bufnr }),
+        "is_git_repo,identities",
+        "identities need no remote"
+    )
+
+    core = Core.new({
+        trigger_actions = {
+            {
+                trigger_character = "#",
+                action = function()
+                    table.insert(calls, "legacy")
+                    return true
+                end,
+            },
+            { trigger_character = "!", actions = { "no_such_action", "github_issues" } },
+        },
+    })
+    calls = record_calls(core, true)
+    eq(run(trigger_context("#")), "is_git_repo,discover,legacy", "legacy actions get the remote")
+    eq(run(trigger_context("!")), "is_git_repo,discover,github_issues", "unknown actions do not stop discovery")
+end
+
 T["trailer_text_edits"] = function()
     local core = Core.new({})
     local bufnr = helpers.buffer({ "subject", "", "" })
