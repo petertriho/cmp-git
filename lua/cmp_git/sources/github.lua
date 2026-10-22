@@ -140,17 +140,7 @@ function GitHub:complete_issues_and_change_requests(callback, git_info, trigger_
 
     git_info = self:_normalize_git_info(git_info)
 
-    local bufnr = vim.api.nvim_get_current_buf()
-    if self.cache.issues[bufnr] and self.cache.change_requests[bufnr] then
-        local items = {}
-        items = vim.list_extend(items, self.cache.issues[bufnr])
-        items = vim.list_extend(items, self.cache.change_requests[bufnr])
-        log.fmt_debug("Got %d issues and prs from cache", #items)
-        callback({ items = self.cache.issues[bufnr], isIncomplete = false })
-        return true, nil
-    end
-
-    local items = {}
+    local issue_items = {}
     local state = { cancelled = false, active = nil }
     local controller = {
         command = "github_issues_and_change_requests",
@@ -162,40 +152,41 @@ function GitHub:complete_issues_and_change_requests(callback, git_info, trigger_
         end,
     }
 
+    -- The capability jobs fill the caches. On a cache hit, a capability calls the callback at once and gives no job,
+    -- so the pull requests are requested only after the issues are known.
+    local function complete_change_requests()
+        if state.cancelled then
+            return
+        end
+
+        local change_requests_job = self:_change_requests_job(function(args)
+            if state.cancelled then
+                return
+            end
+            -- A new list, so that the issue cache does not get the pull requests
+            local items = vim.list_extend(vim.list_extend({}, issue_items), args.items)
+            log.fmt_debug("Got %d issues and prs", #items)
+            callback({ items = items, isIncomplete = false })
+        end, git_info, trigger_char)
+
+        if change_requests_job then
+            state.active = change_requests_job
+            change_requests_job:start()
+        end
+    end
+
     local issues_job = self:_issues_job(function(args)
         if state.cancelled then
             return
         end
-        items = args.items
-        self.cache.issues[bufnr] = args.items
-    end, git_info, trigger_char)
-
-    local change_requests_job = self:_change_requests_job(function(args)
-        if state.cancelled then
-            return
-        end
-        local prs = args.items
-        self.cache.change_requests[bufnr] = args.items
-        items = vim.list_extend(items, prs)
-
-        log.fmt_debug("Got %d issues and prs from GitHub", #items)
-        callback({ items = items, isIncomplete = false })
+        issue_items = args.items
     end, git_info, trigger_char)
 
     if issues_job then
         state.active = issues_job
-        issues_job:start(function()
-            if state.cancelled then
-                return
-            end
-            if change_requests_job then
-                state.active = change_requests_job
-                change_requests_job:start()
-            end
-        end)
-    elseif change_requests_job then
-        state.active = change_requests_job
-        change_requests_job:start()
+        issues_job:start(complete_change_requests)
+    else
+        complete_change_requests()
     end
 
     return true, controller
