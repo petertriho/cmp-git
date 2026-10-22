@@ -1,5 +1,6 @@
 local helpers = require("tests.helpers")
 local adapter = require("cmp_git.provider.adapters.github")
+local command = require("cmp_git.command")
 local config = require("cmp_git.config")
 
 local eq = helpers.eq
@@ -15,23 +16,23 @@ local function github_config(overrides)
     return config.normalize({ github = overrides }).github
 end
 
----@param command cmp_git.CommandSpec
+---@param spec cmp_git.CommandSpec
 ---@return string?
-local function curl_url(command)
-    for _, arg in ipairs(command.args) do
+local function curl_url(spec)
+    for _, arg in ipairs(spec.args) do
         if arg:match("^https://") then
             return arg
         end
     end
 end
 
----@param command cmp_git.CommandSpec
+---@param spec cmp_git.CommandSpec
 ---@param name string
 ---@return string?
-local function curl_header(command, name)
-    for i = 2, #command.args do
-        if command.args[i - 1] == "-H" then
-            local header, value = command.args[i]:match("^([^:]+): (.*)$")
+local function curl_header(spec, name)
+    for i = 2, #spec.args do
+        if spec.args[i - 1] == "-H" then
+            local header, value = spec.args[i]:match("^([^:]+): (.*)$")
             if header == name then
                 return value
             end
@@ -116,11 +117,31 @@ end
 T["token_header"] = function()
     local request = adapter.issues_request(github, "#", github_config().issues)
     eq(curl_header(request.commands[2], "Authorization"), nil, "no token, no header")
+    eq(request.commands[1].env.GITHUB_API_TOKEN, nil, "no token for gh")
 
     vim.env.GITHUB_API_TOKEN = "secret"
     request = adapter.issues_request(github, "#", github_config().issues)
     eq(curl_header(request.commands[2], "Authorization"), "token secret", "curl sends the token")
     eq(request.commands[1].env.GITHUB_API_TOKEN, "secret", "gh gets the token")
+end
+
+T["unset_token_does_not_reach_gh"] = function()
+    local gh = adapter.issues_request(github, "#", github_config().issues).commands[1]
+    local seen
+    local job = helpers.not_nil(
+        command.build(
+            { exec = "sh", args = { "-c", 'printf "%s" "${GITHUB_API_TOKEN-unset}"' }, env = gh.env },
+            function(stdout)
+                seen = stdout
+            end
+        )
+    )
+    job:start()
+    helpers.wait_for(function()
+        return seen ~= nil
+    end, "the command completes")
+
+    eq(seen, "unset", "the gh environment has no GITHUB_API_TOKEN")
 end
 
 T["issue_state_limit_and_filter"] = function()

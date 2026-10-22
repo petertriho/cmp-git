@@ -27,7 +27,9 @@ end
 
 local function env()
     return {
-        GITHUB_API_TOKEN = vim.fn.getenv("GITHUB_API_TOKEN"),
+        -- `vim.env` is nil for an unset variable. `vim.fn.getenv` gives `vim.NIL`, which the command passes as the
+        -- string "vim.NIL".
+        GITHUB_API_TOKEN = vim.env.GITHUB_API_TOKEN,
         CLICOLOR = 0,
     }
 end
