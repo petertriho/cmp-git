@@ -296,6 +296,7 @@ function M.isolate_environment()
 
     vim.env.HOME = home
     vim.env.XDG_CONFIG_HOME = home .. "/.config"
+    vim.env.XDG_CACHE_HOME = home .. "/.cache"
     vim.env.GIT_CONFIG_GLOBAL = "/dev/null"
     vim.env.GIT_CONFIG_NOSYSTEM = "1"
     vim.env.GIT_CEILING_DIRECTORIES = root
