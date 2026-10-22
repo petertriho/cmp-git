@@ -60,6 +60,7 @@ T["issues_request"] = function()
     eq(gh.env.CLICOLOR, 0, "gh output has no colors")
     eq(curl.exec, "curl", "curl command")
     eq(curl.args[1], "-s", "curl is silent")
+    eq(curl_header(curl, "Accept"), "application/vnd.github.v3+json", "curl asks for the v3 API")
     eq(
         curl_url(curl),
         "https://api.github.com/repos/owner/repo/issues?state=open&per_page=100&page=1",

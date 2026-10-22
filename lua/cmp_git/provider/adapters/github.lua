@@ -39,7 +39,7 @@ local function curl_args(curl_url)
         "-s",
         "-L",
         "-H",
-        "'Accept: application/vnd.github.v3+json'",
+        "Accept: application/vnd.github.v3+json",
         curl_url,
     }
 
