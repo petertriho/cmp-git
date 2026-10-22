@@ -89,7 +89,7 @@ end
 ---@param spec cmp_git.CommandSpec
 ---@param callback fun(list: cmp_git.CompletionList, success: boolean) The list is empty when the command fails.
 ---@param handle_item fun(item: TItem): cmp_git.CompletionItem
----@param handle_parsed? fun(parsed: any): TItem[]
+---@param handle_parsed? fun(parsed: any): TItem[]? A result that is not a list is a failure.
 ---@return cmp_git.SystemJob?
 function M.build_list(spec, callback, handle_item, handle_parsed)
     return M.build(spec, function(result, success)
@@ -98,7 +98,9 @@ function M.build_list(spec, callback, handle_item, handle_parsed)
             return
         end
 
-        callback(response.completion_list(result, handle_item, handle_parsed), true)
+        -- An output that is not a list, for example an error object, is a failure
+        local list, ok = response.completion_list(result, handle_item, handle_parsed)
+        callback(list, ok)
     end)
 end
 
@@ -181,7 +183,7 @@ end
 ---@param specs cmp_git.CommandSpec[]
 ---@param callback fun(list: cmp_git.CompletionList, success: boolean) The list is empty when all commands fail.
 ---@param handle_item fun(item: TItem): cmp_git.CompletionItem
----@param handle_parsed? fun(parsed: any): TItem[]
+---@param handle_parsed? fun(parsed: any): TItem[]? A result that is not a list is a failure.
 ---@return cmp_git.SystemJob? job nil when no command is executable.
 function M.build_fallback_list(specs, callback, handle_item, handle_parsed)
     local job

@@ -115,7 +115,7 @@ T["enterprise_host"] = function()
 end
 
 ---The requests that run curl, so that a case can check each of them.
----@return table<string, cmp_git.Provider.ListRequest>
+---@return table<string, table>
 local function all_requests()
     return {
         issues = adapter.issues_request(github, "#", github_config().issues),
@@ -139,6 +139,21 @@ T["token_header"] = function()
         eq(vim.tbl_contains(curl.args, "@-"), true, name .. ": curl reads headers from stdin")
         eq(token_request.commands[1].env.GITHUB_API_TOKEN, "secret", name .. ": gh gets the token")
     end
+end
+
+T["curl_fails_on_http_errors"] = function()
+    for name, request in pairs(all_requests()) do
+        -- The preflight reads the status of the error body
+        eq(vim.tbl_contains(request.commands[2].args, "--fail"), name ~= "preflight", name .. ": --fail")
+    end
+end
+
+T["error_and_null_responses_are_not_lists"] = function()
+    local requests = all_requests()
+
+    eq(requests.mentions.handle_parsed(vim.NIL), vim.NIL, "a null mention response stays null")
+    eq(requests.preflight.handle_result("null"), { member_type = "contributors" }, "a null preflight falls back")
+    eq(requests.preflight.handle_result("[]"), { member_type = "collaborators" }, "a list is not an error")
 end
 
 T["token_reaches_curl_on_stdin"] = function()
@@ -292,8 +307,8 @@ T["issues_request_drops_pull_requests"] = function()
         { { number = 1 }, { number = 3 } },
         "the REST issues endpoint also returns pull requests"
     )
-    eq(request.handle_parsed({ message = "Not Found" }), {}, "an error response gives no issues")
-    eq(request.handle_parsed(vim.NIL), {}, "a null response gives no issues")
+    eq(request.handle_parsed({ message = "Not Found" }), nil, "an error response is not a list")
+    eq(request.handle_parsed(vim.NIL), nil, "a null response is not a list")
 end
 
 T["handle_item_normalizes_body"] = function()
