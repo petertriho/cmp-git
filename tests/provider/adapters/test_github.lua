@@ -324,4 +324,18 @@ T["handle_item_normalizes_body"] = function()
     eq(null_body.data.body, "", "a null body is empty")
 end
 
+T["handle_item_fills_null_text"] = function()
+    local requests = all_requests()
+    for _, name in ipairs({ "issues", "change_requests" }) do
+        local item = requests[name].handle_item({
+            number = 3,
+            title = vim.NIL,
+            body = vim.NIL,
+            updated_at = "2024-01-01T00:00:00Z",
+        })
+        eq(item.label, "#3: ", name .. ": a null title is empty")
+        eq(item.documentation.value, "# \n\n", name .. ": the documentation has no vim.NIL text")
+    end
+end
+
 return T
