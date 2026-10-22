@@ -135,4 +135,32 @@ T["handle_item_fills_null_description"] = function()
     eq(item.data.description, "", "a null description is empty")
 end
 
+T["handle_item_fills_null_text"] = function()
+    local cases = {
+        issue = adapter.issues_request(gitlab, "#", gitlab_config().issues).handle_item({
+            iid = 3,
+            title = vim.NIL,
+            description = vim.NIL,
+            updated_at = "2024-01-01T00:00:00.000Z",
+        }),
+        merge_request = adapter.change_requests_request(gitlab, "!", gitlab_config().merge_requests).handle_item({
+            iid = 4,
+            title = vim.NIL,
+            description = vim.NIL,
+            updated_at = "2024-01-01T00:00:00.000Z",
+        }),
+        mention = adapter.mentions_request(gitlab, "@", gitlab_config().mentions).handle_item({
+            username = "ada",
+            name = vim.NIL,
+        }),
+    }
+
+    for name, item in pairs(cases) do
+        for _, text in ipairs({ item.label, item.filterText, item.insertText, item.documentation.value }) do
+            eq(text:find("vim.NIL", 1, true), nil, name .. ": no vim.NIL text in " .. vim.inspect(text))
+        end
+    end
+    eq(cases.merge_request.documentation.value, "# \n\n", "a merge request with a null title and description")
+end
+
 return T

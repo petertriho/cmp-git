@@ -8,6 +8,7 @@ local M = {}
 ---@field title string
 ---@field body string
 ---@field updatedAt string
+---@field updated_at? string The name of `updatedAt` in the REST API.
 ---@field state string
 
 ---A pull request from `gh pr list --json` or the REST API.
@@ -61,7 +62,12 @@ local function curl_command(curl_url, opts)
     return { exec = "curl", args = args, stdin = stdin }
 end
 
-local function normalize_body(item)
+---@param item cmp_git.GitHub.Issue
+local function normalize_issue(item)
+    -- JSON null is `vim.NIL`, which the formats would show as the text "vim.NIL"
+    if item.title == nil or item.title == vim.NIL then
+        item.title = ""
+    end
     if item.body ~= vim.NIL then
         item.body = string.gsub(item.body or "", "\r", "")
     else
@@ -112,7 +118,7 @@ function M.issues_request(git_info, trigger_char, config)
             curl_command(github_url(git_info.host, curl_path)),
         },
         handle_item = function(issue)
-            normalize_body(issue)
+            normalize_issue(issue)
             return format.item(config, trigger_char, issue)
         end,
         -- The REST API also returns pull requests, with a `pull_request` field. `gh issue list` does not.
@@ -166,7 +172,7 @@ function M.change_requests_request(git_info, trigger_char, config)
             ),
         },
         handle_item = function(pr)
-            normalize_body(pr)
+            normalize_issue(pr)
             return format.item(config, trigger_char, pr)
         end,
     }
