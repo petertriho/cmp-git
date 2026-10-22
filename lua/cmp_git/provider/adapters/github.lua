@@ -213,7 +213,7 @@ function M.mentions_request(git_info, trigger_char, config, opts)
                     github_url(
                         git_info.host,
                         string.format(
-                            "%s/%s/%s?per_page=%d&page=%d",
+                            "repos/%s/%s/%s?per_page=%d&page=%d",
                             git_info.owner,
                             git_info.repo,
                             member_type,
