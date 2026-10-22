@@ -3,7 +3,7 @@ local utils = require("cmp_git.utils")
 local M = {
     git = {
         ---@param commit cmp_git.Commit
-        commits = function(commit) -- nil, "sha", "title", "description", "author_name", "author_email", "commit_timestamp", or custom function
+        commits = function(commit) -- nil, "sha", "title", "description", "author_name", "author_mail", "commit_timestamp", or custom function
             return string.format("%010d", commit.diff)
         end,
         trailers = {
