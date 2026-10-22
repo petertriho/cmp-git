@@ -1,4 +1,4 @@
-local command = require("cmp_git.command")
+local issues = require("cmp_git.provider.capabilities.issues")
 
 local M = {}
 
@@ -12,12 +12,7 @@ function M.job(args)
         return nil
     end
 
-    local request = args.adapter.change_requests_request(args.git_info, args.trigger_char, args.config)
-    local runner = args.runner or command
-    return runner.build_fallback_list(request.commands, function(list)
-        args.cache[bufnr] = list.items
-        args.callback(list)
-    end, request.handle_item, request.handle_parsed)
+    return issues.list_job(args, args.adapter.change_requests_request(args.git_info, args.trigger_char, args.config))
 end
 
 ---@param args cmp_git.Provider.CapabilityArgs

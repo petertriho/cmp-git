@@ -58,7 +58,7 @@ local function fake_github()
             command = "fake",
             start = function(_, on_complete)
                 requests[kind] = requests[kind] + 1
-                callback({ items = { handle_item(vim.deepcopy(records[kind])) }, isIncomplete = false })
+                callback({ items = { handle_item(vim.deepcopy(records[kind])) }, isIncomplete = false }, true)
                 if on_complete then
                     on_complete(true)
                 end

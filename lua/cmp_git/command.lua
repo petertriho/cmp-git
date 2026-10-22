@@ -87,21 +87,23 @@ end
 
 ---@generic TItem
 ---@param spec cmp_git.CommandSpec
----@param callback fun(list: cmp_git.CompletionList)
+---@param callback fun(list: cmp_git.CompletionList, success: boolean) The list is empty when the command fails.
 ---@param handle_item fun(item: TItem): cmp_git.CompletionItem
 ---@param handle_parsed? fun(parsed: any): TItem[]
 ---@return cmp_git.SystemJob?
 function M.build_list(spec, callback, handle_item, handle_parsed)
     return M.build(spec, function(result, success)
         if not success then
+            callback({ items = {}, isIncomplete = false }, false)
             return
         end
 
-        callback(response.completion_list(result, handle_item, handle_parsed))
+        callback(response.completion_list(result, handle_item, handle_parsed), true)
     end)
 end
 
----Start the second job if the first one fails, handle cases if the first or second job is nil.
+---Start the second job if the first one fails, handle cases if the first or second job is nil. Only the last job that
+---runs reports a failure to its callback.
 ---@param first cmp_git.SystemJob?
 ---@param second cmp_git.SystemJob?
 ---@return cmp_git.SystemJob?
@@ -116,7 +118,7 @@ function M.fallback(first, second)
         command = first and first.command or (second --[[@as cmp_git.SystemJob]]).command,
         active = nil,
         cancelled = false,
-        start = function(_, on_complete)
+        start = function(_, on_complete, suppress_failure_callback)
             local job = _
             local function done(success)
                 if on_complete then
@@ -131,7 +133,7 @@ function M.fallback(first, second)
                     return
                 end
                 job.active = second
-                second:start(done)
+                second:start(done, suppress_failure_callback)
                 return
             end
 
@@ -149,11 +151,11 @@ function M.fallback(first, second)
 
                 if second then
                     job.active = second
-                    second:start(done)
+                    second:start(done, suppress_failure_callback)
                 else
                     done(false)
                 end
-            end, true)
+            end, second ~= nil or suppress_failure_callback)
         end,
         cancel = function(_)
             _.cancelled = true
@@ -177,10 +179,10 @@ end
 
 ---@generic TItem
 ---@param specs cmp_git.CommandSpec[]
----@param callback fun(list: cmp_git.CompletionList)
+---@param callback fun(list: cmp_git.CompletionList, success: boolean) The list is empty when all commands fail.
 ---@param handle_item fun(item: TItem): cmp_git.CompletionItem
 ---@param handle_parsed? fun(parsed: any): TItem[]
----@return cmp_git.SystemJob?
+---@return cmp_git.SystemJob? job nil when no command is executable.
 function M.build_fallback_list(specs, callback, handle_item, handle_parsed)
     local job
     for i = #specs, 1, -1 do

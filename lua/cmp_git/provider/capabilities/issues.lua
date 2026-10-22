@@ -17,6 +17,30 @@ local M = {}
 ---@field runner? table
 ---@field bufnr? integer
 
+---Make the job of a list request. The callback gets exactly one list, also when the commands fail or cannot run. A
+---failure gives an empty list and is not cached, so that the next request tries again.
+---@param args cmp_git.Provider.CapabilityArgs
+---@param request cmp_git.Provider.ListRequest
+---@return cmp_git.SystemJob? job nil when the callback already has its list.
+function M.list_job(args, request)
+    local bufnr = args.bufnr or vim.api.nvim_get_current_buf()
+    local runner = args.runner or command
+    local job = runner.build_fallback_list(request.commands, function(list, success)
+        if not success then
+            args.callback({ items = {}, isIncomplete = false })
+            return
+        end
+
+        args.cache[bufnr] = list.items
+        args.callback(list)
+    end, request.handle_item, request.handle_parsed)
+
+    if not job then
+        args.callback({ items = {}, isIncomplete = false })
+    end
+    return job
+end
+
 ---@param args cmp_git.Provider.CapabilityArgs
 ---@return cmp_git.SystemJob?
 function M.job(args)
@@ -27,12 +51,7 @@ function M.job(args)
         return nil
     end
 
-    local request = args.adapter.issues_request(args.git_info, args.trigger_char, args.config)
-    local runner = args.runner or command
-    return runner.build_fallback_list(request.commands, function(list)
-        args.cache[bufnr] = list.items
-        args.callback(list)
-    end, request.handle_item, request.handle_parsed)
+    return M.list_job(args, args.adapter.issues_request(args.git_info, args.trigger_char, args.config))
 end
 
 ---@param args cmp_git.Provider.CapabilityArgs
