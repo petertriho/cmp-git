@@ -73,6 +73,109 @@ T["commit_capability_parse_marker_collision_and_malformed_records"] = function()
     eq(commits[1].description, "body with ###CMP_GIT_END### marker", "commit parser allows old entry marker text")
 end
 
+-- The parser before it read the fields in place. The test below checks that the new parser gives the same output.
+local function old_trim(s)
+    return (s:gsub("^%s*(.-)%s*$", "%1"))
+end
+
+local function old_split_nul(input)
+    local fields = {}
+    local start = 1
+    while true do
+        local pos = string.find(input, "\0", start, true)
+        if not pos then
+            break
+        end
+        table.insert(fields, string.sub(input, start, pos - 1))
+        start = pos + 1
+    end
+    return fields
+end
+
+local function old_parse(result, config)
+    local fields = old_split_nul(result)
+    local commits = {}
+
+    for i = 1, #fields, 6 do
+        if fields[i + 5] then
+            local timestamp = tonumber(old_trim(fields[i + 5])) or 0
+            table.insert(commits, {
+                sha = old_trim(fields[i]):sub(1, config.sha_length),
+                title = old_trim(fields[i + 1]),
+                description = old_trim(fields[i + 2]),
+                author_name = fields[i + 3] or "",
+                author_mail = fields[i + 4] or "",
+                commit_timestamp = timestamp,
+                diff = os.difftime(os.time(), timestamp),
+            })
+        end
+    end
+
+    return commits
+end
+
+---A deterministic random generator, so that a failure can be reproduced.
+---@param seed integer
+---@return fun(n: integer): integer random A number from 1 to n.
+local function random_generator(seed)
+    return function(n)
+        seed = seed * 16807 % 2147483647
+        return seed % n + 1
+    end
+end
+
+T["commit_capability_parse_matches_the_old_parser"] = function()
+    helpers.stub(os, "time", function()
+        return 1700000000
+    end)
+
+    local random = random_generator(42)
+    local function pick(list)
+        return list[random(#list)]
+    end
+    local fragments = {
+        "",
+        " ",
+        "\t",
+        "\r\n",
+        "\n",
+        "fix: subject",
+        "  padded subject  ",
+        "body line one\nbody line two\n",
+        "body\r\n\r\nCo-authored-by: Ada <ada@example.com>\r\n",
+        "Ünïcödé",
+        "\031",
+        "a" .. string.rep(" ", 50) .. "b",
+    }
+    local function text()
+        local parts = {}
+        for i = 1, random(3) - 1 do
+            parts[i] = pick(fragments)
+        end
+        return table.concat(parts)
+    end
+    local shas = { "", "abcdef1234567890abcdef1234567890abcdef12", " abc ", "\nabcdef1234567890", "a b c d e f g h" }
+    local timestamps = { "1700000000", " 1700000000 ", "\n1699990000\r", "", "abc", "1e3", "-5" }
+
+    for _ = 1, 300 do
+        local commits = {}
+        for i = 1, random(5) - 1 do
+            commits[i] = table.concat({ pick(shas), text(), text(), text(), text(), pick(timestamps), "" }, "\0")
+        end
+        -- `--pretty=format:` puts a newline between commits. The last commit can lack fields.
+        local output = table.concat(commits, pick({ "\n", "" })) .. pick({ "", "dangling\0", "a\0b\0c\0d\0e" })
+
+        for _, sha_length in ipairs({ 7, 0, 40, 100 }) do
+            local config = { sha_length = sha_length }
+            eq(
+                commit_capability.parse(output, config),
+                old_parse(output, config),
+                string.format("parse of %s with sha_length %d", vim.inspect(output), sha_length)
+            )
+        end
+    end
+end
+
 T["commit_capability_maps_items_without_cmp_params"] = function()
     local items = commit_capability.items({
         {

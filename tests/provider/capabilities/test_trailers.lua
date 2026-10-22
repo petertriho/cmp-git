@@ -92,6 +92,302 @@ T["trailer_keys_parse_and_sort"] = function()
     eq(items[1].insertText, "Signed-off-by: ", "trailer key insert text")
 end
 
+-- The parsers before they read the fields in place. The tests below check that the new parsers give the same output.
+local old = {}
+
+function old.trim(s)
+    return (s:gsub("^%s*(.-)%s*$", "%1"))
+end
+
+function old.split_nul(input)
+    local fields = {}
+    local start = 1
+    while true do
+        local pos = string.find(input, "\0", start, true)
+        if not pos then
+            break
+        end
+        table.insert(fields, string.sub(input, start, pos - 1))
+        start = pos + 1
+    end
+    return fields
+end
+
+function old.parse_ident(value)
+    local name, email = string.match(value, "^%s*(.-)%s*<([^>]+)>")
+    if not name or name == "" or old.trim(email) == "" then
+        return nil, nil
+    end
+    return name, old.trim(email)
+end
+
+function old.keys_parse(result, keys_config)
+    local keys = {}
+    local by_key = {}
+
+    for index, key in ipairs(keys_config.builtin or {}) do
+        if not by_key[key:lower()] then
+            local trailer = { key = key, count = 0, builtin_index = index }
+            by_key[key:lower()] = trailer
+            table.insert(keys, trailer)
+        end
+    end
+
+    for _, record in ipairs(old.split_nul(result)) do
+        for _, key in ipairs(vim.split(record, "\031", { plain = true })) do
+            key = old.trim(key)
+            if key:match("^[%w-]+$") then
+                local trailer = by_key[key:lower()]
+                if not trailer then
+                    trailer = { key = key, count = 0 }
+                    by_key[key:lower()] = trailer
+                    table.insert(keys, trailer)
+                end
+                trailer.count = trailer.count + 1
+            end
+        end
+    end
+
+    return keys
+end
+
+function old.identities_parse(log_result, ident_result)
+    local now = os.time()
+    local identities = {}
+    local by_email = {}
+
+    local function add(name, email, timestamp, source, is_self)
+        name = old.trim(name)
+        email = old.trim(email)
+        if name == "" or email == "" then
+            return
+        end
+
+        local existing = by_email[email:lower()]
+        if existing then
+            existing.is_self = existing.is_self or is_self
+            return
+        end
+
+        local entry = {
+            name = name,
+            email = email,
+            timestamp = timestamp,
+            diff = timestamp and os.difftime(now, timestamp) or 0,
+            source = source,
+            is_self = is_self,
+        }
+        by_email[email:lower()] = entry
+        table.insert(identities, entry)
+    end
+
+    for _, record in ipairs(old.split_nul(log_result)) do
+        local fields = vim.split(record, "\031", { plain = true })
+        if #fields >= 3 then
+            local timestamp = tonumber(old.trim(fields[1]))
+            add(fields[2], fields[3], timestamp, "author", false)
+
+            for i = 4, #fields do
+                local key, value = string.match(fields[i], "^%s*([%w-]+):%s*(.-)%s*$")
+                local name, email = old.parse_ident(value or "")
+                if name and email then
+                    add(name, email, timestamp, key, false)
+                end
+            end
+        end
+    end
+
+    local name, email = old.parse_ident(ident_result)
+    if name and email then
+        add(name, email, nil, "self", true)
+    end
+
+    return identities
+end
+
+function old.values_parse(result)
+    local now = os.time()
+    local by_key = {}
+    local by_value = {}
+
+    for _, record in ipairs(old.split_nul(result)) do
+        local fields = vim.split(record, "\031", { plain = true })
+        local timestamp = tonumber(old.trim(fields[1] or ""))
+
+        for i = 2, #fields do
+            local key, value = string.match(fields[i], "^%s*([%w-]+):%s*(.-)%s*$")
+            if key and value ~= "" then
+                local id = key:lower()
+                by_key[id] = by_key[id] or {}
+                by_value[id] = by_value[id] or {}
+
+                local entry = by_value[id][value]
+                if not entry then
+                    entry = {
+                        key = key,
+                        value = value,
+                        count = 0,
+                        timestamp = timestamp,
+                        diff = timestamp and os.difftime(now, timestamp) or 0,
+                    }
+                    by_value[id][value] = entry
+                    table.insert(by_key[id], entry)
+                end
+                entry.count = entry.count + 1
+            end
+        end
+    end
+
+    return by_key
+end
+
+---Random `git log` outputs in the formats of the trailer requests, with the edge cases that the parsers handle.
+---@param seed integer
+---@return fun(): string log An output of `identities.request` or `values.request`.
+---@return fun(): string keys_log An output of `keys.request`.
+---@return fun(): string ident An output of `identities.ident_request`.
+local function trailer_outputs(seed)
+    -- A deterministic generator, so that a failure can be reproduced
+    local function random(n)
+        seed = seed * 16807 % 2147483647
+        return seed % n + 1
+    end
+    local function pick(list)
+        return list[random(#list)]
+    end
+
+    local times = { "1700000000", "\n1700000000", " 1699990000 ", "", "abc", "\n" }
+    local names = { "Ada Lovelace", " Ada  Lovelace ", "", "Grace Hopper", "Me", "\t" }
+    local emails = { "ada@example.com", "ADA@Example.com", " grace@example.com ", "", "me@example.com", "x" }
+    local keys = { "Co-authored-by", "co-AUTHORED-by", "Signed-off-by", "Fixes", "Assisted-by", "bad key", " Refs" }
+    local separators = { ":", ": ", ":  ", " :", ":\t" }
+    local values = {
+        "",
+        " ",
+        "Ada Lovelace <ada@example.com>",
+        "Ada <ADA@Example.com>",
+        "Grace Hopper <grace@example.com>",
+        "  Grace   Hopper  <  grace@example.com  >  ",
+        "<nameless@example.com>",
+        "No Email",
+        "Ada <>",
+        "Ada < >",
+        "A <> B <b@example.com>",
+        "a > b <c@example.com> <d@example.com>",
+        "x <y",
+        "#123",
+        '29c8d7267dd7 ("fix: snippet: edit range")',
+        "Codex",
+        "Codex\r",
+        "value with spaces  \r\n",
+        "folded\n value",
+        "Ünïcödé <ü@example.com>",
+    }
+
+    local function trailer()
+        return pick(keys) .. pick(separators) .. pick(values)
+    end
+
+    local function output(fields)
+        local records = {}
+        for i = 1, random(6) - 1 do
+            -- `--format=` ends each record with a newline
+            records[i] = table.concat(fields(), "\031") .. "\0" .. pick({ "\n", "" })
+        end
+        -- A trailing record without a NUL is dropped
+        return table.concat(records) .. pick({ "", "", "1700000000\031Ada\031ada@example.com" })
+    end
+
+    local function log()
+        return output(function()
+            local fields = { pick(times) }
+            for i = 2, random(6) do
+                fields[i] = i == 2 and random(2) == 1 and pick(names)
+                    or i == 3 and random(2) == 1 and pick(emails)
+                    or trailer()
+            end
+            return fields
+        end)
+    end
+
+    local key_names = {
+        "Signed-off-by",
+        " co-authored-by ",
+        "Change-Id",
+        "%(trailers:keyonly,separator=%x1f)",
+        "",
+        "\n",
+        "bad key",
+        "Fixes\r",
+        "FIXES",
+    }
+    local function keys_log()
+        return output(function()
+            local fields = {}
+            for i = 1, random(4) do
+                fields[i] = pick(key_names)
+            end
+            return fields
+        end)
+    end
+
+    local idents = {
+        "",
+        "Me <me@example.com> 1 +0000\n",
+        "Ada Lovelace <ADA@example.com> 1 +0000",
+        " Spaced  Name <  spaced@example.com > 1 +0000\n",
+        "garbage",
+    }
+    local function ident()
+        return pick(idents)
+    end
+
+    return log, keys_log, ident
+end
+
+T["trailer_parsers_match_the_old_parsers"] = function()
+    helpers.stub(os, "time", function()
+        return 1700000000
+    end)
+
+    local log, keys_log, ident = trailer_outputs(7)
+    local keys_config = { builtin = { "Co-authored-by", "Signed-off-by", "fixes", "Fixes" } }
+    for _ = 1, 300 do
+        local output = log()
+        local ident_output = ident()
+        local reason = vim.inspect(output) .. " and " .. vim.inspect(ident_output)
+        eq(
+            trailer_capability.identities.parse(output, ident_output),
+            old.identities_parse(output, ident_output),
+            "identities of " .. reason
+        )
+        eq(trailer_capability.values.parse(output), old.values_parse(output), "values of " .. vim.inspect(output))
+
+        output = keys_log()
+        eq(
+            trailer_capability.keys.parse(output, keys_config),
+            old.keys_parse(output, keys_config),
+            "keys of " .. vim.inspect(output)
+        )
+    end
+end
+
+T["trailer_parsers_take_linear_time"] = function()
+    -- The old patterns took about 3 s for each of these values
+    local run = string.rep(" ", 32000)
+    local start = os.clock()
+
+    local by_key = trailer_capability.values.parse("1\031Refs: a" .. run .. "b" .. run .. "\0")
+    eq(by_key["refs"][1].value, "a" .. run .. "b", "value with a long run of spaces")
+
+    local identities = trailer_capability.identities.parse(
+        "1\031Ada\031ada@example.com\031Co-authored-by: Grace" .. run .. "Hopper" .. run .. "<grace@example.com>\0",
+        ""
+    )
+    eq(identities[2].name, "Grace" .. run .. "Hopper", "identity name with a long run of spaces")
+    ok(os.clock() - start < 0.25, "trailers with long runs of spaces parse fast")
+end
+
 T["trailer_identities_request"] = function()
     local spec = trailer_capability.identities.request({
         keys = { "Co-authored-by", "bad key", "Signed-off-by" },

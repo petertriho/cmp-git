@@ -4,8 +4,12 @@ local utils = require("cmp_git.utils")
 
 local M = {}
 
-local trim = utils.trim
-local split_nul = utils.split_nul
+local find = string.find
+local sub = string.sub
+local trim_range = utils.trim_range
+
+-- The NUL-terminated fields of each commit in the `M.request` format
+local FIELDS = 6
 
 ---@param config cmp_git.Config.GitCommits
 ---@return cmp_git.CommandSpec
@@ -22,32 +26,63 @@ function M.request(config)
     }
 end
 
+---@param s string
+---@param first integer
+---@param last integer
+---@return string
+local function trimmed(s, first, last)
+    return sub(s, trim_range(s, first, last))
+end
+
 ---@param result string
 ---@param config cmp_git.Config.GitCommits
 ---@return cmp_git.Commit[]
 function M.parse(result, config)
-    local fields = split_nul(result)
     local commits = {}
+    local now = os.time()
+    local sha_length = config.sha_length
+    -- The position of the NUL after each field of the current commit. The fields are read in place, so that each
+    -- field is copied once, after the trim.
+    local stops = {}
+    local start = 1
 
-    for i = 1, #fields, 6 do
-        if fields[i + 5] then
-            local timestamp = tonumber(trim(fields[i + 5])) or 0
-            ---@class cmp_git.Commit
-            local commit = {
-                sha = trim(fields[i]):sub(1, config.sha_length),
-                title = trim(fields[i + 1]),
-                description = trim(fields[i + 2]),
-                author_name = fields[i + 3] or "",
-                author_mail = fields[i + 4] or "",
-                commit_timestamp = timestamp,
-                diff = os.difftime(os.time(), timestamp),
-            }
-
-            table.insert(commits, commit)
+    while true do
+        local from = start
+        for field = 1, FIELDS do
+            local stop = find(result, "\0", from, true)
+            -- A trailing commit without all its fields is dropped
+            if not stop then
+                return commits
+            end
+            stops[field] = stop
+            from = stop + 1
         end
-    end
 
-    return commits
+        -- `--pretty=format:` puts a newline between commits, so the sha starts with whitespace
+        local sha_first, sha_last = trim_range(result, start, stops[1] - 1)
+        local sha
+        if sha_length >= 0 then
+            sha = sub(result, sha_first, math.min(sha_last, sha_first + sha_length - 1))
+        else
+            sha = sub(result, sha_first, sha_last):sub(1, sha_length)
+        end
+
+        -- `tonumber` ignores surrounding whitespace
+        local timestamp = tonumber(sub(result, stops[5] + 1, stops[6] - 1)) or 0
+        ---@class cmp_git.Commit
+        local commit = {
+            sha = sha,
+            title = trimmed(result, stops[1] + 1, stops[2] - 1),
+            description = trimmed(result, stops[2] + 1, stops[3] - 1),
+            author_name = sub(result, stops[3] + 1, stops[4] - 1),
+            author_mail = sub(result, stops[4] + 1, stops[5] - 1),
+            commit_timestamp = timestamp,
+            diff = os.difftime(now, timestamp),
+        }
+        commits[#commits + 1] = commit
+
+        start = stops[FIELDS] + 1
+    end
 end
 
 ---@param commits cmp_git.Commit[]
