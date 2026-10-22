@@ -1,10 +1,8 @@
-local github = require("cmp_git.sources.github")
-local gitlab = require("cmp_git.sources.gitlab")
-local git = require("cmp_git.sources.git")
+-- The sources and the repository module load on first use, so that a session loads only the code that its requests
+-- need. For example, a declined request loads neither, and a GitHub remote does not load the GitLab source.
 local config = require("cmp_git.config")
 local log = require("cmp_git.log")
-local repository = require("cmp_git.repository")
-local trailers = require("cmp_git.provider.capabilities.trailers")
+local trailer_lines = require("cmp_git.provider.capabilities.trailer_lines")
 
 ---A completion request from the nvim-cmp or blink.cmp adapter.
 ---@class cmp_git.CompletionContext
@@ -35,6 +33,22 @@ local function route_status(handled, job)
     return ROUTE_UNSUPPORTED_HOST, job
 end
 
+---A built-in action of a hosted provider. It checks the host before it gets the source, so that a request loads only
+---the provider of the remote.
+---@param provider "github" | "gitlab"
+---@param method string The method of the source that completes.
+---@return fun(core: table, callback: fun(list: cmp_git.CompletionList), context: table, git_info: cmp_git.GitInfo, trigger_char: string?): string, table?
+local function hosted_action(provider, method)
+    return function(core, callback, context, git_info, trigger_char)
+        if not vim.tbl_contains(core.config[provider].hosts, git_info.host) then
+            return ROUTE_UNSUPPORTED_HOST
+        end
+
+        local source = core.sources[provider]
+        return route_status(source[method](source, callback, git_info, trigger_char, context.bufnr))
+    end
+end
+
 local builtin_trigger_actions = {
     git_commits = function(core, callback, context, _git_info, trigger_char)
         return route_status(core.sources.git:get_commits(callback, context, trigger_char))
@@ -48,43 +62,15 @@ local builtin_trigger_actions = {
     git_trailer_values = function(core, callback, context, _git_info, trigger_char)
         return route_status(core.sources.git:get_trailer_values(callback, context, trigger_char))
     end,
-    github_issues = function(core, callback, context, git_info, trigger_char)
-        return route_status(core.sources.github:complete_issues(callback, git_info, trigger_char, context.bufnr))
-    end,
-    github_mentions = function(core, callback, context, git_info, trigger_char)
-        return route_status(core.sources.github:complete_mentions(callback, git_info, trigger_char, context.bufnr))
-    end,
-    github_change_requests = function(core, callback, context, git_info, trigger_char)
-        return route_status(
-            core.sources.github:complete_change_requests(callback, git_info, trigger_char, context.bufnr)
-        )
-    end,
-    github_issues_and_change_requests = function(core, callback, context, git_info, trigger_char)
-        return route_status(
-            core.sources.github:complete_issues_and_change_requests(callback, git_info, trigger_char, context.bufnr)
-        )
-    end,
-    gitlab_issues = function(core, callback, context, git_info, trigger_char)
-        return route_status(core.sources.gitlab:complete_issues(callback, git_info, trigger_char, context.bufnr))
-    end,
-    gitlab_mentions = function(core, callback, context, git_info, trigger_char)
-        return route_status(core.sources.gitlab:complete_mentions(callback, git_info, trigger_char, context.bufnr))
-    end,
-    gitlab_change_requests = function(core, callback, context, git_info, trigger_char)
-        return route_status(
-            core.sources.gitlab:complete_change_requests(callback, git_info, trigger_char, context.bufnr)
-        )
-    end,
-    gitlab_mrs = function(core, callback, context, git_info, trigger_char)
-        return route_status(
-            core.sources.gitlab:complete_change_requests(callback, git_info, trigger_char, context.bufnr)
-        )
-    end,
-    github_issues_and_prs = function(core, callback, context, git_info, trigger_char)
-        return route_status(
-            core.sources.github:complete_issues_and_change_requests(callback, git_info, trigger_char, context.bufnr)
-        )
-    end,
+    github_issues = hosted_action("github", "complete_issues"),
+    github_mentions = hosted_action("github", "complete_mentions"),
+    github_change_requests = hosted_action("github", "complete_change_requests"),
+    github_issues_and_change_requests = hosted_action("github", "complete_issues_and_change_requests"),
+    gitlab_issues = hosted_action("gitlab", "complete_issues"),
+    gitlab_mentions = hosted_action("gitlab", "complete_mentions"),
+    gitlab_change_requests = hosted_action("gitlab", "complete_change_requests"),
+    gitlab_mrs = hosted_action("gitlab", "complete_change_requests"),
+    github_issues_and_prs = hosted_action("github", "complete_issues_and_change_requests"),
 }
 
 -- Built-in actions that read only the local repository. They need no remote, and they always handle the request.
@@ -98,13 +84,13 @@ local LOCAL_ACTIONS = {
 -- Synchronous checks that run before repository discovery, so that a declined request starts no git process.
 local builtin_trigger_availability = {
     git_trailer_keys = function(core, context)
-        return trailers.available(core.config.git.trailers, context, "keys")
+        return trailer_lines.available(core.config.git.trailers, context, "keys")
     end,
     git_trailer_identities = function(core, context)
-        return trailers.available(core.config.git.trailers, context, "identities")
+        return trailer_lines.available(core.config.git.trailers, context, "identities")
     end,
     git_trailer_values = function(core, context)
-        return trailers.available(core.config.git.trailers, context, "values")
+        return trailer_lines.available(core.config.git.trailers, context, "values")
             and core.sources.git:may_have_trailer_values(context)
     end,
 }
@@ -211,6 +197,31 @@ end
 ---@field github cmp_git.Source.GitHub
 ---@field gitlab cmp_git.Source.Gitlab
 
+local SOURCE_MODULES = {
+    git = "cmp_git.sources.git",
+    github = "cmp_git.sources.github",
+    gitlab = "cmp_git.sources.gitlab",
+}
+
+---The sources, each made on first use. A legacy callback action gets this table, so a source must also load when an
+---action reads it.
+---@param core_config cmp_git.Config
+---@return cmp_git.Sources
+local function lazy_sources(core_config)
+    return setmetatable({}, {
+        __index = function(sources, name)
+            local module = SOURCE_MODULES[name]
+            if module == nil then
+                return nil
+            end
+
+            local source = require(module).new(core_config[name])
+            rawset(sources, name, source)
+            return source
+        end,
+    })
+end
+
 local Core = {}
 
 function Core.new(overrides)
@@ -220,17 +231,13 @@ function Core.new(overrides)
 
     self.config = config.normalize(overrides)
     self.filetypes = {}
-    self.sources = {}
+    self.sources = lazy_sources(self.config)
     self.trigger_actions = {}
     self.trigger_characters = {}
 
     for _, item in ipairs(self.config.filetypes) do
         self.filetypes[item] = true
     end
-
-    self.sources.git = git.new(self.config.git)
-    self.sources.gitlab = gitlab.new(self.config.gitlab)
-    self.sources.github = github.new(self.config.github)
 
     local patterns = {}
     local regexes = {}
@@ -463,7 +470,7 @@ function Core:_complete(context, callback, routes)
         return controller
     end
 
-    repository.discover(self.config.remotes, {
+    require("cmp_git.repository").discover(self.config.remotes, {
         enableRemoteUrlRewrites = self.config.enableRemoteUrlRewrites,
         ssh_aliases = self.config.ssh_aliases,
         on_complete = run,
@@ -502,7 +509,7 @@ function Core:complete(context, callback)
     end
 
     -- The buffer of the request, because the current buffer can change while git runs
-    repository.is_git_repo(function(is_git_repo)
+    require("cmp_git.repository").is_git_repo(function(is_git_repo)
         if state.cancelled then
             return
         end

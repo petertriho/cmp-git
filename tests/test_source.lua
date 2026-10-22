@@ -10,8 +10,21 @@ local ok = helpers.ok
 
 local T = helpers.new_set()
 
+-- Core runs the action of a provider only for the hosts of that provider. A host of both providers lets a case run
+-- the GitLab and the GitHub actions of a trigger.
+local function shared_hosts()
+    return { hosts = { "git.example.com" } }
+end
+
+---@return cmp_git.GitInfo
+local function shared_remote()
+    return { host = "git.example.com", owner = "owner", repo = "repo" }
+end
+
 T["trigger_action_fallback_for_hash"] = function()
     local source = Source.new({
+        github = shared_hosts(),
+        gitlab = shared_hosts(),
         trigger_actions = {
             { trigger_character = "#", actions = { "gitlab_issues", "github_issues_and_prs" } },
         },
@@ -30,13 +43,15 @@ T["trigger_action_fallback_for_hash"] = function()
         end,
     }
 
-    source:_run_trigger_actions("#", function() end, {}, {})
+    source:_run_trigger_actions("#", function() end, {}, shared_remote())
 
     eq(table.concat(calls, ","), "gitlab,github", "hash trigger falls back in configured order")
 end
 
 T["trigger_action_ordering_for_at"] = function()
     local source = Source.new({
+        github = shared_hosts(),
+        gitlab = shared_hosts(),
         trigger_actions = {
             { trigger_character = "@", actions = { "gitlab_mentions", "github_mentions" } },
         },
@@ -55,13 +70,15 @@ T["trigger_action_ordering_for_at"] = function()
         end,
     }
 
-    source:_run_trigger_actions("@", function() end, {}, {})
+    source:_run_trigger_actions("@", function() end, {}, shared_remote())
 
     eq(table.concat(calls, ","), "gitlab,github", "at trigger falls back in configured order")
 end
 
 T["trigger_action_first_handled_wins"] = function()
     local source = Source.new({
+        github = shared_hosts(),
+        gitlab = shared_hosts(),
         trigger_actions = {
             { trigger_character = "#", actions = { "gitlab_issues", "github_issues_and_prs" } },
         },
@@ -80,13 +97,15 @@ T["trigger_action_first_handled_wins"] = function()
         end,
     }
 
-    source:_run_trigger_actions("#", function() end, {}, {})
+    source:_run_trigger_actions("#", function() end, {}, shared_remote())
 
     eq(table.concat(calls, ","), "gitlab", "first handled trigger action wins")
 end
 
 T["preferred_trigger_action_names"] = function()
     local source = Source.new({
+        github = shared_hosts(),
+        gitlab = shared_hosts(),
         trigger_actions = {
             { trigger_character = "#", actions = { "github_issues" } },
             { trigger_character = "!", actions = { "gitlab_change_requests" } },
@@ -106,14 +125,16 @@ T["preferred_trigger_action_names"] = function()
         end,
     }
 
-    source:_run_trigger_actions("#", function() end, {}, {})
-    source:_run_trigger_actions("!", function() end, {}, {})
+    source:_run_trigger_actions("#", function() end, {}, shared_remote())
+    source:_run_trigger_actions("!", function() end, {}, shared_remote())
 
     eq(table.concat(calls, ","), "github_issues,gitlab_change_requests", "preferred action names route")
 end
 
 T["legacy_trigger_action_aliases"] = function()
     local source = Source.new({
+        github = shared_hosts(),
+        gitlab = shared_hosts(),
         trigger_actions = {
             { trigger_character = "#", actions = { "github_issues_and_prs" } },
             { trigger_character = "!", actions = { "gitlab_mrs" } },
@@ -133,8 +154,8 @@ T["legacy_trigger_action_aliases"] = function()
         end,
     }
 
-    source:_run_trigger_actions("#", function() end, {}, {})
-    source:_run_trigger_actions("!", function() end, {}, {})
+    source:_run_trigger_actions("#", function() end, {}, shared_remote())
+    source:_run_trigger_actions("!", function() end, {}, shared_remote())
 
     eq(table.concat(calls, ","), "github_combined,gitlab_cr", "legacy aliases route")
 end
@@ -250,6 +271,8 @@ end
 
 T["nvim_cmp_special_trigger_characters"] = function()
     local source = Source.new({
+        github = shared_hosts(),
+        gitlab = shared_hosts(),
         trigger_actions = {
             { trigger_character = "%", actions = { "github_issues" } },
             { trigger_character = "]", actions = { "github_issues" } },
@@ -265,7 +288,7 @@ T["nvim_cmp_special_trigger_characters"] = function()
 
     for _, line in ipairs({ "see %ab", "see ]ab" }) do
         local context = source:_context_from_params(cmp_params(line, 1))
-        source:_run_trigger_actions(context.trigger_character, function() end, cmp_params(line, 1), {})
+        source:_run_trigger_actions(context.trigger_character, function() end, cmp_params(line, 1), shared_remote())
     end
 
     eq(triggers, { "%", "]" }, "special trigger characters route")

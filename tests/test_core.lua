@@ -6,6 +6,20 @@ local repository = require("cmp_git.repository")
 local eq = helpers.eq
 local ok = helpers.ok
 
+-- The repository root, for the scripts that run in another Neovim
+local ROOT = vim.fn.fnamemodify(debug.getinfo(1, "S").source:sub(2), ":p:h:h")
+
+-- Core runs the action of a provider only for the hosts of that provider. A host of both providers lets a case run
+-- the GitLab and the GitHub actions of a trigger.
+local function shared_hosts()
+    return { github = { hosts = { "git.example.com" } }, gitlab = { hosts = { "git.example.com" } } }
+end
+
+---@return cmp_git.GitInfo
+local function shared_remote()
+    return { host = "git.example.com", owner = "owner", repo = "repo" }
+end
+
 -- The cases replace the provider sources with partial fakes
 ---@diagnostic disable: missing-fields
 
@@ -49,7 +63,7 @@ end
 T["requests_get_new_item_tables"] = function()
     local data = { number = 12 }
     local cached = { { label = "#12: Fix", insertText = "#12", data = data } }
-    local core = Core.new({})
+    local core = Core.new(shared_hosts())
     core.sources.gitlab = {
         complete_issues = function()
             return false
@@ -64,7 +78,12 @@ T["requests_get_new_item_tables"] = function()
     }
     local callback, lists = helpers.recorder()
     local function request(line)
-        core:_run_trigger_actions("#", callback, { cursor = { row = 1, character = #line }, line = line }, {})
+        core:_run_trigger_actions(
+            "#",
+            callback,
+            { cursor = { row = 1, character = #line }, line = line },
+            shared_remote()
+        )
         return lists[#lists].items[1]
     end
 
@@ -297,7 +316,7 @@ T["trailer_patterns_are_fast_on_long_lines"] = function()
 end
 
 T["trailer_routing"] = function()
-    local core = Core.new({})
+    local core = Core.new(shared_hosts())
     local calls = {}
     local function record(name, handled)
         return function()
@@ -343,7 +362,7 @@ T["trailer_routing"] = function()
             cursor = { row = 3, character = #case.line },
             line = case.line,
             bufnr = bufnr,
-        }, {})
+        }, shared_remote())
 
         eq(table.concat(calls, ","), case.expected, "route for " .. vim.inspect(case.line))
     end
@@ -563,7 +582,7 @@ T["complete_discovers_the_remote_only_for_actions_that_need_it"] = function()
     end
 
     eq(run(trigger_context(":")), "is_git_repo,commits", "commits need no remote")
-    eq(run(trigger_context("#")), "is_git_repo,discover,gitlab_issues,github_issues", "issues need the remote")
+    eq(run(trigger_context("#")), "is_git_repo,discover,github_issues", "issues need the remote")
 
     -- The identities action handles the request, so the mention actions after it never run
     local line = "Co-authored-by: Ada <ada@"
@@ -605,8 +624,8 @@ T["complete_in_octo_buffers_outside_a_git_repository"] = function()
         return table.concat(calls, ","), lists
     end
 
-    eq(run("#"), "discover,gitlab_issues,github_issues", "octo issues skip the repository check")
-    eq(run("@"), "discover,gitlab_mentions,github_mentions", "octo mentions skip the repository check")
+    eq(run("#"), "discover,github_issues", "octo issues skip the repository check")
+    eq(run("@"), "discover,github_mentions", "octo mentions skip the repository check")
 
     local commits, lists = run(":")
     eq(commits, "is_git_repo", "octo commits need a local repository")
@@ -677,10 +696,6 @@ T["complete_discovers_the_repository_of_the_request_buffer"] = function()
         seen.discover = opts.bufnr
         opts.on_complete({ host = "github.com", owner = "owner", repo = "repo" })
     end)
-    helpers.stub(core.sources.gitlab, "complete_issues", function(_, _, _, _, bufnr)
-        seen.gitlab = bufnr
-        return false
-    end)
     helpers.stub(core.sources.github, "complete_issues_and_change_requests", function(_, on_list, _, _, bufnr)
         seen.github = bufnr
         on_list({ items = {}, isIncomplete = false })
@@ -697,10 +712,66 @@ T["complete_discovers_the_repository_of_the_request_buffer"] = function()
 
     eq(
         seen,
-        { is_git_repo = request_bufnr, discover = request_bufnr, gitlab = request_bufnr, github = request_bufnr },
-        "discovery and the sources use the request buffer"
+        { is_git_repo = request_bufnr, discover = request_bufnr, github = request_bufnr },
+        "discovery and the source use the request buffer"
     )
     eq(#lists, 1, "the request answers")
+    eq(rawget(core.sources, "gitlab"), nil, "a GitHub remote does not load the GitLab source")
+end
+
+T["sources_load_on_first_use"] = function()
+    local core = Core.new({})
+    for _, name in ipairs({ "git", "github", "gitlab" }) do
+        eq(rawget(core.sources, name), nil, name .. " does not load with core")
+    end
+
+    local github = core.sources.github
+    ok(
+        github:is_valid_host({ host = "github.com", owner = "owner", repo = "repo" }),
+        "the source has the github config"
+    )
+    eq(core.sources.github, github, "the source loads once")
+    eq(rawget(core.sources, "gitlab"), nil, "the other sources stay unloaded")
+end
+
+T["setup_and_a_declined_request_load_only_the_core_modules"] = function()
+    local script = helpers.tempdir() .. "/load.lua"
+    vim.fn.writefile({
+        "vim.opt.runtimepath:prepend(arg[1])",
+        'local source = require("cmp_git.source").new({})',
+        'require("cmp_git.blink")',
+        "local bufnr = vim.api.nvim_create_buf(false, true)",
+        'vim.bo[bufnr].filetype = "gitcommit"',
+        "local lists = {}",
+        'source.core:complete({ cursor = { row = 1, character = 5 }, line = "Hello", bufnr = bufnr }, function(list)',
+        "    table.insert(lists, list)",
+        "end)",
+        "local loaded = {}",
+        "for name in pairs(package.loaded) do",
+        '    if name:find("^cmp_git") then',
+        "        table.insert(loaded, name)",
+        "    end",
+        "end",
+        "table.sort(loaded)",
+        "io.stdout:write(vim.json.encode({ lists = #lists, loaded = loaded }))",
+    }, script)
+
+    local result = vim.system({ vim.v.progpath, "--headless", "--clean", "-l", script, ROOT }, { text = true }):wait()
+    eq(result.code, 0, "the script runs: " .. (result.stderr or ""))
+    eq(vim.json.decode(result.stdout), {
+        lists = 1,
+        loaded = {
+            "cmp_git.blink",
+            "cmp_git.config",
+            "cmp_git.core",
+            "cmp_git.format",
+            "cmp_git.log",
+            "cmp_git.provider.capabilities.trailer_lines",
+            "cmp_git.sort",
+            "cmp_git.source",
+            "cmp_git.utils",
+        },
+    }, "the request answers without the sources, the repository, or the trailer parsers")
 end
 
 return T
