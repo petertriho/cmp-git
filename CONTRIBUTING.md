@@ -11,7 +11,7 @@ Use one of these setups:
 
 CI is authoritative. Other versions of these tools can give different results.
 
-The first `make test` or `make typecheck` clones mini.nvim, so it needs network access.
+The first `make test` or `make typecheck` clones mini.nvim, so this first run needs network access.
 
 ## Development shells
 
@@ -89,6 +89,16 @@ To run the tests on Neovim 0.12.0 and on nightly:
 ```sh
 nix develop .#nvim-0_12_0 -c make test
 nix develop .#nightly -c make test
+```
+
+The `Neovim nightly` job tests the newest nightly that is in the cache, not the locked nightly. To do the same test on
+your computer, run these commands. `scripts/nightly-cache.sh latest` needs an authenticated `gh`, and it checks the last
+10 overlay commits. To check more commits, give a count, for example `latest 20`.
+
+```sh
+rev=$(scripts/nightly-cache.sh latest)
+nix develop .#nightly --no-write-lock-file \
+  --override-input neovim-nightly-overlay "github:nix-community/neovim-nightly-overlay/$rev" -c make test
 ```
 
 ## CI
