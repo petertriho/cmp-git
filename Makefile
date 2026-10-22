@@ -34,6 +34,6 @@ format-check:
 	$(STYLUA) --check $(LUA_PATHS)
 
 lint:
-	$(SELENE) --allow-warnings $(LUA_PATHS)
+	$(SELENE) $(LUA_PATHS)
 
 ci: format-check lint test
