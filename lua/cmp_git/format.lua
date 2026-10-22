@@ -35,6 +35,88 @@ local M = {
                 }
             end,
         },
+        trailers = {
+            ---@type cmp_git.FormatConfig<cmp_git.TrailerKey>
+            keys = {
+                label = function(trigger_char, trailer)
+                    return trailer.key
+                end,
+                filterText = function(trigger_char, trailer)
+                    return trailer.key
+                end,
+                insertText = function(trigger_char, trailer)
+                    return trailer.key .. ": "
+                end,
+                documentation = function(trigger_char, trailer)
+                    return {
+                        kind = "markdown",
+                        value = string.format(
+                            "# %s\n\nUsed %d %s in recent commits",
+                            trailer.key,
+                            trailer.count,
+                            trailer.count == 1 and "time" or "times"
+                        ),
+                    }
+                end,
+            },
+            -- For identities and values, trigger_char is set only when the value touches the colon (`Key:` or
+            -- `Key:Ad`). Then the nvim-cmp offset starts at the colon, and the inserted value needs a space after it.
+            ---@type cmp_git.FormatConfig<cmp_git.TrailerIdentity>
+            identities = {
+                label = function(trigger_char, identity)
+                    return string.format("%s <%s>", identity.name, identity.email)
+                end,
+                filterText = function(trigger_char, identity)
+                    if trigger_char then
+                        return string.format("%s %s <%s>", trigger_char, identity.name, identity.email)
+                    end
+                    return string.format("%s <%s>", identity.name, identity.email)
+                end,
+                insertText = function(trigger_char, identity)
+                    return string.format("%s%s <%s>", trigger_char and " " or "", identity.name, identity.email)
+                end,
+                documentation = function(trigger_char, identity)
+                    local source = identity.source
+                    if identity.is_self then
+                        source = "You"
+                    elseif source == "author" then
+                        source = "Commit author"
+                    end
+
+                    return {
+                        kind = "markdown",
+                        value = string.format("# %s\n\n%s\n\nFrom: %s", identity.name, identity.email, source),
+                    }
+                end,
+            },
+            ---@type cmp_git.FormatConfig<cmp_git.TrailerValue>
+            values = {
+                label = function(trigger_char, trailer)
+                    return trailer.value
+                end,
+                filterText = function(trigger_char, trailer)
+                    if trigger_char then
+                        return string.format("%s %s", trigger_char, trailer.value)
+                    end
+                    return trailer.value
+                end,
+                insertText = function(trigger_char, trailer)
+                    return (trigger_char and " " or "") .. trailer.value
+                end,
+                documentation = function(trigger_char, trailer)
+                    return {
+                        kind = "markdown",
+                        value = string.format(
+                            "# %s\n\n%s\n\nUsed %d %s in recent commits",
+                            trailer.key,
+                            trailer.value,
+                            trailer.count,
+                            trailer.count == 1 and "time" or "times"
+                        ),
+                    }
+                end,
+            },
+        },
     },
     github = {
         ---@type cmp_git.FormatConfig<cmp_git.GitHub.Issue>
@@ -160,7 +242,7 @@ local M = {
 
 ---@generic TItem
 ---@param config { format: cmp_git.FormatConfig<TItem>, sort_by: string | fun(item: TItem): string }
----@param trigger_char string
+---@param trigger_char string? nil for pattern trigger actions without a trigger character
 ---@return cmp_git.CompletionItem
 function M.item(config, trigger_char, item)
     return {

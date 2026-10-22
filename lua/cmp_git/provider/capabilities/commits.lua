@@ -1,32 +1,11 @@
 local command = require("cmp_git.command")
 local format = require("cmp_git.format")
+local utils = require("cmp_git.utils")
 
 local M = {}
 
----@param s string
----@return string
-local function trim(s)
-    return (s:gsub("^%s*(.-)%s*$", "%1"))
-end
-
----@param input string
----@return string[]
-local function split_nul(input)
-    local fields = {}
-    local start = 1
-
-    while true do
-        local pos = string.find(input, "\0", start, true)
-        if not pos then
-            break
-        end
-
-        table.insert(fields, string.sub(input, start, pos - 1))
-        start = pos + 1
-    end
-
-    return fields
-end
+local trim = utils.trim
+local split_nul = utils.split_nul
 
 ---@param config cmp_git.Config.GitCommits
 ---@return cmp_git.CommandSpec

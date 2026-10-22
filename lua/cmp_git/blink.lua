@@ -20,7 +20,7 @@ function Blink:get_trigger_characters()
     return self.core:get_trigger_characters()
 end
 
-local function trigger_character_from_context(ctx, trigger_characters)
+local function trigger_character_from_context(ctx, line, trigger_characters)
     if ctx.trigger and ctx.trigger.character then
         return ctx.trigger.character
     end
@@ -29,7 +29,10 @@ local function trigger_character_from_context(ctx, trigger_characters)
         return ctx.trigger_character
     end
 
-    local line = ctx.line or ctx.cursor_before_line or vim.api.nvim_get_current_line()
+    if #trigger_characters == 0 then
+        return nil
+    end
+
     local escaped = table.concat(trigger_characters, "")
     return string.match(line, "%s*([" .. escaped .. "])%S*$")
 end
@@ -43,6 +46,11 @@ local function cursor_from_context(ctx)
         return { row = ctx.cursor.line + 1, character = ctx.cursor.character }
     end
 
+    -- blink.cmp gives `{ row, col }` with a 1-based row and a 0-based byte column
+    if ctx.cursor and ctx.cursor[1] and ctx.cursor[2] then
+        return { row = ctx.cursor[1], character = ctx.cursor[2] }
+    end
+
     local position = vim.api.nvim_win_get_cursor(0)
     return { row = position[1], character = position[2] }
 end
@@ -50,9 +58,10 @@ end
 function Blink:get_completions(ctx, callback)
     local cancelled = false
     local cursor = cursor_from_context(ctx)
-    local line = ctx.line or ctx.cursor_before_line or string.sub(vim.api.nvim_get_current_line(), 1, cursor.character)
+    -- blink.cmp gives the full line in `ctx.line`. Pattern trigger actions must match up to the cursor.
+    local line = ctx.cursor_before_line or string.sub(ctx.line or vim.api.nvim_get_current_line(), 1, cursor.character)
     local controller = self.core:complete({
-        trigger_character = trigger_character_from_context(ctx, self.core:get_trigger_characters()),
+        trigger_character = trigger_character_from_context(ctx, line, self.core:get_trigger_characters()),
         cursor = cursor,
         line = line,
         bufnr = ctx.bufnr or vim.api.nvim_get_current_buf(),

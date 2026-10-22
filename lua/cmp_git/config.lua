@@ -10,6 +10,27 @@ local sort = require("cmp_git.sort")
 ---@field trigger_character string
 ---@field actions string[]
 
+---@class cmp_git.Config.PatternTriggerActions
+---@field pattern string Vim regex (magic mode) that must match up to the cursor. The match start is the start of the replaced text.
+---@field actions string[]
+
+-- Keep these in sync with the trailer entries in the README.
+local TRAILER_KEY_PATTERN = [[^[[:alnum:]-]\+]]
+-- The value cannot contain `:#@!` outside `<...>`. nvim-cmp starts the keyword at the leftmost match, so a looser
+-- value would hide the other triggers in body lines such as `Note: see #12`.
+local TRAILER_VALUE_PATTERN = [[\%(^[[:alnum:]-]\+:\s*\)\@<=\%([^[:space:]<>:#@!][^<>:#@!]*\%(<[^>]*\)\?\)\?]]
+
+local IDENTITY_TRAILER_KEYS = {
+    "Co-authored-by",
+    "Signed-off-by",
+    "Reviewed-by",
+    "Acked-by",
+    "Tested-by",
+    "Reported-by",
+    "Suggested-by",
+    "Helped-by",
+}
+
 ---@class cmp_git.Config
 local defaults = {
     ---@type string[]
@@ -21,7 +42,7 @@ local defaults = {
     ---@type table<string, string>
     ssh_aliases = {},
     ---@class cmp_git.Config.Git
-    ---@field filter_fn? fun(trigger_char: string, item: cmp_git.Commit): string Compatibility alias for all git capability format.filterText functions.
+    ---@field filter_fn? fun(trigger_char: string, item: cmp_git.Commit): string Compatibility alias for the commits format.filterText function. It does not apply to trailers.
     git = {
         ---@class cmp_git.Config.GitCommits
         commits = {
@@ -29,6 +50,35 @@ local defaults = {
             sort_by = sort.git.commits,
             format = format.git.commits,
             sha_length = 7,
+        },
+        ---@class cmp_git.Config.GitTrailers
+        trailers = {
+            ---@type string[]
+            filetypes = { "gitcommit", "NeogitCommitMessage" },
+            ---@class cmp_git.Config.GitTrailerKeys
+            keys = {
+                ---@type string[]
+                builtin = vim.list_extend(vim.deepcopy(IDENTITY_TRAILER_KEYS), { "Fixes", "Closes", "Refs" }),
+                limit = 100, -- commits scanned for keys
+                sort_by = sort.git.trailers.keys,
+                format = format.git.trailers.keys,
+            },
+            ---@class cmp_git.Config.GitTrailerIdentities
+            identities = {
+                ---Trailer keys whose values are completed with `Name <email>`
+                ---@type string[]
+                keys = vim.deepcopy(IDENTITY_TRAILER_KEYS),
+                limit = 1000, -- commits scanned for identities
+                sort_by = sort.git.trailers.identities,
+                format = format.git.trailers.identities,
+            },
+            ---Earlier values of the current key, for keys that `identities` does not handle
+            ---@class cmp_git.Config.GitTrailerValues
+            values = {
+                limit = 1000, -- commits scanned for values
+                sort_by = sort.git.trailers.values,
+                format = format.git.trailers.values,
+            },
         },
     },
     ---@class cmp_git.Config.GitHub
@@ -87,8 +137,16 @@ local defaults = {
             format = format.gitlab.merge_requests,
         },
     },
-    ---@type (cmp_git.Config.NamedTriggerActions|cmp_git.Config.TriggerAction)[]
+    ---@type (cmp_git.Config.NamedTriggerActions|cmp_git.Config.PatternTriggerActions|cmp_git.Config.TriggerAction)[]
     trigger_actions = {
+        {
+            pattern = TRAILER_KEY_PATTERN,
+            actions = { "git_trailer_keys" },
+        },
+        {
+            pattern = TRAILER_VALUE_PATTERN,
+            actions = { "git_trailer_identities", "git_trailer_values" },
+        },
         {
             trigger_character = ":",
             actions = { "git_commits" },

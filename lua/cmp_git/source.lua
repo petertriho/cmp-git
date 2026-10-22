@@ -1,5 +1,4 @@
 local Core = require("cmp_git.core")
-local repository = require("cmp_git.repository")
 
 local Source = {}
 
@@ -70,28 +69,7 @@ end
 ---@param params cmp.SourceCompletionApiParams
 ---@param callback fun(args: cmp_git.CompletionList)
 function Source:complete(params, callback)
-    local state = { cancelled = false, active = nil }
-    local controller = {
-        command = "cmp_git_source_complete",
-        cancel = function()
-            state.cancelled = true
-            if state.active and state.active.cancel then
-                state.active:cancel()
-            end
-        end,
-    }
-
-    repository.is_git_repo(function(is_git_repo)
-        if state.cancelled then
-            return
-        end
-        if not is_git_repo then
-            return
-        end
-        state.active = self:_complete(params, callback)
-    end)
-
-    return controller
+    return self.core:complete(self:_context_from_params(params), callback)
 end
 
 function Source:get_keyword_pattern()
