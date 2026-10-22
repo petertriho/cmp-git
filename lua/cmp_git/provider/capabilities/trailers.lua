@@ -509,13 +509,25 @@ function M.keys.job(args)
     end
 
     local bufnr = args.bufnr or vim.api.nvim_get_current_buf()
-    local runner = args.runner or command
-    return runner.build(M.keys.request(args.config), function(result, success)
-        -- A failed log (for example, a repository without commits) still gives the built-in keys
+
+    ---@param result string
+    ---@param success boolean
+    local function finish(result, success)
+        -- A failed log (for example, a repository without commits) still gives the built-in keys. They are not
+        -- cached, so that the next request tries the log again.
         local parsed = M.keys.parse(success and result or "", args.config)
-        args.cache[bufnr] = parsed
+        if success then
+            args.cache[bufnr] = parsed
+        end
         args.callback({ items = items(parsed, args.config, args.trigger_char), isIncomplete = false })
-    end)
+    end
+
+    local runner = args.runner or command
+    local job = runner.build(M.keys.request(args.config), finish)
+    if not job then
+        finish("", false)
+    end
+    return job
 end
 
 ---@param args cmp_git.Provider.TrailerIdentityArgs
@@ -529,35 +541,42 @@ function M.identities.job(args)
     local runner = args.runner or command
     local state = { cancelled = false, active = nil }
 
-    local function finish(log_result, ident_result)
-        local parsed = M.identities.parse(log_result, ident_result)
-        args.cache[bufnr] = parsed
+    -- A failed log (for example, a repository without commits) still gives your identity, and a failed `git var` still
+    -- gives the log. Only a result of both is cached, so that the next request tries a failed command again.
+    ---@param log_result string
+    ---@param log_success boolean
+    ---@param ident_result string
+    ---@param ident_success boolean
+    local function finish(log_result, log_success, ident_result, ident_success)
+        local parsed = M.identities.parse(log_success and log_result or "", ident_success and ident_result or "")
+        if log_success and ident_success then
+            args.cache[bufnr] = parsed
+        end
         args.callback({ items = items(parsed, args.config, args.trigger_char), isIncomplete = false })
     end
 
-    -- A failed log (for example, a repository without commits) still gives your identity
     local log_job = runner.build(M.identities.request(args.config), function(log_result, log_success)
         if state.cancelled then
             return
         end
 
-        log_result = log_success and log_result or ""
         local ident_job = runner.build(M.identities.ident_request(), function(ident_result, ident_success)
             if state.cancelled then
                 return
             end
-            finish(log_result, ident_success and ident_result or "")
+            finish(log_result, log_success, ident_result, ident_success)
         end)
 
         if ident_job then
             state.active = ident_job
             ident_job:start()
         else
-            finish(log_result, "")
+            finish(log_result, log_success, "", false)
         end
     end)
 
     if not log_job then
+        finish("", false, "", false)
         return nil
     end
 
@@ -593,11 +612,22 @@ function M.values.job(args)
     end
 
     local runner = args.runner or command
-    return runner.build(M.values.request(args.config), function(result, success)
-        local parsed = M.values.parse(success and result or "")
+    local job = runner.build(M.values.request(args.config), function(result, success)
+        -- A failure is not cached, so that the next request tries again
+        if not success then
+            respond({})
+            return
+        end
+
+        local parsed = M.values.parse(result)
         args.cache[bufnr] = parsed
         respond(parsed)
     end)
+
+    if not job then
+        respond({})
+    end
+    return job
 end
 
 ---@param args cmp_git.Provider.TrailerKeyArgs

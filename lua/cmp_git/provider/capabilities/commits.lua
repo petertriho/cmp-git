@@ -115,9 +115,16 @@ function M.job(args)
         return nil
     end
 
+    -- A failure, such as a repository without commits or no git, must still answer. Else blink.cmp holds back the
+    -- items of all sources until its timeout. It is not cached, so that the next request tries again.
+    local function fail()
+        args.callback({ items = {}, isIncomplete = false })
+    end
+
     local runner = args.runner or command
-    return runner.build(M.request(args.config), function(result, success)
+    local job = runner.build(M.request(args.config), function(result, success)
         if not success then
+            fail()
             return
         end
 
@@ -125,6 +132,11 @@ function M.job(args)
         args.cache[bufnr] = parsed
         args.callback({ items = M.items(parsed, args.config, args.trigger_char), isIncomplete = false })
     end)
+
+    if not job then
+        fail()
+    end
+    return job
 end
 
 ---@param args cmp_git.Provider.CommitCapabilityArgs
