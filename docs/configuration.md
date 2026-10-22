@@ -232,6 +232,8 @@ The results are different in these cases:
   this state.
 - With curl, `github.issues` and `github.pull_requests` get at most 100 items. cmp-git requests one page, and the
   GitHub API gives at most 100 items for each page.
+- With curl, the page of `github.issues` also contains pull requests. cmp-git removes them, so it can show fewer issues
+  than `limit`.
 - GitLab issues, merge requests, and mentions get at most 100 items, for the same reason. This limit applies to `glab`
   and to curl.
 

@@ -106,6 +106,20 @@ function M.issues_request(git_info, trigger_char, config)
             normalize_body(issue)
             return format.item(config, trigger_char, issue)
         end,
+        -- The REST API also returns pull requests, with a `pull_request` field. `gh issue list` does not.
+        handle_parsed = function(parsed)
+            local result = {}
+            if type(parsed) ~= "table" then
+                return result
+            end
+
+            for _, issue in ipairs(parsed) do
+                if issue.pull_request == nil or issue.pull_request == vim.NIL then
+                    table.insert(result, issue)
+                end
+            end
+            return result
+        end,
     }
 end
 
