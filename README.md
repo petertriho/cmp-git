@@ -27,7 +27,7 @@ Git source for [hrsh7th/nvim-cmp](https://github.com/hrsh7th/nvim-cmp) and [Sagh
 
 - Neovim >= 0.12
 - git (>= 2.31 to find trailer keys in history)
-- curl
+- curl (>= 7.55)
 - [GitHub CLI](https://cli.github.com/) (optional, cmp-git uses curl if it is not available)
 - [GitLab CLI](https://gitlab.com/gitlab-org/cli) (optional, cmp-git uses curl if it is not available)
 
@@ -220,7 +220,8 @@ require("cmp_git").setup({
             actions = { "git_trailer_keys" },
         },
         {
-            pattern = [[\%(^[[:alnum:]-]\+:\s*\)\@<=\%([^[:space:]<>:#@!][^<>:#@!]*\%(<[^>]*\)\?\)\?]],
+            pattern = [[^[[:alnum:]-]\+:\s*\zs\%([^[:space:]<>:#@!][^<>:#@!]*\%(<[^>]*\)\?\)\?]],
+            keyword_pattern = [[^[[:alnum:]-]\+\zs:\S*\|^[[:alnum:]-]\+:\s*\zs\%([^[:space:]<>:#@!][^<>:#@!]*\%(<[^>]*\)\?\)\?]],
             actions = { "git_trailer_identities", "git_trailer_values" },
         },
         {
