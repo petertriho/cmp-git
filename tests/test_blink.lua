@@ -78,6 +78,24 @@ T["blink_adapter_suppresses_stale_callbacks_after_cancel"] = function()
     eq(called, false, "blink suppresses stale callback after cancellation")
 end
 
+T["blink_adapter_special_trigger_characters"] = function()
+    local blink = Blink.new({})
+    local received
+    blink.core = {
+        get_trigger_characters = function()
+            return { "%", "]", "-" }
+        end,
+        complete = function(_, context, _callback)
+            received = context
+            return { cancel = function() end }
+        end,
+    }
+
+    blink:get_completions({ cursor = { 1, 7 }, line = "see %ab", bufnr = 1 }, function() end)
+
+    eq(received.trigger_character, "%", "blink detects a special trigger character")
+end
+
 T["blink_adapter_matches_text_before_cursor"] = function()
     local blink = Blink.new({})
     local received
