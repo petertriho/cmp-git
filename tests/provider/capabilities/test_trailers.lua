@@ -1,0 +1,355 @@
+local helpers = require("tests.helpers")
+local config = require("cmp_git.config")
+local Core = require("cmp_git.core")
+local trailer_capability = require("cmp_git.provider.capabilities.trailers")
+
+local eq = helpers.eq
+local ok = helpers.ok
+
+local T = helpers.new_set()
+
+T["trailer_gating"] = function()
+    local trailers_config = config.normalize({}).git.trailers
+    local function available(lines, row, line, kind, filetype, custom_config)
+        local bufnr = helpers.buffer(lines, filetype)
+        local result = trailer_capability.available(custom_config or trailers_config, {
+            bufnr = bufnr,
+            cursor = { row = row },
+            line = line,
+        }, kind)
+        vim.api.nvim_buf_delete(bufnr, { force = true })
+        return result
+    end
+
+    ok(available({ "subject", "", "Co" }, 3, "Co", "keys"), "keys after the blank line")
+    ok(
+        available({ "subject", "", "Signed-off-by: Ada <ada@example.com>", "Co" }, 4, "Co", "keys"),
+        "keys after another trailer"
+    )
+    ok(available({ "subject", "", "Co" }, 3, "Co", "keys", "NeogitCommitMessage"), "keys in Neogit commit messages")
+    ok(available({ "subject", "", "Co" }, 3, "Co", "keys", "gitcommit.markdown"), "keys in compound filetype")
+    ok(not available({ "Co" }, 1, "Co", "keys"), "no keys on the subject line")
+    ok(not available({ "subject", "Co" }, 2, "Co", "keys"), "no keys on row 2")
+    ok(not available({ "subject", "", "body text", "Co" }, 4, "Co", "keys"), "no keys inside a paragraph")
+    ok(not available({ "subject", "", "Co" }, 3, "Co", "keys", "octo"), "no keys in octo")
+    ok(available({ "subject", "", "" }, 3, "Co-authored-by: Ad", "identities"), "identities for an identity key")
+    ok(
+        available({ "subject", "", "" }, 3, "co-AUTHORED-by: Ad", "identities"),
+        "identity keys match case-insensitively"
+    )
+    ok(not available({ "subject", "", "" }, 3, "Fixes: Ad", "identities"), "no identities for other keys")
+    ok(not available({ "subject", "Ad" }, 2, "Co-authored-by: Ad", "identities"), "no identities on row 2")
+    ok(available({ "subject", "", "" }, 3, "Assisted-by: Co", "values"), "values for any key")
+    ok(available({ "subject", "", "" }, 3, "Fixes: ", "values"), "values for an empty value after a space")
+    ok(not available({ "subject", "", "" }, 3, "Fixes:", "values"), "no values right after the colon")
+    ok(not available({ "subject", "", "body", "" }, 4, "Fixes: 2", "values"), "no values inside a paragraph")
+
+    local from_first_line = config.normalize({ git = { trailers = { min_line = 1 } } }).git.trailers
+    ok(available({ "Co" }, 1, "Co", "keys", nil, from_first_line), "min_line 1 allows the first line")
+    ok(available({ "", "Co" }, 2, "Co", "keys", nil, from_first_line), "min_line 1 allows line 2 after a blank line")
+    ok(
+        not available({ "subject", "Co" }, 2, "Co", "keys", nil, from_first_line),
+        "min_line 1 keeps the previous-line check"
+    )
+    local from_fifth_line = config.normalize({ git = { trailers = { min_line = 5 } } }).git.trailers
+    ok(not available({ "subject", "", "" }, 3, "Co", "keys", nil, from_fifth_line), "min_line 5 skips line 3")
+    ok(
+        not available({ "subject", "", "" }, 3, "Co-authored-by: Ad", "identities", nil, from_fifth_line),
+        "min_line applies to identities"
+    )
+end
+
+T["trailer_keys_parse_and_sort"] = function()
+    local result = table.concat({
+        "Signed-off-by\031co-authored-by\0",
+        "\nChange-Id\0",
+        "\nsigned-off-by\0",
+        "\n%(trailers:keyonly,separator=%x1f)\0",
+        "\n\0",
+    })
+    local keys = trailer_capability.keys.parse(result, { builtin = { "Co-authored-by", "Signed-off-by", "Fixes" } })
+    local by_key = {}
+    for _, trailer in ipairs(keys) do
+        by_key[trailer.key] = trailer
+    end
+
+    eq(#keys, 4, "trailer key count")
+    eq(by_key["Signed-off-by"].count, 2, "trailer keys count case-insensitively")
+    eq(by_key["Co-authored-by"].count, 1, "built-in trailer key casing wins")
+    eq(by_key["Change-Id"].count, 1, "mined trailer key count")
+    eq(by_key["Change-Id"].builtin_index, nil, "mined trailer key has no built-in index")
+    eq(by_key["Fixes"].count, 0, "unused built-in trailer key is kept")
+
+    local items = trailer_capability.keys.items(keys, config.normalize({}).git.trailers.keys, nil)
+    table.sort(items, function(a, b)
+        return a.sortText < b.sortText
+    end)
+    local labels = {}
+    for _, item in ipairs(items) do
+        table.insert(labels, item.label)
+    end
+    eq(table.concat(labels, ","), "Signed-off-by,Co-authored-by,Change-Id,Fixes", "trailer key sort order")
+    eq(items[1].insertText, "Signed-off-by: ", "trailer key insert text")
+end
+
+T["trailer_identities_request"] = function()
+    local spec = trailer_capability.identities.request({
+        keys = { "Co-authored-by", "bad key", "Signed-off-by" },
+        limit = 5,
+    })
+
+    eq(spec.exec, "git", "trailer identities command exec")
+    eq(spec.args[3], "5", "trailer identities command limit")
+    eq(
+        spec.args[4],
+        "--format=%at%x1f%aN%x1f%aE%x1f%(trailers:key=Co-authored-by,key=Signed-off-by,unfold,separator=%x1f)%x00",
+        "trailer identities command format"
+    )
+end
+
+T["trailer_identities_parse"] = function()
+    local now = os.time()
+    local log_result = table.concat({
+        tostring(now - 10)
+            .. "\031Ada Lovelace\031ada@example.com"
+            .. "\031Co-authored-by: Grace Hopper <grace@example.com>"
+            .. "\031Signed-off-by: Ada Lovelace <ADA@example.com>\0",
+        "\n" .. tostring(now - 20) .. "\031Ada L\031ada@example.com\031Co-authored-by: no email here\0",
+        "\n" .. tostring(now - 30) .. "\031Me\031me@example.com\031\0",
+        "\n",
+    })
+    local identities = trailer_capability.identities.parse(log_result, "Me Myself <ME@example.com> 1792648118 +1100\n")
+
+    eq(#identities, 3, "trailer identities dedupe by email")
+    eq(identities[1].name, "Ada Lovelace", "trailer identities keep the most recent name")
+    eq(identities[1].source, "author", "trailer identities record the author source")
+    eq(identities[2].email, "grace@example.com", "trailer identities include trailer values")
+    eq(identities[2].source, "Co-authored-by", "trailer identities record the trailer key")
+    ok(identities[2].diff >= 10, "trailer identities use the commit time")
+    eq(identities[3].name, "Me", "your identity in history keeps the history record")
+    eq(identities[3].is_self, true, "your identity in history is marked")
+
+    local only_self = trailer_capability.identities.parse("", "Solo <solo@example.com> 1 +0000")
+    eq(#only_self, 1, "your identity without history is added")
+    eq(only_self[1].is_self, true, "your identity without history is marked")
+    eq(only_self[1].diff, 0, "your identity without history sorts first")
+    eq(only_self[1].source, "self", "your identity without history has the self source")
+end
+
+T["trailer_capabilities_use_cache_and_runner"] = function()
+    local builds = {}
+    local runner = {
+        build = function(spec, callback)
+            table.insert(builds, spec.args[1])
+            return helpers.fake_job(function()
+                if spec.args[1] == "var" then
+                    callback("Me <me@example.com> 1 +0000", true)
+                else
+                    callback("fatal: no commits", false)
+                end
+            end)
+        end,
+    }
+    local trailers_config = config.normalize({}).git.trailers
+
+    local key_callback, key_lists = helpers.recorder()
+    local key_args = {
+        cache = {},
+        callback = key_callback,
+        config = trailers_config.keys,
+        runner = runner,
+        bufnr = 50,
+    }
+    trailer_capability.keys.complete(key_args)
+    trailer_capability.keys.complete(key_args)
+
+    eq(table.concat(builds, ","), "log", "trailer keys run once")
+    eq(#key_lists, 2, "trailer keys callback on miss and hit")
+    eq(#key_lists[1].items, #trailers_config.keys.builtin, "failed log still gives the built-in keys")
+
+    builds = {}
+    local identities_callback, identities_lists = helpers.recorder()
+    local identities_args = {
+        cache = {},
+        callback = identities_callback,
+        config = trailers_config.identities,
+        runner = runner,
+        bufnr = 51,
+    }
+    trailer_capability.identities.complete(identities_args)
+    trailer_capability.identities.complete(identities_args)
+
+    eq(table.concat(builds, ","), "log,var", "trailer identities run log and var once")
+    eq(#identities_lists, 2, "trailer identities callback on miss and hit")
+    eq(identities_lists[1].items[1].label, "Me <me@example.com>", "failed log still gives your identity")
+end
+
+T["trailer_identities_job_cancel"] = function()
+    local pending
+    local builds = 0
+    local runner = {
+        build = function(_spec, callback)
+            builds = builds + 1
+            return helpers.fake_job(function()
+                pending = callback
+            end)
+        end,
+    }
+    local called = false
+    local job = trailer_capability.identities.complete({
+        cache = {},
+        callback = function()
+            called = true
+        end,
+        config = config.normalize({}).git.trailers.identities,
+        runner = runner,
+        bufnr = 52,
+    })
+
+    job:cancel()
+    pending("", true)
+
+    eq(builds, 1, "cancelled trailer identities job does not start git var")
+    eq(called, false, "cancelled trailer identities job does not call back")
+end
+
+T["trailer_capabilities_with_git"] = function()
+    if vim.fn.executable("git") ~= 1 then
+        helpers.skip("git is not installed")
+    end
+
+    local repo = helpers.git_repo()
+    repo.commit("feat: first\n\nCo-authored-by: Grace Hopper <grace@example.com>\nChange-Id: I1234\nAssisted-by: Codex")
+
+    vim.env.GIT_AUTHOR_NAME = "Test Self"
+    vim.env.GIT_AUTHOR_EMAIL = "self@example.com"
+    vim.fn.chdir(repo.dir)
+
+    local trailers_config = config.normalize({}).git.trailers
+    local key_list, identities_list, values_list
+    trailer_capability.keys.complete({
+        cache = {},
+        callback = function(list)
+            key_list = list
+        end,
+        config = trailers_config.keys,
+        bufnr = 60,
+    })
+    trailer_capability.identities.complete({
+        cache = {},
+        callback = function(list)
+            identities_list = list
+        end,
+        config = trailers_config.identities,
+        bufnr = 61,
+    })
+    trailer_capability.values.complete({
+        cache = {},
+        callback = function(list)
+            values_list = list
+        end,
+        config = trailers_config.values,
+        key = "assisted-by",
+        bufnr = 62,
+    })
+    helpers.wait_for(function()
+        return key_list ~= nil and identities_list ~= nil and values_list ~= nil
+    end, "trailer capabilities complete with git")
+
+    local keys = {}
+    for _, item in ipairs(key_list.items) do
+        keys[item.label] = item.data.count
+    end
+    eq(keys["Change-Id"], 1, "git trailer keys include mined keys")
+    eq(keys["Co-authored-by"], 1, "git trailer keys count built-in keys")
+
+    local identities = {}
+    for _, item in ipairs(identities_list.items) do
+        identities[item.label] = item.data
+    end
+    ok(identities["Ada Lovelace <ada@example.com>"] ~= nil, "git trailer identities include authors")
+    eq(
+        identities["Grace Hopper <grace@example.com>"] and identities["Grace Hopper <grace@example.com>"].source,
+        "Co-authored-by",
+        "git trailer identities include trailer values"
+    )
+    eq(
+        identities["Test Self <self@example.com>"] and identities["Test Self <self@example.com>"].is_self,
+        true,
+        "git trailer identities include your identity"
+    )
+    eq(values_list.items[1] and values_list.items[1].label, "Codex", "git trailer values")
+end
+
+T["trailer_values_request_and_parse"] = function()
+    local spec = trailer_capability.values.request({ limit = 7 })
+    eq(spec.args[3], "7", "trailer values command limit")
+    eq(spec.args[4], "--format=%at%x1f%(trailers:only,unfold,separator=%x1f)%x00", "trailer values command format")
+
+    local now = os.time()
+    local result = table.concat({
+        tostring(now - 10)
+            .. '\031Assisted-by: Codex\031Fixes: 29c8d7267dd7 ("fix: snippet edit range")'
+            .. "\031Co-authored-by: Grace Hopper <grace@example.com>\0",
+        "\n" .. tostring(now - 20) .. "\031assisted-by: Codex\031Assisted-by: claude-code Opus 5\031Ref:\0",
+        "\n",
+    })
+    local by_key = trailer_capability.values.parse(result)
+
+    eq(#by_key["assisted-by"], 2, "trailer values dedupe by value")
+    eq(by_key["assisted-by"][1].key, "Assisted-by", "trailer values keep the first key casing")
+    eq(by_key["assisted-by"][1].count, 2, "trailer values count across key casing")
+    eq(by_key["fixes"][1].value, '29c8d7267dd7 ("fix: snippet edit range")', "trailer values keep colons")
+    eq(by_key["co-authored-by"][1].value, "Grace Hopper <grace@example.com>", "trailer values keep identities")
+    eq(by_key["ref"], nil, "trailer values skip empty values")
+
+    local items = trailer_capability.values.items(by_key, "Assisted-By", config.normalize({}).git.trailers.values, nil)
+    table.sort(items, function(a, b)
+        return a.sortText < b.sortText
+    end)
+    eq(items[1].label, "Codex", "trailer values sort by use count")
+    eq(items[2].label, "claude-code Opus 5", "trailer values for the key only")
+    eq(#items, 2, "trailer values filter by key")
+end
+
+T["trailer_values_cache_and_fall_through"] = function()
+    local builds = 0
+    local runner = {
+        build = function(_spec, callback)
+            builds = builds + 1
+            return helpers.fake_job(function()
+                callback("fatal: no commits", false)
+            end)
+        end,
+    }
+    local callback, lists = helpers.recorder()
+    local args = {
+        cache = {},
+        callback = callback,
+        config = config.normalize({}).git.trailers.values,
+        key = "Assisted-by",
+        runner = runner,
+        bufnr = 53,
+    }
+
+    ok(trailer_capability.values.may_have(args.cache, { bufnr = 53, line = "Assisted-by: C" }), "unknown cache")
+    trailer_capability.values.complete(args)
+    trailer_capability.values.complete(args)
+
+    eq(builds, 1, "trailer values run once")
+    eq(#lists, 2, "trailer values callback on miss and hit")
+    eq(#lists[1].items, 0, "failed log gives no trailer values")
+    ok(
+        not trailer_capability.values.may_have(args.cache, { bufnr = 53, line = "Assisted-by: C" }),
+        "cached history without values for the key"
+    )
+
+    local core = Core.new({})
+    local bufnr = helpers.buffer({ "feat: subject", "", "Note: plain text" })
+    local context = { cursor = { row = 3, character = 16 }, line = "Note: plain text", bufnr = bufnr }
+    eq(#core:_route(context), 1, "body line with a key routes to values before the first fetch")
+    core.sources.git.cache_trailer_values[bufnr] = {}
+    eq(#core:_route(context), 0, "body line without history values falls through")
+end
+
+return T
