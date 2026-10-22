@@ -219,6 +219,13 @@ local function teardown_case()
         case.restores[i]()
     end
 
+    -- The entries are shared by all sources. Dropped entries keep nothing, so a fetch of this case that ends later
+    -- does not write into the next case.
+    local cache = package.loaded["cmp_git.cache"]
+    if cache then
+        cache.forget()
+    end
+
     for _, name in ipairs(ENV_NAMES) do
         -- A nil value unsets the variable
         vim.env[name] = case.env[name]
