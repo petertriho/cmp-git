@@ -20,7 +20,11 @@ end
 ---@return string
 function M.get_cwd()
     if vim.fn.getreg("%") ~= "" and vim.bo.filetype ~= "octo" then
-        return vim.fn.expand("%:p:h")
+        local dir = vim.fn.expand("%:p:h")
+        -- `vim.system` throws for a `cwd` that does not exist, for example for a new file in a new directory
+        if vim.fn.isdirectory(dir) == 1 then
+            return dir
+        end
     end
     return vim.fn.getcwd()
 end
