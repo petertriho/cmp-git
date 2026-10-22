@@ -35,7 +35,8 @@ function M.is_git_repo(on_result)
         local cmd = "git rev-parse --is-inside-work-tree --is-inside-git-dir"
         run_cmd_async(cmd, {
             on_complete = function(success, output)
-                local is_git_repo = success and #output > 0 and output[1]:find("true") ~= nil
+                -- Inside `.git`, only the second line (`--is-inside-git-dir`) is true
+                local is_git_repo = success and vim.tbl_contains(output, "true")
                 if not is_git_repo and cwd ~= nil then
                     cwd = nil
                     check_in_git_repo()
