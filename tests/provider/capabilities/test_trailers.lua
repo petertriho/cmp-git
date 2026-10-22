@@ -560,33 +560,74 @@ T["trailer_capabilities_answer_failures_without_caching"] = function()
     eq(complete("values", { build = true }, ""), {}, "no git gives no values")
 end
 
-T["trailer_identities_job_cancel"] = function()
-    local pending
-    local builds = 0
+---A runner whose jobs answer when the test calls their callbacks.
+---@return table runner
+---@return { started: string[], cancelled: string[], answer: table<string, fun(result: string, success: boolean)> } jobs
+local function manual_runner()
+    local jobs = { started = {}, cancelled = {}, answer = {} }
     local runner = {
-        build = function(_spec, callback)
-            builds = builds + 1
-            return helpers.fake_job(function()
-                pending = callback
-            end)
+        build = function(spec, callback)
+            local name = spec.args[1]
+            return {
+                command = spec.exec,
+                start = function()
+                    table.insert(jobs.started, name)
+                    jobs.answer[name] = callback
+                end,
+                cancel = function()
+                    table.insert(jobs.cancelled, name)
+                end,
+            }
         end,
     }
-    local called = false
-    local job = trailer_capability.identities.complete({
+    return runner, jobs
+end
+
+T["trailer_identities_run_log_and_var_at_once"] = function()
+    local runner, jobs = manual_runner()
+    local callback, lists = helpers.recorder()
+    local args = {
         cache = {},
-        callback = function()
-            called = true
-        end,
+        callback = callback,
+        config = config.normalize({}).git.trailers.identities,
+        runner = runner,
+        bufnr = 55,
+    }
+    trailer_capability.identities.complete(args)
+
+    eq(jobs.started, { "log", "var" }, "git log and git var start before either answers")
+    jobs.answer.var("Me <me@example.com> 1 +0000\n", true)
+    eq(#lists, 0, "the list waits for git log")
+    jobs.answer.log("1700000000\031Ada\031ada@example.com\0\n", true)
+
+    eq(#lists, 1, "one list when both answer")
+    local labels = {}
+    for _, item in ipairs(lists[1].items) do
+        table.insert(labels, item.label)
+    end
+    eq(labels, { "Ada <ada@example.com>", "Me <me@example.com>" }, "the list has the log and your identity")
+    ok(args.cache[55] ~= nil, "the result of both commands is cached")
+end
+
+T["trailer_identities_job_cancel"] = function()
+    local runner, jobs = manual_runner()
+    local callback, lists = helpers.recorder()
+    local args = {
+        cache = {},
+        callback = callback,
         config = config.normalize({}).git.trailers.identities,
         runner = runner,
         bufnr = 52,
-    })
+    }
+    local job = helpers.not_nil(trailer_capability.identities.complete(args))
 
+    jobs.answer.var("Me <me@example.com> 1 +0000\n", true)
     job:cancel()
-    pending("", true)
+    jobs.answer.log("", true)
 
-    eq(builds, 1, "cancelled trailer identities job does not start git var")
-    eq(called, false, "cancelled trailer identities job does not call back")
+    eq(jobs.cancelled, { "log", "var" }, "cancel stops both commands")
+    eq(#lists, 0, "cancelled trailer identities job does not call back")
+    eq(args.cache[52], nil, "cancelled trailer identities job does not cache")
 end
 
 T["trailer_capabilities_with_git"] = function()

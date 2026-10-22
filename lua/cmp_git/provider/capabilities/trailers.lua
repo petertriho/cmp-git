@@ -539,57 +539,61 @@ function M.identities.job(args)
 
     local bufnr = args.bufnr or vim.api.nvim_get_current_buf()
     local runner = args.runner or command
-    local state = { cancelled = false, active = nil }
+    local state = { cancelled = false, pending = 0 }
+    local log = { result = "", success = false }
+    local ident = { result = "", success = false }
 
     -- A failed log (for example, a repository without commits) still gives your identity, and a failed `git var` still
     -- gives the log. Only a result of both is cached, so that the next request tries a failed command again.
-    ---@param log_result string
-    ---@param log_success boolean
-    ---@param ident_result string
-    ---@param ident_success boolean
-    local function finish(log_result, log_success, ident_result, ident_success)
-        local parsed = M.identities.parse(log_success and log_result or "", ident_success and ident_result or "")
-        if log_success and ident_success then
+    local function finish()
+        local parsed = M.identities.parse(log.success and log.result or "", ident.success and ident.result or "")
+        if log.success and ident.success then
             args.cache[bufnr] = parsed
         end
         args.callback({ items = items(parsed, args.config, args.trigger_char), isIncomplete = false })
     end
 
-    local log_job = runner.build(M.identities.request(args.config), function(log_result, log_success)
-        if state.cancelled then
-            return
-        end
+    ---@type cmp_git.SystemJob[]
+    local jobs = {}
 
-        local ident_job = runner.build(M.identities.ident_request(), function(ident_result, ident_success)
-            if state.cancelled then
-                return
+    ---@param spec cmp_git.CommandSpec
+    ---@param answer { result: string, success: boolean }
+    local function build(spec, answer)
+        local job = runner.build(spec, function(result, success)
+            answer.result, answer.success = result, success
+            state.pending = state.pending - 1
+            if state.pending == 0 and not state.cancelled then
+                finish()
             end
-            finish(log_result, log_success, ident_result, ident_success)
         end)
-
-        if ident_job then
-            state.active = ident_job
-            ident_job:start()
-        else
-            finish(log_result, log_success, "", false)
+        if job then
+            state.pending = state.pending + 1
+            table.insert(jobs, job)
         end
-    end)
+    end
 
-    if not log_job then
-        finish("", false, "", false)
+    -- The commands do not depend on each other, so they run at once, and the list waits for both
+    build(M.identities.request(args.config), log)
+    build(M.identities.ident_request(), ident)
+
+    if #jobs == 0 then
+        finish()
         return nil
     end
 
     return {
-        command = log_job.command,
+        command = jobs[1].command,
         start = function()
-            state.active = log_job
-            log_job:start()
+            for _, job in ipairs(jobs) do
+                job:start()
+            end
         end,
         cancel = function()
             state.cancelled = true
-            if state.active and state.active.cancel then
-                state.active:cancel()
+            for _, job in ipairs(jobs) do
+                if job.cancel then
+                    job:cancel()
+                end
             end
         end,
     }
