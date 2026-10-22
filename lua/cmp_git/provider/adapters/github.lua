@@ -2,6 +2,21 @@ local format = require("cmp_git.format")
 
 local M = {}
 
+---An issue from `gh issue list --json` or the REST API.
+---@class cmp_git.GitHub.Issue
+---@field number integer
+---@field title string
+---@field body string
+---@field updatedAt string
+---@field state string
+
+---A pull request from `gh pr list --json` or the REST API.
+---@class cmp_git.GitHub.PullRequest: cmp_git.GitHub.Issue
+
+---A user from the collaborators or contributors API.
+---@class cmp_git.GitHub.Mention
+---@field login string
+
 local function github_url(git_host, path)
     if git_host == "github.com" then
         return string.format("https://api.github.com/%s", path)

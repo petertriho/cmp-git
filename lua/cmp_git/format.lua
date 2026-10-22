@@ -1,10 +1,11 @@
 local sort = require("cmp_git.sort")
 
+---`trigger_char` is nil for pattern trigger actions without a trigger character.
 ---@class cmp_git.FormatConfig<TItem>: {
----label: fun(trigger_char: string, item: TItem): string;
----filterText: fun(trigger_char: string, item: TItem): string;
----insertText: fun(trigger_char: string, item: TItem): string;
----documentation: fun(trigger_char: string, item: TItem): lsp.MarkupContent;
+---label: fun(trigger_char: string?, item: TItem): string;
+---filterText: fun(trigger_char: string?, item: TItem): string;
+---insertText: fun(trigger_char: string?, item: TItem): string;
+---documentation: fun(trigger_char: string?, item: TItem): lsp.MarkupContent;
 ---}
 
 local M = {
@@ -175,7 +176,7 @@ local M = {
         },
     },
     gitlab = {
-        ---@type cmp_git.FormatConfig<any>
+        ---@type cmp_git.FormatConfig<cmp_git.GitLab.Issue>
         issues = {
             label = function(_trigger_char, issue)
                 return string.format("#%s: %s", issue.iid, issue.title)
@@ -193,7 +194,7 @@ local M = {
                 }
             end,
         },
-        ---@type cmp_git.FormatConfig<any>
+        ---@type cmp_git.FormatConfig<cmp_git.GitLab.Mention>
         mentions = {
             label = function(_trigger_char, mention)
                 return string.format("@%s", mention.username)
@@ -211,7 +212,7 @@ local M = {
                 }
             end,
         },
-        ---@type cmp_git.FormatConfig<any>
+        ---@type cmp_git.FormatConfig<cmp_git.GitLab.MergeRequest>
         merge_requests = {
             label = function(_trigger_char, mr)
                 return string.format("!%s: %s", mr.iid, mr.title)
@@ -236,9 +237,13 @@ local M = {
 ---@field label string
 ---@field filterText string
 ---@field insertText string
----@field sortText string
+---@field sortText string?
 ---@field documentation lsp.MarkupContent
 ---@field data any
+
+---@class cmp_git.CompletionList
+---@field items cmp_git.CompletionItem[]
+---@field isIncomplete boolean
 
 ---@generic TItem
 ---@param config { format: cmp_git.FormatConfig<TItem>, sort_by: string | fun(item: TItem): string }

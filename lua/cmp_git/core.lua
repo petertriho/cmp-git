@@ -140,6 +140,11 @@ local function normalize_trigger_action(configured_action)
     return normalized
 end
 
+---@class cmp_git.Sources
+---@field git cmp_git.Source.Git
+---@field github cmp_git.Source.GitHub
+---@field gitlab cmp_git.Source.Gitlab
+
 local Core = {}
 
 function Core.new(overrides)

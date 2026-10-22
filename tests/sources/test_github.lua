@@ -28,7 +28,7 @@ T["github_instance_state_isolation"] = function()
         "GitHub instance validates default host"
     )
 
-    first.cache.issues[1] = { { label = "first" } }
+    first.cache.issues[1] = {}
     eq(second.cache.issues[1], nil, "GitHub issue cache is instance-local")
     ok(first.cache.mentions ~= second.cache.mentions, "GitHub mention cache table is instance-local")
     ok(first.cache.pull_requests ~= second.cache.pull_requests, "GitHub PR cache table is instance-local")

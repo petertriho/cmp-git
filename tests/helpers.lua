@@ -20,6 +20,15 @@ function M.neq(actual, unexpected, reason)
     expect.no_equality(actual, unexpected, { fail_reason = reason })
 end
 
+---@generic T
+---@param value T?
+---@param reason? string Shown when the expectation fails.
+---@return T value The value, typed as not nil.
+function M.not_nil(value, reason)
+    expect.no_equality(value, nil, { fail_reason = reason })
+    return value
+end
+
 ---@param value any
 ---@param reason? string Shown when the expectation fails.
 function M.ok(value, reason)
@@ -164,7 +173,6 @@ local function setup_case()
         bufnr = vim.api.nvim_get_current_buf(),
         buffers = {},
         env = {},
-        notify = vim.notify,
     }
 
     for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
@@ -185,9 +193,9 @@ local function setup_case()
     for key in pairs(M.notifications) do
         M.notifications[key] = nil
     end
-    vim.notify = function(message, level, opts)
+    M.stub(vim, "notify", function(message, level, opts)
         table.insert(M.notifications, { message = message, level = level, opts = opts })
-    end
+    end)
 end
 
 local function teardown_case()
@@ -213,7 +221,6 @@ local function teardown_case()
         vim.env[name] = case.env[name]
     end
 
-    vim.notify = case.notify
     vim.fn.delete(temp_root, "rf")
 end
 

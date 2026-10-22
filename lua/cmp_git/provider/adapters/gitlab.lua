@@ -3,6 +3,21 @@ local utils = require("cmp_git.utils")
 
 local M = {}
 
+---An issue from the issues API.
+---@class cmp_git.GitLab.Issue
+---@field iid integer
+---@field title string
+---@field description string
+---@field updated_at string
+
+---A merge request from the merge requests API.
+---@class cmp_git.GitLab.MergeRequest: cmp_git.GitLab.Issue
+
+---A user from the project users API.
+---@class cmp_git.GitLab.Mention
+---@field username string
+---@field name string
+
 local function project_id(git_info)
     return utils.url_encode(string.format("%s/%s", git_info.owner, git_info.repo))
 end

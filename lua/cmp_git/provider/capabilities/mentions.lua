@@ -2,7 +2,10 @@ local command = require("cmp_git.command")
 
 local M = {}
 
----@param args cmp_git.Provider.CapabilityArgs
+---@class cmp_git.Provider.MentionCapabilityArgs: cmp_git.Provider.CapabilityArgs
+---@field cache table<integer, cmp_git.AsyncItemList>
+
+---@param args cmp_git.Provider.MentionCapabilityArgs
 function M.complete(args)
     local bufnr = args.bufnr or vim.api.nvim_get_current_buf()
     local runner = args.runner or command

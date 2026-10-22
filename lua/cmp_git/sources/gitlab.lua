@@ -3,7 +3,15 @@ local issues = require("cmp_git.provider.capabilities.issues")
 local mentions = require("cmp_git.provider.capabilities.mentions")
 local change_requests = require("cmp_git.provider.capabilities.change_requests")
 
+---@class cmp_git.Source.Gitlab.Cache
+---@field issues table<integer, cmp_git.CompletionItem[]>
+---@field mentions table<integer, cmp_git.AsyncItemList>
+---@field change_requests table<integer, cmp_git.CompletionItem[]>
+---@field merge_requests table<integer, cmp_git.CompletionItem[]> The `change_requests` table.
+
 ---@class cmp_git.Source.Gitlab
+---@field config cmp_git.Config.Gitlab
+---@field cache cmp_git.Source.Gitlab.Cache
 local GitLab = {}
 
 ---@param overrides cmp_git.Config.Gitlab
@@ -14,13 +22,9 @@ function GitLab.new(overrides)
 
     local change_requests_cache = {}
     self.cache = {
-        ---@type table<integer, cmp_git.CompletionItem[]>
         issues = {},
-        ---@type table<integer, cmp_git.AsyncItemList>
         mentions = {},
-        ---@type table<integer, cmp_git.CompletionItem[]>
         change_requests = change_requests_cache,
-        ---@type table<integer, cmp_git.CompletionItem[]>
         merge_requests = change_requests_cache,
     }
 

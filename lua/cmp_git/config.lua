@@ -4,7 +4,7 @@ local sort = require("cmp_git.sort")
 ---@class cmp_git.Config.TriggerAction
 ---@field debug_name string
 ---@field trigger_character string
----@field action fun(sources: cmp_git.Sources, trigger_char: string, callback: fun(list: cmp_git.CompletionList), params: cmp.SourceCompletionApiParams, git_info: cmp_git.GitInfo): boolean
+---@field action fun(sources: cmp_git.Sources, trigger_char: string, callback: fun(list: cmp_git.CompletionList), params: cmp_git.CmpCompletionParams, git_info: cmp_git.GitInfo): boolean
 
 ---@class cmp_git.Config.NamedTriggerActions
 ---@field trigger_character string
@@ -119,7 +119,7 @@ local defaults = {
         },
     },
     ---@class cmp_git.Config.Gitlab
-    ---@field filter_fn? fun(trigger_char: string, item: any): string Compatibility alias for all GitLab capability format.filterText functions.
+    ---@field filter_fn? fun(trigger_char: string, item: cmp_git.GitLab.Issue | cmp_git.GitLab.Mention | cmp_git.GitLab.MergeRequest): string Compatibility alias for all GitLab capability format.filterText functions.
     gitlab = {
         hosts = {},
         issues = {

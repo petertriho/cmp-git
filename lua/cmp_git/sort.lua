@@ -40,10 +40,12 @@ local M = {
         end,
     },
     gitlab = {
+        ---@param issue cmp_git.GitLab.Issue
         issues = function(issue) -- nil, "iid", "title", "description", or custom function
             return string.format("%010d", os.difftime(os.time(), utils.parse_gitlab_date(issue.updated_at)))
         end,
         mentions = nil, -- nil, "username", "name", or custom function
+        ---@param mr cmp_git.GitLab.MergeRequest
         merge_requests = function(mr) -- nil, "iid", "title", "description", or custom function
             return string.format("%010d", os.difftime(os.time(), utils.parse_gitlab_date(mr.updated_at)))
         end,
@@ -51,7 +53,7 @@ local M = {
 }
 
 ---@generic TItem
----@param config_val string | (fun(item: TItem): string)
+---@param config_val? string | (fun(item: TItem): string)
 ---@param item TItem
 ---@return string?
 function M.get_sort_text(config_val, item)
