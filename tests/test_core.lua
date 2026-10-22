@@ -511,6 +511,28 @@ T["complete_discovers_the_remote_only_for_actions_that_need_it"] = function()
     eq(run(trigger_context("!")), "is_git_repo,discover,github_issues", "unknown actions do not stop discovery")
 end
 
+T["complete_in_octo_buffers_outside_a_git_repository"] = function()
+    local core = Core.new({})
+    local calls = record_calls(core, false)
+    local function run(trigger)
+        for key in pairs(calls) do
+            calls[key] = nil
+        end
+        local context = trigger_context(trigger)
+        vim.bo[context.bufnr].filetype = "octo"
+        local callback, lists = helpers.recorder()
+        core:complete(context, callback)
+        return table.concat(calls, ","), lists
+    end
+
+    eq(run("#"), "discover,gitlab_issues,github_issues", "octo issues skip the repository check")
+    eq(run("@"), "discover,gitlab_mentions,github_mentions", "octo mentions skip the repository check")
+
+    local commits, lists = run(":")
+    eq(commits, "is_git_repo", "octo commits need a local repository")
+    eq(#lists, 1, "octo commits outside a repository answer")
+end
+
 T["trailer_text_edits"] = function()
     local core = Core.new({})
     local bufnr = helpers.buffer({ "subject", "", "" })

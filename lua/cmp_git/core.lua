@@ -371,6 +371,13 @@ local function routes_need_remote(routes)
     return false
 end
 
+---@param bufnr? integer
+---@return boolean
+local function is_octo_buffer(bufnr)
+    bufnr = bufnr or vim.api.nvim_get_current_buf()
+    return vim.api.nvim_buf_is_valid(bufnr) and vim.bo[bufnr].filetype == "octo"
+end
+
 ---@param routes? cmp_git.Route[] The routes of the context, when the caller has them.
 function Core:_complete(context, callback, routes)
     routes = routes or self:_route(context)
@@ -423,6 +430,13 @@ function Core:complete(context, callback)
     local routes = self:_route(context)
     if #routes == 0 then
         callback(empty_list())
+        return controller
+    end
+
+    -- Discovery reads the repository of an octo buffer from the buffer name, so the actions that need a remote work
+    -- outside a local repository
+    if is_octo_buffer(context.bufnr) and routes_need_remote(routes) then
+        state.active = self:_complete(context, callback, routes)
         return controller
     end
 
