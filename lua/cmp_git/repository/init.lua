@@ -103,10 +103,18 @@ local function matches(state, dir)
     return (dir ~= nil and state.cwd == dir) or state.nvim_cwd == vim.fn.getcwd()
 end
 
+---The directory in which the commands for the buffer run. It always exists.
 ---@param bufnr? integer The buffer, by default the current one.
 ---@return string
 function M.get_cwd(bufnr)
-    return buffer_dir(resolve_bufnr(bufnr)) or vim.fn.getcwd()
+    bufnr = resolve_bufnr(bufnr)
+    local dir = buffer_dir(bufnr)
+    local state = states[bufnr]
+    -- The commands must see the repository that discovery found, which can be in Neovim's cwd
+    if state ~= nil and state.cwd ~= nil and matches(state, dir) then
+        return state.cwd
+    end
+    return dir or vim.fn.getcwd()
 end
 
 ---@param state cmp_git.RepositoryState
