@@ -17,7 +17,7 @@ function M.request(config)
             "-n",
             tostring(config.limit),
             "--date=unix",
-            "--pretty=format:%H%x00%s%x00%b%x00%cn%x00%ce%x00%cd%x00",
+            "--pretty=format:%H%x00%s%x00%b%x00%aN%x00%aE%x00%cd%x00",
         },
     }
 end

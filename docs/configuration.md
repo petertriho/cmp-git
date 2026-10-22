@@ -137,7 +137,8 @@ For compatibility, cmp-git also supports `filter_fn` on a provider, as an alias 
 
 - `sha` has `git.commits.sha_length` characters (default 7). The default `insertText` inserts `sha`. The default
   `label` shows the first 7 characters.
-- `author_name` and `author_mail` are the name and the email of the committer.
+- `author_name` and `author_mail` are the name and the email of the author, with the `.mailmap` applied.
+  `commit_timestamp` is the commit date.
 - GitHub issues and pull requests always have `body` and `updatedAt`.
 - `diff` is the number of seconds since the commit, or since the most recent use of the identity or the value.
 - `count` is the number of uses in the scanned commits.

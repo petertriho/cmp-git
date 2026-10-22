@@ -107,7 +107,7 @@ T["commit_capability_uses_parsed_cache_and_runner"] = function()
             eq(spec.args[3], "100", "commit capability command limit")
             eq(
                 spec.args[5],
-                "--pretty=format:%H%x00%s%x00%b%x00%cn%x00%ce%x00%cd%x00",
+                "--pretty=format:%H%x00%s%x00%b%x00%aN%x00%aE%x00%cd%x00",
                 "commit capability command format"
             )
             return helpers.fake_job(function()
