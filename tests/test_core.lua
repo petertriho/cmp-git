@@ -4,6 +4,7 @@ local Source = require("cmp_git.source")
 local repository = require("cmp_git.repository")
 
 local eq = helpers.eq
+local ok = helpers.ok
 
 -- The cases replace the provider sources with partial fakes
 ---@diagnostic disable: missing-fields
@@ -74,6 +75,24 @@ T["invalid_trigger_action_pattern_is_skipped"] = function()
     )
 end
 
+T["trigger_action_keyword_pattern"] = function()
+    local core = Core.new({
+        trigger_actions = {
+            { pattern = [[^Refs:\s*\zs\S*]], keyword_pattern = [[^Refs:\zs\S*]], actions = { "git_trailer_values" } },
+            { pattern = [[^Key\S*]], keyword_pattern = [[\%(]], actions = { "git_trailer_keys" } },
+        },
+    })
+
+    eq(core.keyword_pattern, [[\%(^Refs:\zs\S*\|^Key\S*\)]], "keyword patterns replace the patterns")
+    eq(core.trigger_actions[1].regex:match_str("Refs: 12"), 6, "routing uses the pattern")
+    helpers.flush()
+    eq(
+        helpers.notifications[1].message:match("^Invalid trigger action keyword_pattern"),
+        "Invalid trigger action keyword_pattern",
+        "invalid keyword pattern logs a warning"
+    )
+end
+
 T["core_keyword_pattern_offsets"] = function()
     local core = Core.new({})
     local regex = vim.regex([[\%(]] .. core.keyword_pattern .. [[\)\m$]])
@@ -95,6 +114,106 @@ T["core_keyword_pattern_offsets"] = function()
     for _, case in ipairs(cases) do
         eq(regex:match_str(case[1]), case[2], "keyword offset for " .. vim.inspect(case[1]))
     end
+end
+
+-- The trailer value pattern of earlier versions. Its lookbehind is slow, so the default changed to a `\zs` form that
+-- must give the same results.
+local LOOKBEHIND_VALUE_PATTERN = [[\%(^[[:alnum:]-]\+:\s*\)\@<=\%([^[:space:]<>:#@!][^<>:#@!]*\%(<[^>]*\)\?\)\?]]
+
+---Deterministic lines over the characters that the trailer patterns treat differently.
+---@param count integer
+---@return string[]
+local function random_lines(count)
+    local chars = { "a", "B", "-", ":", " ", "#", "@", "!", "<", ">", "\t", "é" }
+    local seed = 1
+    local function next_int(n)
+        seed = (seed * 1103515245 + 12345) % 2147483648
+        return seed % n + 1
+    end
+
+    local lines = {}
+    for _ = 1, count do
+        local chunks = {}
+        for _ = 1, next_int(16) - 1 do
+            table.insert(chunks, chars[next_int(#chars)])
+        end
+        table.insert(lines, table.concat(chunks))
+    end
+    return lines
+end
+
+---@param core table
+---@param debug_name string
+---@return any regex
+local function action_regex(core, debug_name)
+    for _, trigger_action in ipairs(core.trigger_actions) do
+        if trigger_action.debug_name == debug_name then
+            return trigger_action.regex
+        end
+    end
+    error("no trigger action " .. debug_name)
+end
+
+T["trailer_value_pattern_matches_the_lookbehind_pattern"] = function()
+    local core = Core.new({})
+    -- nvim-cmp wraps the keyword pattern like this
+    local keyword = vim.regex([[\%(]] .. core.keyword_pattern .. [[\)\m$]])
+    local lookbehind_keyword =
+        vim.regex([[\%(\%(^[[:alnum:]-]\+\|]] .. LOOKBEHIND_VALUE_PATTERN .. [[\|[:#@!]\S*\)\)\m$]])
+    local value = action_regex(core, "git_trailer_values")
+    local lookbehind_value = vim.regex([[\%(]] .. LOOKBEHIND_VALUE_PATTERN .. [[\)$]])
+
+    local lines = {
+        "",
+        "Co-auth",
+        "Co-authored-by:",
+        "Co-authored-by: ",
+        "Co-authored-by:Ad",
+        "Co-authored-by: Ada Lo",
+        "Co-authored-by: Ada <ada@ex",
+        "Co-authored-by: Ada <ada@example.com> x",
+        "Co-authored-by: Ada <a:b#c> @x",
+        "Fixes:",
+        "Fixes:abc",
+        "Fixes: #12",
+        "Fixes: 12 #",
+        "Fixes:\tvalue",
+        "Note: see #12",
+        "Note: thanks @ada",
+        "Note: see :abc",
+        "Key : value",
+        " Key: value",
+        "-: value",
+        "é-key: value",
+        "refs :abc",
+        "body text he",
+    }
+    vim.list_extend(lines, random_lines(3000))
+
+    for _, line in ipairs(lines) do
+        eq(keyword:match_str(line), lookbehind_keyword:match_str(line), "keyword offset for " .. vim.inspect(line))
+        eq(value:match_str(line), lookbehind_value:match_str(line), "value edit start for " .. vim.inspect(line))
+    end
+end
+
+T["trailer_patterns_are_fast_on_long_lines"] = function()
+    local core = Core.new({})
+    local regexes = { vim.regex([[\%(]] .. core.keyword_pattern .. [[\)\m$]]) }
+    for _, trigger_action in ipairs(core.trigger_actions) do
+        table.insert(regexes, trigger_action.regex)
+    end
+    local line = string.rep("parser cache ", 400)
+
+    local start = vim.uv.hrtime()
+    for _ = 1, 3 do
+        for _, regex in ipairs(regexes) do
+            regex:match_str(line)
+        end
+    end
+    local elapsed_ms = (vim.uv.hrtime() - start) / 1e6
+
+    -- The lookbehind took about 2 s here, and the `\zs` form takes about 1 ms
+    ok(elapsed_ms < 200, string.format("patterns take %.1f ms on a %d character line", elapsed_ms, #line))
 end
 
 T["trailer_routing"] = function()
