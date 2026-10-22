@@ -11,11 +11,11 @@ Git source for [hrsh7th/nvim-cmp](https://github.com/hrsh7th/nvim-cmp) and [Sagh
 | Trailer identities | `Name <email>` after an identity key, such as `Co-authored-by: `         |
 | Trailer values     | An earlier value of the key after any other key, such as `Assisted-by: ` |
 
-| GitHub                 | Trigger |
-| ---------------------- | ------- |
-| Issues                 | #       |
-| Mentions (`curl` only) | @       |
-| Pull Requests          | #       |
+| GitHub        | Trigger |
+| ------------- | ------- |
+| Issues        | #       |
+| Mentions      | @       |
+| Pull Requests | #       |
 
 | GitLab         | Trigger |
 | -------------- | ------- |
@@ -28,20 +28,20 @@ Git source for [hrsh7th/nvim-cmp](https://github.com/hrsh7th/nvim-cmp) and [Sagh
 - Neovim >= 0.12
 - git (>= 2.31 to find trailer keys in history)
 - curl
-- [GitHub CLI](https://cli.github.com/) (optional, will use curl instead if not avaliable)
-- [GitLab CLI](https://gitlab.com/gitlab-org/cli) (optional, will use curl instead if not avaliable)
+- [GitHub CLI](https://cli.github.com/) (optional, cmp-git uses curl if it is not available)
+- [GitLab CLI](https://gitlab.com/gitlab-org/cli) (optional, cmp-git uses curl if it is not available)
 
-### GitHub Private Repositories
+### GitHub private repositories
 
-- `curl`: Generate [token](https://github.com/settings/tokens)
-  with `repo` scope. Set `GITHUB_API_TOKEN` environment variable.
-- `GitHub CLI`: Run [gh auth login](https://cli.github.com/manual/gh_auth_login)
+- `curl`: Generate a [token](https://github.com/settings/tokens) with the `repo` scope. Set the `GITHUB_API_TOKEN`
+  environment variable to the token.
+- `GitHub CLI`: Run [gh auth login](https://cli.github.com/manual/gh_auth_login).
 
-### GitLab Private Repositories
+### GitLab private repositories
 
-- `curl` Generate [token](https://gitlab.com/-/profile/personal_access_tokens)
-  with `api` scope. Set `GITLAB_TOKEN` environment variable.
-- `GitLab CLI`: Run [glab auth login](https://glab.readthedocs.io/en/latest/auth/login.html)
+- `curl`: Generate a [token](https://gitlab.com/-/profile/personal_access_tokens) with the `api` scope. Set the
+  `GITLAB_TOKEN` environment variable to the token.
+- `GitLab CLI`: Run [glab auth login](https://glab.readthedocs.io/en/latest/auth/login.html).
 
 ## Installation
 
@@ -99,7 +99,8 @@ require("cmp_git").setup()
 
 ### blink.cmp
 
-`blink.cmp` support is optional and configured from your `blink.cmp` setup. Do not call `require("cmp_git").setup()` for blink; that function registers the `nvim-cmp` source.
+If you use `blink.cmp`, configure cmp-git in your `blink.cmp` setup. Do not call `require("cmp_git").setup()` for
+`blink.cmp`. That function registers the `nvim-cmp` source.
 
 ```lua
 require("blink.cmp").setup({
@@ -118,11 +119,8 @@ require("blink.cmp").setup({
 })
 ```
 
-To enable `cmp-git` only for commit-related filetypes while keeping your normal blink sources elsewhere, add it through blink's `sources.per_filetype` configuration for filetypes such as `gitcommit`, `octo`, or `NeogitCommitMessage`.
-
-## Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the development setup, the tests, and the CI checks.
+To use cmp-git only in commit-related filetypes, add it to `sources.per_filetype` for these filetypes, for example
+`gitcommit`, `octo`, or `NeogitCommitMessage`. Your normal `blink.cmp` sources then stay in the other filetypes.
 
 ## Config
 
@@ -135,6 +133,7 @@ require("cmp_git").setup({
     filetypes = { "gitcommit", "octo", "NeogitCommitMessage" },
     remotes = { "upstream", "origin" }, -- in order of most to least prioritized
     enableRemoteUrlRewrites = false, -- enable git url rewrites, see https://git-scm.com/docs/git-config#Documentation/git-config.txt-urlltbasegtinsteadOf
+    ssh_aliases = {}, -- SSH host aliases and their real hosts, such as { ["github-work"] = "github.com" }
     git = {
         commits = {
             limit = 100,
@@ -176,7 +175,7 @@ require("cmp_git").setup({
         hosts = {},  -- list of private instances of github
         issues = {
             fields = { "title", "number", "body", "updatedAt", "state" },
-            filter = "all", -- assigned, created, mentioned, subscribed, all, repos
+            filter = "all", -- all, assigned, created, mentioned
             limit = 100,
             state = "open", -- open, closed, all
             sort_by = sort.github.issues,
@@ -245,102 +244,20 @@ require("cmp_git").setup({
 )
 ```
 
-Capability-level `format.filterText` is the preferred way to customize completion filtering. Provider-level
-`filter_fn` is supported as a compatibility alias and is applied to every capability for that provider,
-except `git.filter_fn`, which applies only to `git.commits`.
+[docs/configuration.md](docs/configuration.md) describes these topics:
 
----
+- [Trigger actions](docs/configuration.md#trigger-actions)
+- [Trailer completion](docs/configuration.md#trailer-completion)
+- [Format and sort items](docs/configuration.md#format-and-sort-items)
+- [Filetypes](docs/configuration.md#filetypes)
+- [Remotes and SSH aliases](docs/configuration.md#remotes-and-ssh-aliases)
+- [GitHub CLI, GitLab CLI, and curl](docs/configuration.md#github-cli-gitlab-cli-and-curl)
+- [Hosted GitHub and GitLab instances](docs/configuration.md#hosted-github-and-gitlab-instances)
+- [Troubleshooting](docs/configuration.md#troubleshooting)
 
-**NOTE**
+## Contributing
 
-If you want specific behaviour for a trigger, add an entry in the `trigger_actions` table of the config.
-The preferred fields are `trigger_character` and `actions`. `trigger_character` has to be a single
-character, and `actions` is an ordered list of named behaviours. Multiple actions can be used for the same
-character; they run in order until one handles the request.
-
-An entry can use `pattern` instead of `trigger_character`. `pattern` is a vim regex in the default `magic`
-mode. It applies when it matches the text before the cursor, up to the cursor. The match start is where the
-completed text starts. The patterns are also added to the `nvim-cmp` keyword pattern. Entries run in
-config order, and the first action that handles the request wins. This is why the trailer entries come
-before the `:` entry: `Co-authored-by:` completes identities, not commits.
-
-Built-in actions are `git_commits`, `git_trailer_keys`, `git_trailer_identities`, `git_trailer_values`,
-`gitlab_issues`, `gitlab_mentions`, `gitlab_change_requests`, `github_issues`, `github_change_requests`,
-`github_issues_and_change_requests`, and `github_mentions`. The `git_trailer_*` actions need a `pattern`
-entry.
-Compatibility aliases are also available: `gitlab_mrs` routes to `gitlab_change_requests`, and
-`github_issues_and_prs` routes to `github_issues_and_change_requests`.
-
-Legacy callback-style trigger actions are still supported for compatibility. These entries use
-`trigger_character` and `action`, where `action` receives the different sources (currently `git`, `gitlab`
-and `github`), the trigger character, the completion callback, the parameters passed to `complete` from
-`nvim-cmp`, and the current git info. New configuration should prefer named `actions` instead.
-
-All source functions take an optional config table as last argument, with which the configuration set
-in `setup` can be overwritten for a specific call.
-
-**NOTE on trailers**
-
-| You type             | Completion                                         | From                                           |
-| -------------------- | -------------------------------------------------- | ---------------------------------------------- |
-| `Co`                 | `Co-authored-by: `                                 | A trailer key                                  |
-| `Co-authored-by: Gr` | `Co-authored-by: Grace Hopper <grace@example.com>` | A commit author or identity trailer in history |
-| `Signed-off-by:`     | `Signed-off-by: Ada Lovelace <ada@example.com>`    | Your git identity                              |
-| `Assisted-by: Cl`    | `Assisted-by: Claude Code`                         | An earlier `Assisted-by` value                 |
-
-Trailer completion works only in the `git.trailers.filetypes` buffers, from line `git.trailers.min_line`
-(default 3), and on a line after a blank line or after another `Key: value` line. Line 1 counts as after a
-blank line. Keys come from `git.trailers.keys.builtin` and from the last
-`git.trailers.keys.limit` commits.
-
-The value of a `git.trailers.identities.keys` trailer completes `Name <email>` from the authors and those
-trailers of the last `git.trailers.identities.limit` commits, and from your git identity. The value of any
-other trailer completes the values that the same key had in the last `git.trailers.values.limit` commits.
-`Key:` with no space after the colon still completes commits for other keys, so `Fixes:` works as before.
-Value completion stops when the typed value contains `:`, `#`, `@`, or `!` outside `<...>`, so that these
-triggers keep working (for example, `Fixes: #12` completes issues).
-
-To disable trailer completion, set `trigger_actions` without the two `pattern` entries. If you already set
-your own `trigger_actions`, add the two `pattern` entries from the defaults above to get trailer completion.
-
-**NOTE on sorting**
-
-The default sorting order is last updated (for PRs, MRs and issues) and latest (for commits).
-To make `nvim-cmp` sort in this order, move `cmp.config.compare.sort_text` closer to the top of (lower index) in `sorting.comparators`. E.g.
-
-```lua
-require("cmp").setup({
-    -- As above
-    sorting = {
-        comparators = {
-            cmp.config.compare.offset,
-            cmp.config.compare.exact,
-            cmp.config.compare.sort_text,
-            cmp.config.compare.score,
-            cmp.config.compare.recently_used,
-            cmp.config.compare.kind,
-            cmp.config.compare.length,
-            cmp.config.compare.order,
-        },
-    },
-})
-```
-
-### Working with hosted instances of GitHub or GitLab
-
-You can add hosted instances of Github Enterprise or GitLab to the corresponding `hosts` list as such:
-```lua
-require("cmp_git").setup({
-    github = {
-        hosts = { "github.mycompany.com", },
-    },
-    gitlab = {
-        hosts = { "gitlab.mycompany.com", }
-    }
-}
-```
-
----
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the development setup, the tests, and the CI checks.
 
 ## Acknowledgements
 
