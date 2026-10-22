@@ -96,12 +96,12 @@ nix develop .#nightly -c make test
 The workflow in `.github/workflows/ci.yml` runs on pushes to `main`, on pull requests, and on manual dispatch. It
 has these jobs:
 
-| Job              | Steps                                                                         | Blocks |
-| ---------------- | ----------------------------------------------------------------------------- | ------ |
-| `Quality`        | `make format-check`, `make lint`, and `make typecheck` in the default shell   | Yes    |
-| `Neovim stable`  | `make test` in the default shell                                              | Yes    |
-| `Neovim 0.12.0`  | `make test` in the `nvim-0_12_0` shell                                        | Yes    |
-| `Neovim nightly` | `make test` with the latest `neovim-nightly-overlay`, not the locked revision | No     |
+| Job              | Steps                                                                                                     | Blocks |
+| ---------------- | --------------------------------------------------------------------------------------------------------- | ------ |
+| `Quality`        | `make format-check`, `make lint`, and `make typecheck` in the default shell                               | Yes    |
+| `Neovim stable`  | `make test` in the default shell                                                                          | Yes    |
+| `Neovim 0.12.0`  | `make test` in the `nvim-0_12_0` shell                                                                    | Yes    |
+| `Neovim nightly` | `make test` with the newest `neovim-nightly-overlay` commit that is in the cache, not the locked revision | No     |
 
 A weekly schedule (Monday 06:00 UTC) runs only the nightly job. GitHub disables scheduled workflows after 60 days
 without repository activity. To enable the schedule again, use the Actions tab of the repository.
