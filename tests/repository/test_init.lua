@@ -475,4 +475,28 @@ T["discovery_reads_remotes_of_the_found_repository"] = function()
     eq(request(), {}, "the remotes of another repository do not apply")
 end
 
+T["a_wiped_buffer_has_no_repository"] = function()
+    require_git()
+    local repo = helpers.git_repo({ remotes = { { "origin", "https://github.com/owner/repo.git" } } })
+    vim.fn.chdir(repo.dir)
+    local bufnr = helpers.buffer({}, "markdown")
+    vim.api.nvim_buf_delete(bufnr, { force = true })
+
+    local results = {}
+    repository.is_git_repo(function(value)
+        results.is_git_repo = value
+    end, bufnr)
+    repository.discover({ "origin" }, {
+        bufnr = bufnr,
+        enableRemoteUrlRewrites = false,
+        ssh_aliases = {},
+        on_complete = function(metadata)
+            results.discover = metadata
+        end,
+    })
+
+    eq(results, { is_git_repo = false, discover = {} }, "a wiped buffer answers at once, without a repository")
+    eq(repository.get_cwd(bufnr), repo.dir, "the commands of a wiped buffer run in the cwd")
+end
+
 return T

@@ -60,8 +60,9 @@ end
 ---Call `on_resolved` with the repository that `gh repo set-default` chose, or with `git_info` when none is set or gh
 ---is not installed. gh runs at most once for each repository, and without blocking: it takes about 60 ms.
 ---@param git_info cmp_git.GitInfo
+---@param bufnr integer The buffer of the request. gh reads the default repository of its working directory.
 ---@param on_resolved fun(git_info: cmp_git.GitInfo)
-function GitHub:_resolve_default_repo(git_info, on_resolved)
+function GitHub:_resolve_default_repo(git_info, bufnr, on_resolved)
     local key = string.format("%s/%s/%s", git_info.host, git_info.owner, git_info.repo)
     local lookup = self.default_repos[key]
 
@@ -83,7 +84,8 @@ function GitHub:_resolve_default_repo(git_info, on_resolved)
         return
     end
 
-    local job = command.build({ exec = "gh", args = { "repo", "set-default", "--view" } }, function(result, success)
+    local spec = { exec = "gh", args = { "repo", "set-default", "--view" }, bufnr = bufnr }
+    local job = command.build(spec, function(result, success)
         ---@cast lookup -nil
         -- Without a default repository, gh prints nothing. Outside a repository, it fails.
         if success then
@@ -121,7 +123,7 @@ function GitHub:_with_repo(git_info, bufnr, cached, start)
     end
 
     local state = { cancelled = false, active = nil }
-    self:_resolve_default_repo(git_info, function(resolved)
+    self:_resolve_default_repo(git_info, bufnr, function(resolved)
         if state.cancelled then
             return
         end
@@ -174,13 +176,14 @@ end
 ---@param callback fun(list: cmp_git.CompletionList)
 ---@param git_info cmp_git.GitInfo
 ---@param trigger_char string
-function GitHub:complete_issues(callback, git_info, trigger_char)
+---@param bufnr? integer The buffer of the request, by default the current one.
+function GitHub:complete_issues(callback, git_info, trigger_char, bufnr)
     if not self:is_valid_host(git_info) then
         return false
     end
 
     -- The buffer of the request, also when the lookup of the default repository ends in another buffer
-    local bufnr = vim.api.nvim_get_current_buf()
+    bufnr = bufnr or vim.api.nvim_get_current_buf()
     return true,
         self:_with_repo(git_info, bufnr, self.cache.issues[bufnr] ~= nil, function(repo_info)
             local job = self:_issues_job(callback, repo_info, trigger_char, bufnr)
@@ -194,12 +197,13 @@ end
 ---@param callback fun(list: cmp_git.CompletionList)
 ---@param git_info cmp_git.GitInfo
 ---@param trigger_char string
-function GitHub:complete_change_requests(callback, git_info, trigger_char)
+---@param bufnr? integer The buffer of the request, by default the current one.
+function GitHub:complete_change_requests(callback, git_info, trigger_char, bufnr)
     if not self:is_valid_host(git_info) then
         return false
     end
 
-    local bufnr = vim.api.nvim_get_current_buf()
+    bufnr = bufnr or vim.api.nvim_get_current_buf()
     return true,
         self:_with_repo(git_info, bufnr, self.cache.change_requests[bufnr] ~= nil, function(repo_info)
             local job = self:_change_requests_job(callback, repo_info, trigger_char, bufnr)
@@ -266,12 +270,13 @@ end
 ---@param callback fun(list: cmp_git.CompletionList)
 ---@param git_info cmp_git.GitInfo
 ---@param trigger_char string
-function GitHub:complete_issues_and_change_requests(callback, git_info, trigger_char)
+---@param bufnr? integer The buffer of the request, by default the current one.
+function GitHub:complete_issues_and_change_requests(callback, git_info, trigger_char, bufnr)
     if not self:is_valid_host(git_info) then
         return false
     end
 
-    local bufnr = vim.api.nvim_get_current_buf()
+    bufnr = bufnr or vim.api.nvim_get_current_buf()
     local cached = self.cache.issues[bufnr] ~= nil and self.cache.change_requests[bufnr] ~= nil
     return true,
         self:_with_repo(git_info, bufnr, cached, function(repo_info)
@@ -282,13 +287,14 @@ end
 ---@param callback fun(list: cmp_git.CompletionList)
 ---@param git_info cmp_git.GitInfo
 ---@param trigger_char string
-function GitHub:complete_mentions(callback, git_info, trigger_char)
+---@param bufnr? integer The buffer of the request, by default the current one.
+function GitHub:complete_mentions(callback, git_info, trigger_char, bufnr)
     if not self:is_valid_host(git_info) then
         return false
     end
 
     -- A request during a fetch joins it, so it needs no repository either
-    local bufnr = vim.api.nvim_get_current_buf()
+    bufnr = bufnr or vim.api.nvim_get_current_buf()
     return true,
         self:_with_repo(git_info, bufnr, self.cache.mentions[bufnr] ~= nil, function(repo_info)
             return mentions.complete({

@@ -523,8 +523,10 @@ function M.keys.job(args)
         args.callback({ items = items(parsed, args.config, args.trigger_char), isIncomplete = false })
     end
 
+    local spec = M.keys.request(args.config)
+    spec.bufnr = bufnr
     local runner = args.runner or command
-    local job = runner.build(M.keys.request(args.config), finish)
+    local job = runner.build(spec, finish)
     if not job then
         finish("", false)
     end
@@ -560,6 +562,7 @@ function M.identities.job(args)
     ---@param spec cmp_git.CommandSpec
     ---@param answer { result: string, success: boolean }
     local function build(spec, answer)
+        spec.bufnr = bufnr
         local job = runner.build(spec, function(result, success)
             answer.result, answer.success = result, success
             state.pending = state.pending - 1
@@ -616,8 +619,10 @@ function M.values.job(args)
         return nil
     end
 
+    local spec = M.values.request(args.config)
+    spec.bufnr = bufnr
     local runner = args.runner or command
-    local job = runner.build(M.values.request(args.config), function(result, success)
+    local job = runner.build(spec, function(result, success)
         -- A failure is not cached, so that the next request tries again
         if not success then
             respond({})

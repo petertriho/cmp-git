@@ -389,4 +389,24 @@ T["a_cancel_during_the_lookup_starts_no_request"] = function()
     eq(lists, {}, "a cancelled request gets no list")
 end
 
+T["requests_cache_under_the_request_buffer"] = function()
+    local source = recording_github()
+    local request_bufnr = helpers.buffer({}, "markdown")
+    local current_bufnr = helpers.buffer({}, "markdown")
+    vim.api.nvim_set_current_buf(current_bufnr)
+    local callback, lists = helpers.recorder()
+
+    for _, request in ipairs(REQUESTS) do
+        source[request](source, callback, remote(), "#", request_bufnr)
+    end
+    helpers.wait_for(function()
+        return #lists == #REQUESTS
+    end, "the requests answer")
+
+    ok(source.cache.issues[request_bufnr] ~= nil, "the issues are cached for the request buffer")
+    ok(source.cache.change_requests[request_bufnr] ~= nil, "the pull requests are cached for the request buffer")
+    eq(source.cache.issues[current_bufnr], nil, "the current buffer gets no issues")
+    eq(source.cache.change_requests[current_bufnr], nil, "the current buffer gets no pull requests")
+end
+
 return T

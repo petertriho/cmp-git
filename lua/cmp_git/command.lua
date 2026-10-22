@@ -14,6 +14,8 @@ local M = {}
 ---@field args string[]
 ---@field env? table<string, string | integer> Added to the environment of Neovim.
 ---@field stdin? string Written to the standard input. Secrets go here, because other users can read the arguments.
+---@field bufnr? integer The buffer whose repository the command runs in, by default the current one. The current
+---buffer can change while a request waits for discovery.
 
 ---@param spec cmp_git.CommandSpec
 ---@param callback fun(result: string, success: boolean): nil
@@ -61,7 +63,7 @@ function M.build(spec, callback)
                 text = true,
                 env = spec.env,
                 stdin = spec.stdin,
-                cwd = repository.get_cwd(),
+                cwd = repository.get_cwd(spec.bufnr),
             }, function(result)
                 vim.schedule(function()
                     complete(result)

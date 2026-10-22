@@ -213,6 +213,7 @@ T["commit_capability_uses_parsed_cache_and_runner"] = function()
                 "--pretty=format:%H%x00%s%x00%b%x00%aN%x00%aE%x00%cd%x00",
                 "commit capability command format"
             )
+            eq(spec.bufnr, 44, "commit capability command runs in the repository of the request buffer")
             return helpers.fake_job(function()
                 callback(raw, true)
             end)

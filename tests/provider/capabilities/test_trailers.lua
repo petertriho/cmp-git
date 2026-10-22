@@ -770,4 +770,29 @@ T["trailer_values_cache_and_fall_through"] = function()
     eq(#core:_route(context), 0, "body line without history values falls through")
 end
 
+T["trailer_commands_run_in_the_repository_of_the_request_buffer"] = function()
+    local seen = {}
+    local runner = {
+        build = function(spec, callback)
+            table.insert(seen, { spec.args[1], spec.bufnr })
+            return helpers.fake_job(function()
+                callback("", true)
+            end)
+        end,
+    }
+    local trailers = config.normalize({}).git.trailers
+    for _, kind in ipairs({ "keys", "identities", "values" }) do
+        trailer_capability[kind].complete({
+            cache = {},
+            callback = function() end,
+            config = trailers[kind],
+            runner = runner,
+            bufnr = 61,
+            key = "Assisted-by",
+        })
+    end
+
+    eq(seen, { { "log", 61 }, { "log", 61 }, { "var", 61 }, { "log", 61 } }, "each command gets the request buffer")
+end
+
 return T
