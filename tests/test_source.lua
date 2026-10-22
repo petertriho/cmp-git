@@ -237,6 +237,17 @@ T["nvim_cmp_text_edits_use_bytes"] = function()
     end
 end
 
+T["nvim_cmp_incomplete_list_requests_find_the_trigger"] = function()
+    local source, calls = github_source()
+
+    -- TriggerForIncompleteCompletions, after the user typed `ad` behind an incomplete list of mentions
+    local callback, lists = helpers.recorder()
+    source:complete(cmp_params("cc @ad", 3), callback)
+
+    eq(calls, { "mentions" }, "the request completes mentions")
+    eq(lists[1].items[1].label, "@login", "the request gets the mentions")
+end
+
 T["source_new_uses_normalized_config"] = function()
     local source = Source.new({
         github = {
