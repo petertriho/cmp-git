@@ -120,13 +120,9 @@ require("blink.cmp").setup({
 
 To enable `cmp-git` only for commit-related filetypes while keeping your normal blink sources elsewhere, add it through blink's `sources.per_filetype` configuration for filetypes such as `gitcommit`, `octo`, or `NeogitCommitMessage`.
 
-## Development
+## Contributing
 
-Run the tests with:
-
-```sh
-nvim --headless -u NONE -l tests/run.lua
-```
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the development setup, the tests, and the CI checks.
 
 ## Config
 
