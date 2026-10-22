@@ -34,7 +34,8 @@ end
 ---@param curl_url string
 ---@return cmp_git.CommandSpec
 local function curl_command(curl_url)
-    local args = { "-s" }
+    -- Without --fail, curl exits with 0 on an HTTP error, and the error object looks like an empty list
+    local args = { "-s", "-S", "--fail" }
     local stdin = nil
 
     local token = vim.env.GITLAB_TOKEN

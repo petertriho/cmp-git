@@ -35,14 +35,19 @@ local function env()
 end
 
 ---@param curl_url string
+---@param opts? { error_body?: boolean } `error_body` gives the body of an HTTP error with exit code 0.
 ---@return cmp_git.CommandSpec
-local function curl_command(curl_url)
-    local args = {
-        "-s",
+local function curl_command(curl_url, opts)
+    local args = { "-s", "-S" }
+    if not (opts and opts.error_body) then
+        -- Without it, curl exits with 0 on an HTTP error, and the error object looks like an empty list
+        table.insert(args, "--fail")
+    end
+    vim.list_extend(args, {
         "-L",
         "-H",
         "Accept: application/vnd.github.v3+json",
-    }
+    })
     local stdin = nil
 
     local token = vim.env.GITHUB_API_TOKEN
@@ -112,11 +117,11 @@ function M.issues_request(git_info, trigger_char, config)
         end,
         -- The REST API also returns pull requests, with a `pull_request` field. `gh issue list` does not.
         handle_parsed = function(parsed)
-            local result = {}
-            if type(parsed) ~= "table" then
-                return result
+            if not vim.islist(parsed) then
+                return nil
             end
 
+            local result = {}
             for _, issue in ipairs(parsed) do
                 if issue.pull_request == nil or issue.pull_request == vim.NIL then
                     table.insert(result, issue)
@@ -180,17 +185,19 @@ function M.mentions_preflight_request(git_info)
                 },
                 env = env(),
             },
+            -- `handle_result` reads the status of an HTTP error from the body
             curl_command(
                 github_url(
                     git_info.host,
                     string.format("repos/%s/%s/collaborators/testing/permission", git_info.owner, git_info.repo)
-                )
+                ),
+                { error_body = true }
             ),
         },
         handle_result = function(result)
             local ok, parsed = pcall(vim.json.decode, result)
             local member_type = "contributors"
-            if ok then
+            if ok and type(parsed) == "table" then
                 member_type = (parsed.status ~= "403" and parsed.status ~= "401") and "collaborators" or "contributors"
             end
             return { member_type = member_type }
@@ -237,7 +244,7 @@ function M.mentions_request(git_info, trigger_char, config, opts)
             return format.item(config, trigger_char, mention)
         end,
         handle_parsed = function(parsed)
-            if parsed["mentionableUsers"] then
+            if type(parsed) == "table" and parsed["mentionableUsers"] then
                 return parsed["mentionableUsers"]
             end
             return parsed

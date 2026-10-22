@@ -33,4 +33,27 @@ T["handle_response"] = function()
     eq(helpers.notifications[1].message, "Failed to parse api result", "invalid JSON logs a warning")
 end
 
+T["responses_that_are_not_lists_fail"] = function()
+    local function label(item)
+        return { label = item.name }
+    end
+
+    eq({ response.handle_response('[{"name":"one"}]', label) }, { { { label = "one" } }, true }, "a list")
+    eq({ response.handle_response("[]", label) }, { {}, true }, "an empty list")
+    eq({ response.handle_response("not json", label) }, { {}, false }, "invalid JSON")
+    eq({ response.handle_response('{"message":"Bad credentials"}', label) }, { {}, false }, "an error object")
+    eq({ response.handle_response("null", label) }, { {}, false }, "null")
+    eq({ response.handle_response("{}", label) }, { {}, false }, "an empty object")
+    local function items_field(parsed)
+        return parsed.items
+    end
+    eq({ response.handle_response('{"items":null}', label, items_field) }, { {}, false }, "handle_parsed gives no list")
+
+    eq(
+        { response.completion_list('{"message":"Not Found"}', label) },
+        { { items = {}, isIncomplete = false }, false },
+        "the completion list of an error"
+    )
+end
+
 return T

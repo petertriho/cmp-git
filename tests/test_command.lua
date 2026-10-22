@@ -157,6 +157,27 @@ T["build_job"] = function()
     eq(list.isIncomplete, false, "json job completion flag")
 end
 
+T["build_list_reports_an_error_object"] = function()
+    local calls = {}
+    local job = helpers.not_nil(
+        command.build_list(
+            { exec = "sh", args = { "-c", 'printf \'{"message":"Bad credentials"}\'' } },
+            function(list, success)
+                table.insert(calls, { list = list, success = success })
+            end,
+            function(item)
+                return item
+            end
+        )
+    )
+    job:start()
+    helpers.wait_for(function()
+        return #calls > 0
+    end, "the job completes")
+
+    eq(calls, { { list = { items = {}, isIncomplete = false }, success = false } }, "an error object is a failure")
+end
+
 T["build_list_reports_a_failure"] = function()
     local calls = {}
     local job = helpers.not_nil(command.build_list(exit_with(1), function(list, success)

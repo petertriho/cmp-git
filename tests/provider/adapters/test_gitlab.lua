@@ -26,6 +26,8 @@ T["issues_request"] = function()
     eq(curl.exec, "curl", "curl command")
     eq(curl.args, {
         "-s",
+        "-S",
+        "--fail",
         "https://gitlab.com/api/v4/projects/group%2Fsubgroup%2Fproject/issues?per_page=100&state=opened",
     }, "curl arguments")
 end
@@ -43,6 +45,8 @@ T["change_requests_request"] = function()
     eq(request.commands[1].env.NO_COLOR, 1, "glab output has no colors")
     eq(request.commands[2].args, {
         "-s",
+        "-S",
+        "--fail",
         "https://gitlab.example.com/api/v4/projects/group%2Fproject/merge_requests?per_page=3&state=merged",
     }, "curl arguments for a self-hosted host")
 end
@@ -54,6 +58,8 @@ T["mentions_request"] = function()
     eq(request.commands[1].env.NO_COLOR, 1, "glab output has no colors")
     eq(request.commands[2].args, {
         "-s",
+        "-S",
+        "--fail",
         "https://gitlab.com/api/v4/projects/group%2Fsubgroup%2Fproject/users?per_page=20",
     }, "curl arguments")
     eq(adapter.mentions_has_more(), false, "one page of mentions")
@@ -65,8 +71,9 @@ T["issue_state_and_limit"] = function()
         adapter.issues_request(gitlab, "#", gitlab_config({ issues = { state = "closed", limit = 5 } }).issues)
 
     eq(request.commands[1].args[2], "/projects/group%2Fsubgroup%2Fproject/issues?per_page=5&state=closed", "glab")
+    local curl_args = request.commands[2].args
     eq(
-        request.commands[2].args[2],
+        curl_args[#curl_args],
         "https://gitlab.com/api/v4/projects/group%2Fsubgroup%2Fproject/issues?per_page=5&state=closed",
         "curl"
     )
@@ -75,7 +82,7 @@ end
 T["token_header"] = function()
     local request = adapter.issues_request(gitlab, "#", gitlab_config().issues)
     eq(request.commands[1].env.GITLAB_TOKEN, nil, "no token for glab")
-    eq(#request.commands[2].args, 2, "no token, no curl header")
+    eq(vim.tbl_contains(request.commands[2].args, "-H"), false, "no token, no curl header")
     eq(request.commands[2].stdin, nil, "no token, no stdin")
 
     vim.env.GITLAB_TOKEN = "secret"

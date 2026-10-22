@@ -5,7 +5,7 @@ local M = {}
 ---@class cmp_git.Provider.ListRequest
 ---@field commands cmp_git.CommandSpec[]
 ---@field handle_item fun(item: any): cmp_git.CompletionItem
----@field handle_parsed? fun(parsed: any): any[]
+---@field handle_parsed? fun(parsed: any): any[]? A result that is not a list is a failure.
 
 ---@class cmp_git.Provider.CapabilityArgs
 ---@field adapter table
