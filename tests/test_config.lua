@@ -25,6 +25,11 @@ T["config_normalize_fills_defaults_and_hosts"] = function()
     ok(vim.tbl_contains(normalized.gitlab.hosts, "gitlab.com"), "normalized config adds gitlab host")
 end
 
+T["config_normalize_fills_the_cache_ttl"] = function()
+    eq(config.normalize({}).cache.ttl, 300, "the default TTL is five minutes")
+    eq(config.normalize({ cache = { ttl = 0 } }).cache.ttl, 0, "a user TTL")
+end
+
 T["config_normalize_nested_filter_and_sort_overrides"] = function()
     local issue_filter = function()
         return "issue-filter"

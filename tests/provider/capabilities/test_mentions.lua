@@ -1,9 +1,40 @@
 local helpers = require("tests.helpers")
+local cache = require("cmp_git.cache")
+local config = require("cmp_git.config")
+local format = require("cmp_git.format")
 local mention_capability = require("cmp_git.provider.capabilities.mentions")
 
 local eq = helpers.eq
 
 local T = helpers.new_set()
+
+local git_info = { host = "github.com", owner = "owner", repo = "repo" }
+
+---The GitHub mentions config with a limit.
+---@param limit number
+---@return table
+local function mentions_config(limit)
+    return config.normalize({ github = { mentions = { limit = limit } } }).github.mentions
+end
+
+---@param capability_config table
+---@return cmp_git.CacheEntry
+local function entry_for(capability_config)
+    return cache.entry(git_info, "github-mentions", capability_config)
+end
+
+---An adapter request that formats its users like the real adapters.
+---@param opts table
+---@param capability_config table
+---@param trigger_char string
+local function mentions_request(opts, capability_config, trigger_char)
+    return {
+        commands = { { exec = "mentions", args = {}, page = opts.page, page_size = opts.page_size } },
+        handle_item = function(user)
+            return format.item(capability_config, trigger_char, user)
+        end,
+    }
+end
 
 T["mention_capability_preflight_and_pagination"] = function()
     local request_pages = {}
@@ -22,7 +53,7 @@ T["mention_capability_preflight_and_pagination"] = function()
                 local count = page == 1 and 100 or 1
                 local items = {}
                 for i = 1, count do
-                    table.insert(items, handle_item({ name = page .. "-" .. i }))
+                    table.insert(items, handle_item({ login = page .. "-" .. i }))
                 end
                 callback({ items = items, isIncomplete = false }, true)
             end)
@@ -38,27 +69,22 @@ T["mention_capability_preflight_and_pagination"] = function()
                 end,
             }
         end,
-        mentions_request = function(_git_info, _trigger_char, _config, opts)
+        mentions_request = function(_git_info, trigger_char, capability_config, opts)
             eq(opts.context.member_type, "collaborators", "mention context comes from preflight")
-            return {
-                commands = { { exec = "mentions", args = {}, page = opts.page } },
-                handle_item = function(item)
-                    return { label = item.name }
-                end,
-            }
+            return mentions_request(opts, capability_config, trigger_char)
         end,
     }
     local callback, callbacks = helpers.recorder()
+    local capability_config = mentions_config(200)
 
     mention_capability.complete({
         adapter = adapter,
-        cache = {},
+        cache = entry_for(capability_config),
         callback = callback,
-        config = { limit = 200 },
-        git_info = {},
+        config = capability_config,
+        git_info = git_info,
         trigger_char = "@",
         runner = runner,
-        bufnr = 43,
     })
 
     eq(table.concat(request_pages, ","), "1,2", "mention capability paginates")
@@ -74,7 +100,7 @@ end
 ---@field cancelled boolean
 ---@field respond fun(users: string[]?) Complete the job with the users, or fail it when `users` is nil.
 
----A runner whose jobs wait until the case completes them, with an adapter that makes users from strings.
+---A runner whose jobs wait until the case completes them, with an adapter that makes users from logins.
 ---@return table runner
 ---@return table adapter
 ---@return tests.MentionJob[] jobs The started jobs, in order.
@@ -89,24 +115,22 @@ local function manual_provider()
             function job.cancel()
                 job.cancelled = true
             end
-            function job.respond(users)
-                if not users then
+            function job.respond(logins)
+                if not logins then
                     callback({ items = {}, isIncomplete = false }, false)
                     return
                 end
+                local users = vim.tbl_map(function(login)
+                    return { login = login }
+                end, logins)
                 callback({ items = vim.tbl_map(handle_item, users), isIncomplete = false }, true)
             end
             return job
         end,
     }
     local adapter = {
-        mentions_request = function(_git_info, _trigger_char, _config, opts)
-            return {
-                commands = { { exec = "fake", args = {}, page = opts.page, page_size = opts.page_size } },
-                handle_item = function(user)
-                    return { label = user }
-                end,
-            }
+        mentions_request = function(_git_info, trigger_char, capability_config, opts)
+            return mentions_request(opts, capability_config, trigger_char)
         end,
     }
     return runner, adapter, jobs
@@ -131,30 +155,40 @@ local function labels(list)
     end, list.items)
 end
 
+---@param logins string[]
+---@return string[]
+local function mention_labels(logins)
+    return vim.tbl_map(function(login)
+        return "@" .. login
+    end, logins)
+end
+
 ---@param runner table
 ---@param adapter table
----@param cache table
----@param limit integer
+---@param limit number
+---@param capability_config? table The config of the request, by default the mentions config with the limit.
 ---@return cmp_git.CompletionList[] lists
 ---@return { cancel: fun() }? controller
-local function request(runner, adapter, cache, limit)
+---@return cmp_git.CacheEntry entry
+local function request(runner, adapter, limit, capability_config)
+    capability_config = capability_config or mentions_config(limit)
     local callback, lists = helpers.recorder()
+    local entry = entry_for(capability_config)
     local controller = mention_capability.complete({
         adapter = adapter,
-        cache = cache,
+        cache = entry,
         callback = callback,
-        config = { limit = limit },
-        git_info = {},
+        config = capability_config,
+        git_info = git_info,
         trigger_char = "@",
         runner = runner,
-        bufnr = 7,
     })
-    return lists, controller
+    return lists, controller, entry
 end
 
 T["fewer_users_than_the_limit_need_one_page"] = function()
     local runner, adapter, jobs = manual_provider()
-    local lists = request(runner, adapter, {}, 100)
+    local lists = request(runner, adapter, 100)
 
     jobs[1].respond(users(30))
 
@@ -166,7 +200,7 @@ end
 
 T["the_page_size_is_constant_and_the_result_is_cut_to_the_limit"] = function()
     local runner, adapter, jobs = manual_provider()
-    local lists = request(runner, adapter, {}, 150)
+    local lists = request(runner, adapter, 150)
 
     jobs[1].respond(users(100))
     jobs[2].respond(users(100, 101))
@@ -176,51 +210,45 @@ T["the_page_size_is_constant_and_the_result_is_cut_to_the_limit"] = function()
     eq(#lists, 2, "a list for each page")
     eq(lists[1].isIncomplete, true, "the first page is incomplete")
     eq(lists[2].isIncomplete, false, "the second page is final")
-    eq(labels(lists[2]), users(150), "users 1 to 150")
+    eq(labels(lists[2]), mention_labels(users(150)), "users 1 to 150")
 end
 
-T["a_cancel_removes_the_entry"] = function()
+T["a_cancel_removes_the_fetch"] = function()
     local runner, adapter, jobs = manual_provider()
-    local cache = {}
-    local lists, controller = request(runner, adapter, cache, 100)
+    local lists, controller, entry = request(runner, adapter, 100)
 
     helpers.not_nil(controller):cancel()
 
     eq(jobs[1].cancelled, true, "the job is cancelled")
-    eq(cache[7], nil, "the cancelled fetch is not cached")
+    eq(entry.fetch, nil, "the entry has no fetch")
+    eq(entry:get(), nil, "the cancelled fetch is not cached")
+    eq(vim.fn.filereadable(entry.path), 0, "the cancelled fetch writes no file")
     eq(lists, {}, "a cancelled request gets no list")
 
-    local next_lists = request(runner, adapter, cache, 100)
+    local next_lists = request(runner, adapter, 100)
     eq(#jobs, 2, "the next request fetches again")
     jobs[2].respond(users(3))
-    eq(next_lists, {
-        {
-            items = vim.tbl_map(function(user)
-                return { label = user }
-            end, users(3)),
-            isIncomplete = false,
-        },
-    }, "the next request gets the users")
+    eq(#next_lists, 1, "one list")
+    eq(next_lists[1].isIncomplete, false, "the list is final")
+    eq(labels(next_lists[1]), mention_labels(users(3)), "the next request gets the users")
 end
 
 T["a_failure_gives_an_empty_list_and_is_not_cached"] = function()
     local runner, adapter, jobs = manual_provider()
-    local cache = {}
-    local lists = request(runner, adapter, cache, 100)
+    local lists, _, entry = request(runner, adapter, 100)
 
     jobs[1].respond(nil)
 
     eq(lists, { { items = {}, isIncomplete = false } }, "one empty list")
-    eq(cache[7], nil, "a failure is not cached")
+    eq(entry:get(), nil, "a failure is not cached")
 
-    request(runner, adapter, cache, 100)
+    request(runner, adapter, 100)
     eq(#jobs, 2, "the next request fetches again")
 end
 
 T["a_failed_later_page_keeps_the_earlier_users"] = function()
     local runner, adapter, jobs = manual_provider()
-    local cache = {}
-    local lists = request(runner, adapter, cache, 200)
+    local lists, _, entry = request(runner, adapter, 200)
 
     jobs[1].respond(users(100))
     jobs[2].respond(nil)
@@ -228,11 +256,10 @@ T["a_failed_later_page_keeps_the_earlier_users"] = function()
     eq(#lists, 2, "an incomplete list, then the final list")
     eq(lists[2].isIncomplete, false, "the last list is final")
     eq(#lists[2].items, 100, "the users of the first page")
-    eq(cache[7], nil, "a failure is not cached")
+    eq(entry:get(), nil, "a failure is not cached")
 end
 
 T["no_runnable_command_gives_an_empty_list"] = function()
-    local cache = {}
     local runner = {
         build_fallback = function()
             return nil
@@ -250,10 +277,10 @@ T["no_runnable_command_gives_an_empty_list"] = function()
         end,
     }
 
-    local lists = request(runner, adapter, cache, 100)
+    local lists, _, entry = request(runner, adapter, 100)
 
     eq(lists, { { items = {}, isIncomplete = false } }, "one empty list")
-    eq(cache[7], nil, "nothing is cached")
+    eq(entry:get(), nil, "nothing is cached")
 end
 
 T["a_failed_preflight_still_fetches"] = function()
@@ -274,7 +301,7 @@ T["a_failed_preflight_still_fetches"] = function()
         }
     end
 
-    local lists = request(runner, adapter, {}, 100)
+    local lists = request(runner, adapter, 100)
     jobs[1].respond(users(2))
 
     eq(preflight_results, { { "", false } }, "handle_result gets the failure")
@@ -284,14 +311,14 @@ end
 
 T["requests_during_a_fetch_share_it"] = function()
     local runner, adapter, jobs = manual_provider()
-    local cache = {}
-    local first, first_controller = request(runner, adapter, cache, 300)
-    local second = request(runner, adapter, cache, 300)
+    local capability_config = mentions_config(300)
+    local first, first_controller, entry = request(runner, adapter, 300, capability_config)
+    local second = request(runner, adapter, 300, capability_config)
     eq(#jobs, 1, "the second request does not fetch")
     eq(second, {}, "no users yet")
 
     jobs[1].respond(users(100))
-    local third = request(runner, adapter, cache, 300)
+    local third = request(runner, adapter, 300, capability_config)
     eq(#third, 1, "a request during the fetch gets the users so far")
     eq(third[1].isIncomplete, true, "and more come")
 
@@ -307,11 +334,63 @@ T["requests_during_a_fetch_share_it"] = function()
         eq(#final.items, 105, name .. " gets all users")
     end
     eq(#first, 1, "the cancelled request gets no more lists")
-    eq(#helpers.not_nil(cache[7]).items, 105, "the users are cached")
+    eq(#helpers.not_nil(entry:get()), 105, "the users are cached")
 
-    local cached = request(runner, adapter, cache, 300)
-    eq(#jobs, 2, "a cache hit does not fetch")
+    cache.forget()
+    local cached = request(runner, adapter, 300, capability_config)
+    eq(#jobs, 2, "a cache hit in a new session does not fetch")
     eq(cached[1].isIncomplete, false, "a cache hit is final")
+    eq(#cached[1].items, 105, "a cache hit gives the users of the file")
+end
+
+T["each_request_formats_the_users_with_its_config"] = function()
+    local runner, adapter, jobs = manual_provider()
+    local capability_config = mentions_config(100)
+    local custom = vim.deepcopy(capability_config)
+    custom.format.label = function(_trigger_char, user)
+        return "custom " .. user.login
+    end
+    local first = request(runner, adapter, 100, capability_config)
+    local second = request(runner, adapter, 100, custom)
+
+    jobs[1].respond(users(1))
+
+    eq(labels(first[1]), { "@user1" }, "the default format")
+    eq(labels(second[1]), { "custom user1" }, "the format of the second request")
+end
+
+T["a_refresh_gets_all_pages"] = function()
+    local runner, adapter, jobs = manual_provider()
+    local results = {}
+
+    mention_capability.refresh({
+        adapter = adapter,
+        config = mentions_config(math.huge),
+        git_info = git_info,
+        trigger_char = "@",
+        runner = runner,
+    }, function(items)
+        table.insert(results, items)
+    end)
+    jobs[1].respond(users(100))
+    eq(results, {}, "the refresh waits for the last page")
+    jobs[2].respond(users(1, 101))
+
+    eq(#results, 1, "one result")
+    eq(#results[1], 101, "the raw users of both pages")
+    eq(results[1][101], { login = "user101" }, "a raw user")
+
+    mention_capability.refresh({
+        adapter = adapter,
+        config = mentions_config(math.huge),
+        git_info = git_info,
+        trigger_char = "@",
+        runner = runner,
+    }, function(items)
+        table.insert(results, items == nil)
+    end)
+    jobs[3].respond(nil)
+    eq(results[2], true, "nil when a page fails")
 end
 
 return T

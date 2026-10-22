@@ -1,4 +1,5 @@
 local helpers = require("tests.helpers")
+local cache = require("cmp_git.cache")
 local command = require("cmp_git.command")
 local config = require("cmp_git.config")
 local repository = require("cmp_git.repository")
@@ -29,11 +30,6 @@ T["github_instance_state_isolation"] = function()
         second:is_valid_host({ host = "github.com", owner = "owner", repo = "repo" }),
         "GitHub instance validates default host"
     )
-
-    first.cache.issues[1] = {}
-    eq(second.cache.issues[1], nil, "GitHub issue cache is instance-local")
-    ok(first.cache.mentions ~= second.cache.mentions, "GitHub mention cache table is instance-local")
-    ok(first.cache.pull_requests ~= second.cache.pull_requests, "GitHub PR cache table is instance-local")
 end
 
 local git_info = { host = "github.com", owner = "owner", repo = "repo" }
@@ -93,14 +89,22 @@ local function labels(items)
     end, items)
 end
 
+---@param items table[]?
+---@return integer[]
+local function numbers(items)
+    return vim.tbl_map(function(item)
+        return item.number
+    end, items or {})
+end
+
 T["issues_and_change_requests_keep_the_caches_separate"] = function()
     local source, requests = fake_github()
     local callback, lists = helpers.recorder()
-    local bufnr = vim.api.nvim_get_current_buf()
 
     source:complete_issues_and_change_requests(callback, git_info, "#")
     eq(labels(lists[1].items), { "#1: an issue", "#2: a pull request" }, "issues, then pull requests")
-    eq(labels(source.cache.issues[bufnr]), { "#1: an issue" }, "the issue cache has no pull requests")
+    eq(numbers(source:_entry("issues", git_info):get()), { 1 }, "the issue cache has no pull requests")
+    eq(numbers(source:_entry("pull_requests", git_info):get()), { 2 }, "the pull request cache has no issues")
 
     source:complete_issues_and_change_requests(callback, git_info, "#")
     eq(
@@ -184,6 +188,7 @@ end
 
 T["issues_and_change_requests_keep_the_items_of_a_request_that_succeeds"] = function()
     for _, failed in ipairs({ "issue", "pr" }) do
+        cache.clear_all()
         local source, jobs = manual_github()
         local callback, lists = helpers.recorder()
 
@@ -288,8 +293,8 @@ T["the_default_repository_is_looked_up_once_without_blocking"] = function()
     eq(info, remote(), "the git info of the caller does not change")
     eq(gh_calls(), { cwd }, "gh runs in the directory of the buffer")
 
-    -- A buffer without cached lists, so that the requests need the repository
-    vim.api.nvim_set_current_buf(helpers.buffer({}, "markdown"))
+    -- Without cached lists, the requests need the repository
+    cache.clear_all()
     source:complete_mentions(callback, remote(), "@")
     source:complete_issues_and_change_requests(callback, remote(), "#")
 
@@ -323,7 +328,7 @@ T["without_a_default_repository_the_remote_is_used"] = function()
     helpers.wait_for(function()
         return #lists == 1
     end, "the issues answer")
-    vim.api.nvim_set_current_buf(helpers.buffer({}, "markdown"))
+    cache.clear_all()
     source:complete_issues(callback, remote(), "#")
 
     eq(#lists, 2, "the second request answers at once")
@@ -333,10 +338,9 @@ end
 
 T["a_cache_hit_does_not_run_gh"] = function()
     local source, repos = recording_github("upstream/project")
-    local bufnr = vim.api.nvim_get_current_buf()
-    source.cache.issues[bufnr] = {}
-    source.cache.change_requests[bufnr] = {}
-    source.cache.mentions[bufnr] = { items = {}, in_progress = false }
+    for _, kind in ipairs({ "issues", "pull_requests", "mentions" }) do
+        source:_entry(kind, remote()):set({})
+    end
     local callback, lists = helpers.recorder()
 
     for _, method in ipairs(vim.list_extend({ "complete_mentions" }, REQUESTS)) do
@@ -353,7 +357,7 @@ T["without_gh_the_remote_is_used"] = function()
     local callback, lists = helpers.recorder()
 
     for _, method in ipairs(REQUESTS) do
-        vim.api.nvim_set_current_buf(helpers.buffer({}, "markdown"))
+        cache.clear_all()
         source[method](source, callback, remote(), "#")
     end
 
@@ -389,24 +393,152 @@ T["a_cancel_during_the_lookup_starts_no_request"] = function()
     eq(lists, {}, "a cancelled request gets no list")
 end
 
-T["requests_cache_under_the_request_buffer"] = function()
+T["requests_from_two_buffers_share_the_entries_of_the_remote"] = function()
     local source = recording_github()
-    local request_bufnr = helpers.buffer({}, "markdown")
-    local current_bufnr = helpers.buffer({}, "markdown")
-    vim.api.nvim_set_current_buf(current_bufnr)
+    local first_bufnr = helpers.buffer({}, "markdown")
+    local second_bufnr = helpers.buffer({}, "markdown")
     local callback, lists = helpers.recorder()
 
     for _, request in ipairs(REQUESTS) do
-        source[request](source, callback, remote(), "#", request_bufnr)
+        source[request](source, callback, remote(), "#", first_bufnr)
     end
     helpers.wait_for(function()
         return #lists == #REQUESTS
     end, "the requests answer")
 
-    ok(source.cache.issues[request_bufnr] ~= nil, "the issues are cached for the request buffer")
-    ok(source.cache.change_requests[request_bufnr] ~= nil, "the pull requests are cached for the request buffer")
-    eq(source.cache.issues[current_bufnr], nil, "the current buffer gets no issues")
-    eq(source.cache.change_requests[current_bufnr], nil, "the current buffer gets no pull requests")
+    local requests = {}
+    helpers.stub(command, "build_fallback_list", function()
+        table.insert(requests, true)
+    end)
+    for _, request in ipairs(REQUESTS) do
+        source[request](source, callback, remote(), "#", second_bufnr)
+    end
+
+    eq(#lists, #REQUESTS * 2, "the requests of the second buffer answer at once")
+    eq(#requests, 0, "from the cache")
+end
+
+T["instances_share_the_entries_of_a_remote"] = function()
+    local first, requests = fake_github()
+    local second = GitHub.new(config.normalize({}).github)
+    local callback, lists = helpers.recorder()
+
+    first:complete_issues_and_change_requests(callback, git_info, "#")
+    second:complete_issues_and_change_requests(callback, git_info, "#")
+
+    eq(labels(lists[2].items), { "#1: an issue", "#2: a pull request" }, "the second instance gets the items")
+    eq(requests, { issue = 1, pr = 1 }, "each command runs once")
+end
+
+T["a_new_session_answers_from_the_file_without_gh"] = function()
+    local source, repos, gh_calls = recording_github("upstream/project")
+    local callback, lists = helpers.recorder()
+    source:complete_issues_and_change_requests(callback, remote(), "#")
+    helpers.wait_for(function()
+        return #lists == 1
+    end, "the first request answers")
+
+    cache.forget()
+    local next_source = GitHub.new(config.normalize({}).github)
+    next_source:complete_issues_and_change_requests(callback, remote(), "#")
+
+    eq(#lists, 2, "the request answers at once")
+    eq(#repos, 2, "no command runs for the second request")
+    eq(#gh_calls(), 1, "gh runs only for the first request")
+end
+
+---Make the cached items of the entry older than the default TTL.
+---@param entry cmp_git.CacheEntry
+local function age(entry)
+    entry.fetched_at = os.time() - config.normalize({}).cache.ttl
+end
+
+T["stale_items_answer_at_once_and_refresh_from_the_default_repository"] = function()
+    local source, repos, gh_calls = recording_github("upstream/project")
+    local entry = source:_entry("issues", remote())
+    entry:set({ records.issue })
+    age(entry)
+    local callback, lists = helpers.recorder()
+
+    source:complete_issues(callback, remote(), "#")
+    eq(#lists, 1, "the request answers at once")
+    eq(labels(lists[1].items), { "#1: an issue" }, "with the stale items")
+
+    source:complete_issues(callback, remote(), "#")
+    helpers.wait_for(function()
+        return #repos > 0 and not entry.refreshing
+    end, "the refresh ends")
+    helpers.flush()
+
+    eq(#lists, 2, "the second request answers at once too")
+    eq(repos, { "upstream/project" }, "one refresh, from the default repository")
+    eq(#gh_calls(), 1, "gh looks up the default repository")
+    eq(entry:get(), {}, "the refresh stores its items")
+    ok(not entry:is_stale(config.normalize({}).cache.ttl), "the items are fresh")
+end
+
+T["the_ttl_comes_from_the_config"] = function()
+    local _, repos = recording_github(nil)
+    local source = GitHub.new(config.normalize({}).github, { ttl = math.huge })
+    local entry = source:_entry("issues", remote())
+    entry:set({ records.issue })
+    entry.fetched_at = 0
+    local callback = helpers.recorder()
+
+    source:complete_issues(callback, remote(), "#")
+
+    eq(repos, {}, "math.huge never refreshes")
+end
+
+T["a_failed_refresh_keeps_the_stale_items"] = function()
+    local source = recording_github(nil)
+    local runs = 0
+    helpers.stub(command, "build_fallback_list", function(_commands, callback)
+        return helpers.fake_job(function()
+            runs = runs + 1
+            callback({ items = {}, isIncomplete = false }, false)
+        end)
+    end)
+    local entry = source:_entry("issues", remote())
+    entry:set({ records.issue })
+    age(entry)
+    local callback, lists = helpers.recorder()
+
+    source:complete_issues(callback, remote(), "#")
+    source:complete_issues(callback, remote(), "#")
+
+    eq(runs, 1, "the second request waits a TTL before it refreshes again")
+    eq(labels(lists[2].items), { "#1: an issue" }, "the stale items stay")
+end
+
+T["a_stale_combined_request_refreshes_both_lists"] = function()
+    local source, repos = recording_github(nil)
+    for _, kind in ipairs({ "issues", "pull_requests" }) do
+        local entry = source:_entry(kind, remote())
+        entry:set({})
+        age(entry)
+    end
+    local callback, lists = helpers.recorder()
+
+    source:complete_issues_and_change_requests(callback, remote(), "#")
+
+    eq(#lists, 1, "the request answers at once")
+    eq(repos, { "owner/repo", "owner/repo" }, "the issues and the pull requests refresh")
+end
+
+T["stale_mentions_refresh_all_pages"] = function()
+    local source, repos = recording_github(nil)
+    local entry = source:_entry("mentions", remote())
+    entry:set({ { login = "octocat" } })
+    age(entry)
+    local callback, lists = helpers.recorder()
+
+    source:complete_mentions(callback, remote(), "@")
+
+    eq(labels(lists[1].items), { "@octocat" }, "the request answers with the stale users")
+    eq(repos, { "owner/repo", "owner/repo" }, "the refresh runs the preflight and the first page")
+    eq(entry:get(), {}, "the refresh stores the users")
+    eq(entry.fetch, nil, "the refresh does not block the requests")
 end
 
 return T

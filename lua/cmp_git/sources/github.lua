@@ -1,15 +1,10 @@
 local adapter = require("cmp_git.provider.adapters.github")
+local cache = require("cmp_git.cache")
 local command = require("cmp_git.command")
 local issues = require("cmp_git.provider.capabilities.issues")
 local mentions = require("cmp_git.provider.capabilities.mentions")
 local change_requests = require("cmp_git.provider.capabilities.change_requests")
 local log = require("cmp_git.log")
-
----@class cmp_git.Source.GitHub.Cache
----@field issues table<integer, cmp_git.CompletionItem[]>
----@field mentions table<integer, cmp_git.AsyncItemList>
----@field change_requests table<integer, cmp_git.CompletionItem[]>
----@field pull_requests table<integer, cmp_git.CompletionItem[]> The `change_requests` table.
 
 ---The result of `gh repo set-default --view` for a repository. Until it is `done`, the requests wait in `waiters`.
 ---@class cmp_git.Source.GitHub.DefaultRepo
@@ -20,26 +15,21 @@ local log = require("cmp_git.log")
 
 ---@class cmp_git.Source.GitHub
 ---@field config cmp_git.Config.GitHub
----@field cache cmp_git.Source.GitHub.Cache
+---@field cache_config cmp_git.Config.Cache
 ---@field default_repos table<string, cmp_git.Source.GitHub.DefaultRepo> By `host/owner/repo` of the remote.
 local GitHub = {}
 
 ---@param overrides cmp_git.Config.GitHub
-function GitHub.new(overrides)
+---@param cache_config? cmp_git.Config.Cache
+function GitHub.new(overrides, cache_config)
     local self = setmetatable({}, {
         __index = GitHub,
     })
 
-    local change_requests_cache = {}
-    self.cache = {
-        issues = {},
-        mentions = {},
-        change_requests = change_requests_cache,
-        pull_requests = change_requests_cache,
-    }
     self.default_repos = {}
 
     self.config = overrides or {}
+    self.cache_config = cache_config or require("cmp_git.config").cache
 
     return self
 end
@@ -141,35 +131,62 @@ function GitHub:_with_repo(git_info, bufnr, cached, start)
     }
 end
 
----@param callback fun(list: cmp_git.CompletionList)
+---The cache entry of a list of the remote. The key is the remote that discovery found and not the default repository,
+---so that a hit needs no gh. A refresh asks gh again, so the entry follows a change of the default repository.
+---@param kind "issues" | "pull_requests" | "mentions"
+---@param git_info cmp_git.GitInfo
+---@return cmp_git.CacheEntry
+function GitHub:_entry(kind, git_info)
+    return cache.entry(git_info, "github-" .. kind, self.config[kind])
+end
+
+---Refresh the entry in the background when its items are stale.
+---@param entry cmp_git.CacheEntry
+---@param capability cmp_git.Provider.Capability
+---@param kind "issues" | "pull_requests" | "mentions"
 ---@param git_info cmp_git.GitInfo
 ---@param trigger_char string
 ---@param bufnr integer
-function GitHub:_issues_job(callback, git_info, trigger_char, bufnr)
+function GitHub:_refresh(entry, capability, kind, git_info, trigger_char, bufnr)
+    entry:refresh(self.cache_config.ttl, function(done)
+        self:_with_repo(git_info, bufnr, false, function(repo_info)
+            capability.refresh({
+                adapter = adapter,
+                config = self.config[kind],
+                git_info = repo_info,
+                trigger_char = trigger_char,
+            }, done)
+        end)
+    end)
+end
+
+---@param callback fun(list: cmp_git.CompletionList)
+---@param git_info cmp_git.GitInfo
+---@param trigger_char string
+---@param entry cmp_git.CacheEntry
+function GitHub:_issues_job(callback, git_info, trigger_char, entry)
     return issues.job({
         adapter = adapter,
-        cache = self.cache.issues,
+        cache = entry,
         callback = callback,
         config = self.config.issues,
         git_info = git_info,
         trigger_char = trigger_char,
-        bufnr = bufnr,
     })
 end
 
 ---@param callback fun(list: cmp_git.CompletionList)
 ---@param git_info cmp_git.GitInfo
 ---@param trigger_char string
----@param bufnr integer
-function GitHub:_change_requests_job(callback, git_info, trigger_char, bufnr)
+---@param entry cmp_git.CacheEntry
+function GitHub:_change_requests_job(callback, git_info, trigger_char, entry)
     return change_requests.job({
         adapter = adapter,
-        cache = self.cache.change_requests,
+        cache = entry,
         callback = callback,
         config = self.config.pull_requests,
         git_info = git_info,
         trigger_char = trigger_char,
-        bufnr = bufnr,
     })
 end
 
@@ -184,14 +201,16 @@ function GitHub:complete_issues(callback, git_info, trigger_char, bufnr)
 
     -- The buffer of the request, also when the lookup of the default repository ends in another buffer
     bufnr = bufnr or vim.api.nvim_get_current_buf()
-    return true,
-        self:_with_repo(git_info, bufnr, self.cache.issues[bufnr] ~= nil, function(repo_info)
-            local job = self:_issues_job(callback, repo_info, trigger_char, bufnr)
-            if job then
-                job:start()
-            end
-            return job
-        end)
+    local entry = self:_entry("issues", git_info)
+    local job = self:_with_repo(git_info, bufnr, entry:get() ~= nil, function(repo_info)
+        local request = self:_issues_job(callback, repo_info, trigger_char, entry)
+        if request then
+            request:start()
+        end
+        return request
+    end)
+    self:_refresh(entry, issues, "issues", git_info, trigger_char, bufnr)
+    return true, job
 end
 
 ---@param callback fun(list: cmp_git.CompletionList)
@@ -204,21 +223,24 @@ function GitHub:complete_change_requests(callback, git_info, trigger_char, bufnr
     end
 
     bufnr = bufnr or vim.api.nvim_get_current_buf()
-    return true,
-        self:_with_repo(git_info, bufnr, self.cache.change_requests[bufnr] ~= nil, function(repo_info)
-            local job = self:_change_requests_job(callback, repo_info, trigger_char, bufnr)
-            if job then
-                job:start()
-            end
-            return job
-        end)
+    local entry = self:_entry("pull_requests", git_info)
+    local job = self:_with_repo(git_info, bufnr, entry:get() ~= nil, function(repo_info)
+        local request = self:_change_requests_job(callback, repo_info, trigger_char, entry)
+        if request then
+            request:start()
+        end
+        return request
+    end)
+    self:_refresh(entry, change_requests, "pull_requests", git_info, trigger_char, bufnr)
+    return true, job
 end
 
 ---@param callback fun(list: cmp_git.CompletionList)
 ---@param git_info cmp_git.GitInfo
 ---@param trigger_char string
----@param bufnr integer
-function GitHub:_issues_and_change_requests(callback, git_info, trigger_char, bufnr)
+---@param issues_entry cmp_git.CacheEntry
+---@param change_requests_entry cmp_git.CacheEntry
+function GitHub:_issues_and_change_requests(callback, git_info, trigger_char, issues_entry, change_requests_entry)
     local results = {}
     local pending = 2
     local cancelled = false
@@ -237,15 +259,16 @@ function GitHub:_issues_and_change_requests(callback, git_info, trigger_char, bu
                 return
             end
 
-            -- A new list, so that the issue cache does not get the pull requests
-            local items = vim.list_extend(vim.list_extend({}, results.issues), results.change_requests)
+            -- Each request gets new lists, because the cache keeps the raw items
+            local items = vim.list_extend(results.issues, results.change_requests)
             log.fmt_debug("Got %d issues and prs", #items)
             callback({ items = items, isIncomplete = false })
         end
     end
 
-    local issues_job = self:_issues_job(collect("issues"), git_info, trigger_char, bufnr)
-    local change_requests_job = self:_change_requests_job(collect("change_requests"), git_info, trigger_char, bufnr)
+    local issues_job = self:_issues_job(collect("issues"), git_info, trigger_char, issues_entry)
+    local change_requests_job =
+        self:_change_requests_job(collect("change_requests"), git_info, trigger_char, change_requests_entry)
     -- Both commands run at once, so that a cold request waits for the slower one, not for both in turn
     if issues_job then
         issues_job:start()
@@ -277,11 +300,15 @@ function GitHub:complete_issues_and_change_requests(callback, git_info, trigger_
     end
 
     bufnr = bufnr or vim.api.nvim_get_current_buf()
-    local cached = self.cache.issues[bufnr] ~= nil and self.cache.change_requests[bufnr] ~= nil
-    return true,
-        self:_with_repo(git_info, bufnr, cached, function(repo_info)
-            return self:_issues_and_change_requests(callback, repo_info, trigger_char, bufnr)
-        end)
+    local issues_entry = self:_entry("issues", git_info)
+    local change_requests_entry = self:_entry("pull_requests", git_info)
+    local cached = issues_entry:get() ~= nil and change_requests_entry:get() ~= nil
+    local job = self:_with_repo(git_info, bufnr, cached, function(repo_info)
+        return self:_issues_and_change_requests(callback, repo_info, trigger_char, issues_entry, change_requests_entry)
+    end)
+    self:_refresh(issues_entry, issues, "issues", git_info, trigger_char, bufnr)
+    self:_refresh(change_requests_entry, change_requests, "pull_requests", git_info, trigger_char, bufnr)
+    return true, job
 end
 
 ---@param callback fun(list: cmp_git.CompletionList)
@@ -293,20 +320,21 @@ function GitHub:complete_mentions(callback, git_info, trigger_char, bufnr)
         return false
     end
 
-    -- A request during a fetch joins it, so it needs no repository either
     bufnr = bufnr or vim.api.nvim_get_current_buf()
-    return true,
-        self:_with_repo(git_info, bufnr, self.cache.mentions[bufnr] ~= nil, function(repo_info)
-            return mentions.complete({
-                adapter = adapter,
-                cache = self.cache.mentions,
-                callback = callback,
-                config = self.config.mentions,
-                git_info = repo_info,
-                trigger_char = trigger_char,
-                bufnr = bufnr,
-            })
-        end)
+    local entry = self:_entry("mentions", git_info)
+    -- A request during a fetch joins it, so it needs no repository either
+    local job = self:_with_repo(git_info, bufnr, entry:get() ~= nil or entry.fetch ~= nil, function(repo_info)
+        return mentions.complete({
+            adapter = adapter,
+            cache = entry,
+            callback = callback,
+            config = self.config.mentions,
+            git_info = repo_info,
+            trigger_char = trigger_char,
+        })
+    end)
+    self:_refresh(entry, mentions, "mentions", git_info, trigger_char, bufnr)
+    return true, job
 end
 
 function GitHub:get_issues(callback, git_info, trigger_char)
