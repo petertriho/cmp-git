@@ -46,13 +46,14 @@ T["blink_adapter_api_and_cancellation"] = function()
     eq(callback_result.is_incomplete_forward, true, "blink forwards incomplete state")
 
     cancel()
-    eq(cancelled, true, "blink cancellation delegates to core job")
+    eq(cancelled, false, "a request that answered continues to fill the cache")
 end
 
 T["blink_adapter_suppresses_stale_callbacks_after_cancel"] = function()
     local blink = Blink.new({})
     local pending_callback
     local called = false
+    local cancelled = false
     blink.core = {
         is_available = function()
             return true
@@ -62,7 +63,11 @@ T["blink_adapter_suppresses_stale_callbacks_after_cancel"] = function()
         end,
         complete = function(_, _context, callback)
             pending_callback = callback
-            return { cancel = function() end }
+            return {
+                cancel = function()
+                    cancelled = true
+                end,
+            }
         end,
     }
 
@@ -75,7 +80,33 @@ T["blink_adapter_suppresses_stale_callbacks_after_cancel"] = function()
     cancel()
     pending_callback({ items = { { label = "stale" } }, isIncomplete = false })
 
+    eq(cancelled, true, "blink cancellation delegates to core job")
     eq(called, false, "blink suppresses stale callback after cancellation")
+end
+
+T["blink_adapter_forwards_the_first_response_only"] = function()
+    local blink = Blink.new({})
+    blink.core = {
+        get_trigger_characters = function()
+            return { "@" }
+        end,
+        -- Like the mentions capability: a first page, then the cached list with the next page
+        complete = function(_, _context, callback)
+            local first = { label = "@ada" }
+            callback({ items = { first }, isIncomplete = true })
+            callback({ items = { first, { label = "@grace" } }, isIncomplete = false })
+            return { cancel = function() end }
+        end,
+    }
+    local responses = {}
+
+    blink:get_completions({ trigger = { character = "@" }, cursor = { 1, 4 }, line = "cc @" }, function(response)
+        table.insert(responses, response)
+    end)
+
+    eq(#responses, 1, "blink gets one response for each request")
+    eq(#responses[1].items, 1, "the response has the first page")
+    eq(responses[1].is_incomplete_forward, true, "blink asks again on the next keystroke")
 end
 
 T["blink_adapter_special_trigger_characters"] = function()
