@@ -1,7 +1,7 @@
 ---Completion requests from start to the final callback, in a git repository with 1000 commits. Each request runs the
 ---real git commands and a fake `gh` (see `fixtures.isolate_environment`), so the times include process starts but no
----network. `cold` cases use a new source for each request, and `warm` cases repeat a request that the cache can
----answer.
+---network. `cold` cases use a new source and an empty cache for each request, and `warm` cases repeat a request that
+---the cache can answer. `disk` cases use a new source and the cache files of an earlier request, as in a new session.
 local fixtures = require("benchmarks.fixtures")
 
 local COMMITS = 1000
@@ -26,13 +26,22 @@ local REQUESTS = {
     github_mentions = { row = 3, line = "See @", trigger_character = "@" },
 }
 
+---Remove the cached GitHub and GitLab items from memory and from disk. Revisions before the disk cache have no cache
+---module, and a new source is cold there.
+local function clear_cache()
+    local ok, cache = pcall(require, "cmp_git.cache")
+    if ok then
+        cache.clear_all()
+    end
+end
+
 ---@param name string A key of `REQUESTS`.
----@param cold boolean
+---@param mode "cold" | "warm" | "disk"
 ---@return bench.AsyncCase
-local function request_case(name, cold)
+local function request_case(name, mode)
     local request = REQUESTS[name]
     return {
-        name = string.format("e2e/%s/%s", name, cold and "cold" or "warm"),
+        name = string.format("e2e/%s/%s", name, mode),
         async = true,
         setup = function()
             local dir = fixtures.repo(COMMITS)
@@ -43,7 +52,13 @@ local function request_case(name, cold)
         end,
         before_each = function(state)
             vim.api.nvim_set_current_buf(state.bufnr)
-            if cold then
+            if mode == "cold" then
+                clear_cache()
+            elseif mode == "disk" then
+                -- The warm-up run writes the files
+                require("cmp_git.cache").forget()
+            end
+            if mode ~= "warm" then
                 state.core = require("cmp_git.core").new({})
             end
         end,
@@ -77,8 +92,12 @@ for _, name in ipairs({
     "github_issues_and_prs",
     "github_mentions",
 }) do
-    table.insert(cases, request_case(name, true))
-    table.insert(cases, request_case(name, false))
+    table.insert(cases, request_case(name, "cold"))
+    table.insert(cases, request_case(name, "warm"))
+end
+-- Only the GitHub and GitLab items have cache files
+for _, name in ipairs({ "github_issues_and_prs", "github_mentions" }) do
+    table.insert(cases, request_case(name, "disk"))
 end
 
 return cases

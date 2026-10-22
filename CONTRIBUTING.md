@@ -75,6 +75,7 @@ Start each test file with `local T = helpers.new_set()`. The hooks of this set i
   read `helpers.notifications`.
 - They unset `GITHUB_API_TOKEN` and `GITLAB_TOKEN`.
 - They isolate git from your user config and your system config.
+- They set `XDG_CACHE_HOME` to a temporary directory, so that the cache of the GitHub and GitLab items is empty.
 - They restore the cwd, the buffers, and the values that `helpers.stub` replaced.
 - They delete the directories from `helpers.tempdir` and `helpers.git_repo`.
 
@@ -116,7 +117,8 @@ until the completion items show. Nothing in them uses the network.
 
 The `e2e/` cases run the real git commands. A fake `gh` in a temporary directory answers the GitHub requests at once,
 so the times include the process starts, but not the network or the run time of the real `gh`. `cold` cases use a new
-source for each request. `warm` cases repeat a request that the cache can answer.
+source and an empty cache for each request. `warm` cases repeat a request that the cache can answer. `disk` cases use a
+new source and the cache files of an earlier request, as in a new Neovim.
 
 The `startup/` cases measure the cost to load cmp-git. `startup/setup` is the cost of `setup`. Core loads the sources
 and the repository module when a request first needs them, so `startup/require_all` loads all the modules. The test
