@@ -73,8 +73,8 @@ function M.attached_trigger(line)
     return line and string.match(line, "^[%w-]+(:)%S*$")
 end
 
----Trailer completion is only offered in commit messages, below the subject and its blank line, at the start of
----a trailer block or after another trailer.
+---Trailer completion is only offered in commit messages, from `config.min_line` (by default below the subject and
+---its blank line), at the start of a trailer block or after another trailer.
 ---@param config cmp_git.Config.GitTrailers
 ---@param context { bufnr?: integer, cursor?: { row?: integer }, line?: string }
 ---@param kind "keys" | "identities" | "values"
@@ -90,11 +90,12 @@ function M.available(config, context, kind)
     end
 
     local row = context.cursor and context.cursor.row
-    if not row or row < 3 then
+    if not row or row < (config.min_line or 1) then
         return false
     end
 
-    local previous = vim.api.nvim_buf_get_lines(bufnr, row - 2, row - 1, false)[1] or ""
+    -- Line 1 has no previous line, so it counts as blank. A negative index would count from the buffer end.
+    local previous = row > 1 and vim.api.nvim_buf_get_lines(bufnr, row - 2, row - 1, false)[1] or ""
     if not previous:match("^%s*$") and not previous:match("^[%w-]+:%s*%S") then
         return false
     end

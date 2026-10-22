@@ -1003,6 +1003,7 @@ local function test_config_trailer_defaults()
         not vim.tbl_contains(normalized.git.trailers.identities.keys, "Fixes"),
         "identity keys do not contain Fixes"
     )
+    assert_eq(normalized.git.trailers.min_line, 3, "trailers start below the subject and its blank line")
     assert_true(vim.tbl_contains(normalized.git.trailers.filetypes, "gitcommit"), "trailers in gitcommit")
     assert_true(not vim.tbl_contains(normalized.git.trailers.filetypes, "octo"), "no trailers in octo")
 end
@@ -1130,9 +1131,9 @@ end
 
 local function test_trailer_gating()
     local trailers_config = config.normalize({}).git.trailers
-    local function available(lines, row, line, kind, filetype)
+    local function available(lines, row, line, kind, filetype, custom_config)
         local bufnr = trailer_buffer(lines, filetype)
-        local result = trailer_capability.available(trailers_config, {
+        local result = trailer_capability.available(custom_config or trailers_config, {
             bufnr = bufnr,
             cursor = { row = row },
             line = line,
@@ -1169,6 +1170,23 @@ local function test_trailer_gating()
     assert_true(available({ "subject", "", "" }, 3, "Fixes: ", "values"), "values for an empty value after a space")
     assert_true(not available({ "subject", "", "" }, 3, "Fixes:", "values"), "no values right after the colon")
     assert_true(not available({ "subject", "", "body", "" }, 4, "Fixes: 2", "values"), "no values inside a paragraph")
+
+    local from_first_line = config.normalize({ git = { trailers = { min_line = 1 } } }).git.trailers
+    assert_true(available({ "Co" }, 1, "Co", "keys", nil, from_first_line), "min_line 1 allows the first line")
+    assert_true(
+        available({ "", "Co" }, 2, "Co", "keys", nil, from_first_line),
+        "min_line 1 allows line 2 after a blank line"
+    )
+    assert_true(
+        not available({ "subject", "Co" }, 2, "Co", "keys", nil, from_first_line),
+        "min_line 1 keeps the previous-line check"
+    )
+    local from_fifth_line = config.normalize({ git = { trailers = { min_line = 5 } } }).git.trailers
+    assert_true(not available({ "subject", "", "" }, 3, "Co", "keys", nil, from_fifth_line), "min_line 5 skips line 3")
+    assert_true(
+        not available({ "subject", "", "" }, 3, "Co-authored-by: Ad", "identities", nil, from_fifth_line),
+        "min_line applies to identities"
+    )
 end
 
 local function test_core_pre_route_skips_repository()
