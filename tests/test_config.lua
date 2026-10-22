@@ -1,5 +1,6 @@
 local helpers = require("tests.helpers")
 local config = require("cmp_git.config")
+local format = require("cmp_git.format")
 
 local eq = helpers.eq
 local neq = helpers.neq
@@ -104,6 +105,19 @@ T["config_normalize_provider_filter_alias_overrides_nested_filter"] = function()
     })
 
     eq(normalized.github.issues.format.filterText, provider_filter, "provider filter alias overrides nested filter")
+end
+
+T["config_normalize_filter_alias_does_not_change_defaults"] = function()
+    local filter = function()
+        return "user"
+    end
+    config.normalize({ git = { filter_fn = filter }, github = { filter_fn = filter }, gitlab = { filter_fn = filter } })
+
+    local normalized = config.normalize({})
+    neq(normalized.git.commits.format.filterText, filter, "git filter alias does not leak into later configs")
+    neq(normalized.github.issues.format.filterText, filter, "github filter alias does not leak into later configs")
+    neq(normalized.gitlab.mentions.format.filterText, filter, "gitlab filter alias does not leak into later configs")
+    neq(format.github.issues.filterText, filter, "filter alias does not change the default formats")
 end
 
 T["config_normalize_does_not_leak_hosts_between_instances"] = function()
