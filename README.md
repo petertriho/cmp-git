@@ -134,6 +134,9 @@ require("cmp_git").setup({
     remotes = { "upstream", "origin" }, -- in order of most to least prioritized
     enableRemoteUrlRewrites = false, -- enable git url rewrites, see https://git-scm.com/docs/git-config#Documentation/git-config.txt-urlltbasegtinsteadOf
     ssh_aliases = {}, -- SSH host aliases and their real hosts, such as { ["github-work"] = "github.com" }
+    cache = {
+        ttl = 300, -- seconds after which a request also gets the GitHub and GitLab items again in the background
+    },
     git = {
         commits = {
             limit = 100,
@@ -254,6 +257,7 @@ require("cmp_git").setup({
 - [Remotes and SSH aliases](docs/configuration.md#remotes-and-ssh-aliases)
 - [GitHub CLI, GitLab CLI, and curl](docs/configuration.md#github-cli-gitlab-cli-and-curl)
 - [Hosted GitHub and GitLab instances](docs/configuration.md#hosted-github-and-gitlab-instances)
+- [Cache](docs/configuration.md#cache), and the `:CmpGitClearCache` command
 - [Troubleshooting](docs/configuration.md#troubleshooting)
 
 ## Contributing

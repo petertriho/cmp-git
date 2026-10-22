@@ -304,6 +304,46 @@ the path prefix for this remote when these conditions are true:
 
 Path prefixes are only for GitLab. GitHub Enterprise does not use a path prefix.
 
+## Cache
+
+cmp-git keeps the GitHub and GitLab items in a cache on disk: the issues, the pull requests, the merge requests, and
+the mentions. The cache is in `stdpath("cache")/cmp-git`, usually `~/.cache/nvim/cmp-git`, with a directory for each
+remote, such as `github.com/owner/repo`. All buffers of a remote use the same items, also in a new Neovim. So the first
+`#`, `!`, or `@` in a new commit message shows the items without a wait for the network.
+
+The remote is the first remote in `remotes` that has a supported URL. For GitHub, the items come from the repository
+that `gh repo set-default` chose, if any. A change of the default repository shows after the next refresh.
+
+When the items are older than `cache.ttl` seconds, a request still shows them at once. The request also gets the items
+again in the background, and the next request shows the new items. The default TTL is 300 seconds:
+
+```lua
+require("cmp_git").setup({
+    cache = {
+        ttl = 300,
+    },
+})
+```
+
+With `ttl = 0`, each request gets the items again in the background. With `ttl = math.huge`, cmp-git never gets them
+again.
+
+cmp-git does not cache the result of a failed command or an HTTP error, so the next request tries again. If a
+background refresh fails, cmp-git keeps the old items and tries again after `cache.ttl` seconds.
+
+The cache holds the titles and the bodies of the issues and the pull requests, and the users of the repository, also
+for private repositories. Only your user can read the cache files.
+
+To clear the cache, use these commands:
+
+- `:CmpGitClearCache` clears the items of the remote of the current buffer. It also clears the commits and the
+  trailers of the buffer.
+- `:CmpGitClearCache!` clears the items of all remotes, and the commits and the trailers of all buffers.
+
+The commits and the trailers come from the local repository. cmp-git keeps them in memory for each buffer and does not
+refresh them. To get new commits and trailers, run `:CmpGitClearCache`, or wipe the buffer with `:bwipeout` and open
+the file again.
+
 ## Troubleshooting
 
 If no items show, make sure that these conditions are true:
@@ -316,6 +356,4 @@ If no items show, make sure that these conditions are true:
 To log missing executables, and the exit code and stderr of failed commands, set `vim.g.cmp_git_debug = true`. cmp-git
 sends the messages with `vim.notify`.
 
-cmp-git caches the items for each buffer and does not refresh them. To get new items, wipe the buffer with
-`:bwipeout` and open the file again, or restart Neovim. cmp-git does not cache the result of a failed command or an
-HTTP error, so the next request tries again.
+If the items are old or missing, run `:CmpGitClearCache`. The next request gets them again. See [Cache](#cache).
