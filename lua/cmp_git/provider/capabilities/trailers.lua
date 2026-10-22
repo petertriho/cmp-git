@@ -137,37 +137,38 @@ end
 ---@param kind "keys" | "identities" | "values"
 ---@return boolean
 function M.available(config, context, kind)
-    local bufnr = context.bufnr or vim.api.nvim_get_current_buf()
-    if not vim.api.nvim_buf_is_valid(bufnr) then
-        return false
-    end
-
-    if not filetype_matches(config.filetypes or {}, vim.bo[bufnr].filetype) then
-        return false
-    end
-
     local row = context.cursor and context.cursor.row
     if not row or row < (config.min_line or 1) then
         return false
     end
 
-    -- Line 1 has no previous line, so it counts as blank. A negative index would count from the buffer end.
-    local previous = row > 1 and vim.api.nvim_buf_get_lines(bufnr, row - 2, row - 1, false)[1] or ""
-    if not previous:match("^%s*$") and not previous:match("^[%w-]+:%s*%S") then
+    -- Core asks each kind on each request, so the checks of the line come before the reads of the buffer
+    if kind == "identities" then
+        local key = M.line_key(context.line)
+        if key == nil or not contains_key(config.identities.keys or {}, key) then
+            return false
+        end
+    elseif kind == "values" then
+        -- `Key:` alone falls through to the `:` trigger, so `Fixes:` still completes commits
+        if M.line_key(context.line) == nil or string.match(context.line, "^[%w-]+:$") then
+            return false
+        end
+    end
+
+    local bufnr = context.bufnr or vim.api.nvim_get_current_buf()
+    if not vim.api.nvim_buf_is_valid(bufnr) then
         return false
     end
 
-    if kind == "identities" then
-        local key = M.line_key(context.line)
-        return key ~= nil and contains_key(config.identities.keys or {}, key)
+    -- `vim.bo[bufnr]` makes a new table on each read
+    local filetype = vim.api.nvim_get_option_value("filetype", { buf = bufnr })
+    if not filetype_matches(config.filetypes or {}, filetype) then
+        return false
     end
 
-    if kind == "values" then
-        -- `Key:` alone falls through to the `:` trigger, so `Fixes:` still completes commits
-        return M.line_key(context.line) ~= nil and not string.match(context.line, "^[%w-]+:$")
-    end
-
-    return true
+    -- Line 1 has no previous line, so it counts as blank. A negative index would count from the buffer end.
+    local previous = row > 1 and vim.api.nvim_buf_get_lines(bufnr, row - 2, row - 1, false)[1] or ""
+    return previous:match("^%s*$") ~= nil or previous:match("^[%w-]+:%s*%S") ~= nil
 end
 
 ---@param config cmp_git.Config.GitTrailerKeys
