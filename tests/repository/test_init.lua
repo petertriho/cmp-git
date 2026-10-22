@@ -136,6 +136,46 @@ T["get_cwd_buffer_in_missing_directory"] = function()
     eq(discover(), { host = "github.com", owner = "owner", repo = "repo" }, "the cwd repository")
 end
 
+---Run `git rev-parse --show-toplevel` as the completion commands run.
+---@return string? toplevel
+local function command_toplevel()
+    local result
+    local job = require("cmp_git.command").build(
+        { exec = "git", args = { "rev-parse", "--show-toplevel" } },
+        function(stdout)
+            result = vim.trim(stdout)
+        end
+    )
+    helpers.not_nil(job, "git command"):start()
+    helpers.wait_for(function()
+        return result ~= nil
+    end, "the command calls back")
+    return result
+end
+
+T["get_cwd_is_the_repository_directory"] = function()
+    require_git()
+    local repo = helpers.git_repo()
+    edit(helpers.tempdir() .. "/notes.md", "markdown")
+    vim.fn.chdir(repo.dir)
+
+    eq(is_git_repo(), true, "the cwd repository")
+    eq(repository.get_cwd(), repo.dir, "the directory where discovery found the repository")
+    eq(command_toplevel(), repo.dir, "the commands run in the repository")
+end
+
+T["get_cwd_is_the_buffer_repository_directory"] = function()
+    require_git()
+    local repo = helpers.git_repo()
+    local other = helpers.git_repo()
+    vim.fn.chdir(other.dir)
+    edit(repo.dir .. "/notes.md", "markdown")
+
+    eq(is_git_repo(), true, "the buffer repository")
+    eq(repository.get_cwd(), repo.dir, "the buffer directory")
+    eq(command_toplevel(), repo.dir, "the commands run in the buffer repository")
+end
+
 T["discover_first_remote_matches"] = function()
     require_git()
     local repo = helpers.git_repo({
