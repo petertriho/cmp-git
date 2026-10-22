@@ -26,7 +26,7 @@ local M = {
                 return {
                     kind = "markdown",
                     value = string.format(
-                        "# %s\n\n%s\n\nCommited by %s (%s) on %s",
+                        "# %s\n\n%s\n\nAuthored by %s (%s), committed on %s",
                         commit.title,
                         commit.description,
                         commit.author_name,

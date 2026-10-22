@@ -35,7 +35,7 @@ T["git_commits"] = function()
         label = "abcdef1: feat: add a thing",
         insertText = "abcdef1234567890",
         filterText = ": abcdef1 feat: add a thing",
-        documentation = "# feat: add a thing\n\nBody text\n\nCommited by Ada Lovelace (ada@example.com) on "
+        documentation = "# feat: add a thing\n\nBody text\n\nAuthored by Ada Lovelace (ada@example.com), committed on "
             .. os.date("%c", 1234567890),
     })
     eq(item.documentation.kind, "markdown", "documentation is markdown")
