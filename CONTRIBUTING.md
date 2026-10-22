@@ -118,6 +118,12 @@ The `e2e/` cases run the real git commands. A fake `gh` in a temporary directory
 so the times include the process starts, but not the network or the run time of the real `gh`. `cold` cases use a new
 source for each request. `warm` cases repeat a request that the cache can answer.
 
+The `startup/` cases measure the cost to load cmp-git. `startup/setup` is the cost of `setup`. Core loads the sources
+and the repository module when a request first needs them, so `startup/require_all` loads all the modules. The test
+`setup_and_a_declined_request_load_only_the_core_modules` in `tests/test_core.lua` lists the modules that `setup` and a
+declined request load. A new `require` at the top of one of these modules adds to the cost of each session. Put the
+`require` in the code that needs the module.
+
 Each line of the report has these values:
 
 | Value      | Meaning                                                                                                  |
