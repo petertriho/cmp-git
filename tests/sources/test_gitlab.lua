@@ -74,8 +74,10 @@ T["failed_commands_give_an_empty_list"] = function()
 
     eq(answers(source, "complete_issues", "#"), { EMPTY }, "issues")
     eq(answers(source, "complete_change_requests", "!"), { EMPTY }, "merge requests")
+    eq(answers(source, "complete_mentions", "@"), { EMPTY }, "mentions")
     eq(source.cache.issues[bufnr], nil, "failed issues are not cached")
     eq(source.cache.change_requests[bufnr], nil, "failed merge requests are not cached")
+    eq(source.cache.mentions[bufnr], nil, "failed mentions are not cached")
 end
 
 T["missing_commands_give_an_empty_list"] = function()
@@ -84,6 +86,7 @@ T["missing_commands_give_an_empty_list"] = function()
 
     eq(answers(source, "complete_issues", "#"), { EMPTY }, "issues")
     eq(answers(source, "complete_change_requests", "!"), { EMPTY }, "merge requests")
+    eq(answers(source, "complete_mentions", "@"), { EMPTY }, "mentions")
 end
 
 return T
