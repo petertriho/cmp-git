@@ -269,6 +269,67 @@ T["trailer_routing"] = function()
     end
 end
 
+---Replace the regexes of the trigger actions with wrappers that count the matches.
+---@param core table
+---@return table<string, integer> counts By the name of the first action of each regex.
+local function count_regex_matches(core)
+    local counts = {}
+    local wrappers = {}
+    for _, trigger_action in ipairs(core.trigger_actions) do
+        local regex = trigger_action.regex
+        if regex then
+            if not wrappers[regex] then
+                local name = trigger_action.debug_name
+                counts[name] = 0
+                wrappers[regex] = {
+                    match_str = function(_, line)
+                        counts[name] = counts[name] + 1
+                        return regex:match_str(line)
+                    end,
+                }
+            end
+            trigger_action.regex = wrappers[regex]
+        end
+    end
+    return counts
+end
+
+T["routing_checks_availability_first_and_matches_each_regex_once"] = function()
+    local core = Core.new({})
+    local counts = count_regex_matches(core)
+    local line = "Co-authored-by: Ad"
+
+    local octo = helpers.buffer({ "title", "", line }, "octo")
+    eq(#core:_route({ cursor = { row = 3, character = #line }, line = line, bufnr = octo }), 0, "no trailers in octo")
+    eq(counts, { git_trailer_keys = 0, git_trailer_identities = 0 }, "unavailable actions match no regex")
+
+    local bufnr = helpers.buffer({ "feat: subject", "", line })
+    local context = { cursor = { row = 3, character = #line }, line = line, bufnr = bufnr }
+    local routes = core:_route(context)
+    eq(#routes, 2, "identities and values routes")
+    eq(routes[1].edit_start, 16, "identities edit start")
+    eq(routes[2].edit_start, 16, "values edit start")
+    eq(counts, { git_trailer_keys = 1, git_trailer_identities = 1 }, "the value actions share one match")
+
+    helpers.stub(repository, "is_git_repo", function(on_result)
+        on_result(true)
+    end)
+    helpers.stub(repository, "discover", function(_, opts)
+        opts.on_complete({})
+    end)
+    core.sources.git = {
+        get_trailer_identities = function()
+            return true
+        end,
+        may_have_trailer_values = function()
+            return true
+        end,
+    }
+    counts.git_trailer_keys, counts.git_trailer_identities = 0, 0
+    core:complete(context, function() end)
+    eq(counts, { git_trailer_keys = 1, git_trailer_identities = 1 }, "a request matches each regex once")
+end
+
 T["core_pre_route_skips_repository"] = function()
     local checks = 0
     helpers.stub(repository, "is_git_repo", function()

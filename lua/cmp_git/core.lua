@@ -86,26 +86,39 @@ local function compile_pattern(pattern, field)
     return regex
 end
 
-local function normalize_trigger_action(configured_action)
+---@class cmp_git.TriggerAction
+---@field debug_name string
+---@field trigger_character? string
+---@field regex? any The compiled `pattern`. Entries with the same pattern share it.
+---@field keyword_pattern? string
+---@field available? fun(core: table, context: table): boolean
+---@field action fun(core: table, callback: fun(list: cmp_git.CompletionList), context: table, git_info: cmp_git.GitInfo, trigger_char: string?): string, table?
+
+---@param configured_action table
+---@param regexes table<string, any> The compiled patterns, by pattern.
+---@return cmp_git.TriggerAction[]
+local function normalize_trigger_action(configured_action, regexes)
     if configured_action.action then
         if configured_action.pattern then
             log.warn("Trigger action patterns need named `actions`. The pattern of a legacy `action` is ignored.")
         end
 
         return {
-            debug_name = configured_action.debug_name,
-            trigger_character = configured_action.trigger_character,
-            action = function(core, _callback, context, git_info, trigger_char)
-                return route_status(
-                    configured_action.action(
-                        core.sources,
-                        trigger_char,
-                        context.original_callback,
-                        context.params,
-                        git_info
+            {
+                debug_name = configured_action.debug_name,
+                trigger_character = configured_action.trigger_character,
+                action = function(core, _callback, context, git_info, trigger_char)
+                    return route_status(
+                        configured_action.action(
+                            core.sources,
+                            trigger_char,
+                            context.original_callback,
+                            context.params,
+                            git_info
+                        )
                     )
-                )
-            end,
+                end,
+            },
         }
     end
 
@@ -113,10 +126,11 @@ local function normalize_trigger_action(configured_action)
     local keyword_pattern = nil
     local trigger_character = configured_action.trigger_character
     if configured_action.pattern then
-        regex = compile_pattern(configured_action.pattern, "pattern")
+        regex = regexes[configured_action.pattern] or compile_pattern(configured_action.pattern, "pattern")
         if not regex then
             return {}
         end
+        regexes[configured_action.pattern] = regex
         trigger_character = nil
 
         keyword_pattern = configured_action.pattern
@@ -178,13 +192,9 @@ function Core.new(overrides)
     self.sources.github = github.new(self.config.github)
 
     local patterns = {}
+    local regexes = {}
     for _, configured_action in ipairs(self.config.trigger_actions) do
-        local normalized = normalize_trigger_action(configured_action)
-        if normalized.action then
-            normalized = { normalized }
-        end
-
-        for _, trigger_action in ipairs(normalized) do
+        for _, trigger_action in ipairs(normalize_trigger_action(configured_action, regexes)) do
             table.insert(self.trigger_actions, trigger_action)
             if trigger_action.regex then
                 if not vim.tbl_contains(patterns, trigger_action.keyword_pattern) then
@@ -265,38 +275,54 @@ function Core:_wrap_callback(context, callback)
     end
 end
 
+---@class cmp_git.Route
+---@field trigger_action cmp_git.TriggerAction
+---@field edit_start? integer The match start of a pattern entry.
+
 ---Find the trigger actions that apply to the context, in config order. This must stay synchronous and start no
 ---process, because it runs for every completion request.
----@return { trigger_action: table, edit_start: integer? }[]
+---@return cmp_git.Route[]
 function Core:_route(context)
     local routes = {}
+    -- The match start of each regex, or false. The actions of one entry share its regex.
+    local matches = nil
 
     for _, trigger_action in ipairs(self.trigger_actions) do
-        local matched = false
-        local edit_start = nil
-        if trigger_action.regex then
-            edit_start = context.line and trigger_action.regex:match_str(context.line)
-            matched = edit_start ~= nil
-        else
-            matched = trigger_action.trigger_character ~= nil
+        local regex = trigger_action.regex
+        local candidate = regex ~= nil
+            or (
+                trigger_action.trigger_character ~= nil
                 and trigger_action.trigger_character == context.trigger_character
-        end
+            )
 
-        if matched and (not trigger_action.available or trigger_action.available(self, context)) then
-            table.insert(routes, { trigger_action = trigger_action, edit_start = edit_start })
+        -- `available` runs before the regex, because it is cheap, and a regex can take long on a long line
+        if candidate and (not trigger_action.available or trigger_action.available(self, context)) then
+            local edit_start = nil
+            if regex then
+                matches = matches or {}
+                if matches[regex] == nil then
+                    matches[regex] = context.line and regex:match_str(context.line) or false
+                end
+                edit_start = matches[regex] or nil
+            end
+
+            if not regex or edit_start then
+                table.insert(routes, { trigger_action = trigger_action, edit_start = edit_start })
+            end
         end
     end
 
     return routes
 end
 
-function Core:_run_trigger_actions(trigger_character, callback, context, git_info)
+---@param routes? cmp_git.Route[] The routes of the context, when the caller has them.
+function Core:_run_trigger_actions(trigger_character, callback, context, git_info, routes)
     context = context or {}
     context.trigger_character = trigger_character
     context.original_callback = callback
     local wrapped_callback = self:_wrap_callback(context, callback)
 
-    for _, route in ipairs(self:_route(context)) do
+    for _, route in ipairs(routes or self:_route(context)) do
         -- Set before the action runs, because a cache hit calls the callback synchronously
         context.edit_start = route.edit_start
         local result, job = route.trigger_action.action(self, wrapped_callback, context, git_info, trigger_character)
@@ -306,7 +332,8 @@ function Core:_run_trigger_actions(trigger_character, callback, context, git_inf
     end
 end
 
-function Core:_complete(context, callback)
+---@param routes? cmp_git.Route[] The routes of the context, when the caller has them.
+function Core:_complete(context, callback, routes)
     local state = { cancelled = false, active = nil }
     local controller = {
         command = "cmp_git_complete",
@@ -325,7 +352,7 @@ function Core:_complete(context, callback)
             if state.cancelled then
                 return
             end
-            state.active = self:_run_trigger_actions(context.trigger_character, callback, context, git_info)
+            state.active = self:_run_trigger_actions(context.trigger_character, callback, context, git_info, routes)
         end,
     })
 
@@ -344,7 +371,9 @@ function Core:complete(context, callback)
         end,
     }
 
-    if #self:_route(context) == 0 then
+    -- Routing once for each request matches each regex once
+    local routes = self:_route(context)
+    if #routes == 0 then
         callback({ items = {}, isIncomplete = false })
         return controller
     end
@@ -356,7 +385,7 @@ function Core:complete(context, callback)
         if not is_git_repo then
             return
         end
-        state.active = self:_complete(context, callback)
+        state.active = self:_complete(context, callback, routes)
     end)
 
     return controller
