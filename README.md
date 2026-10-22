@@ -148,6 +148,7 @@ require("cmp_git").setup({
         },
         trailers = {
             filetypes = { "gitcommit", "NeogitCommitMessage" },
+            min_line = 3, -- first line where trailers complete, below the subject and its blank line
             keys = {
                 builtin = {
                     "Co-authored-by", "Signed-off-by", "Reviewed-by", "Acked-by", "Tested-by",
@@ -291,8 +292,9 @@ in `setup` can be overwritten for a specific call.
 | `Signed-off-by:`     | `Signed-off-by: Ada Lovelace <ada@example.com>`    | Your git identity                              |
 | `Assisted-by: Cl`    | `Assisted-by: Claude Code`                         | An earlier `Assisted-by` value                 |
 
-Trailer completion works only in the `git.trailers.filetypes` buffers, from line 3, and on a line after a
-blank line or after another `Key: value` line. Keys come from `git.trailers.keys.builtin` and from the last
+Trailer completion works only in the `git.trailers.filetypes` buffers, from line `git.trailers.min_line`
+(default 3), and on a line after a blank line or after another `Key: value` line. Line 1 counts as after a
+blank line. Keys come from `git.trailers.keys.builtin` and from the last
 `git.trailers.keys.limit` commits.
 
 The value of a `git.trailers.identities.keys` trailer completes `Name <email>` from the authors and those

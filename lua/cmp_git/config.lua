@@ -55,6 +55,9 @@ local defaults = {
         trailers = {
             ---@type string[]
             filetypes = { "gitcommit", "NeogitCommitMessage" },
+            ---First line where trailers complete. Line 1 is the subject and line 2 is the blank line after it.
+            ---@type integer
+            min_line = 3,
             ---@class cmp_git.Config.GitTrailerKeys
             keys = {
                 ---@type string[]
