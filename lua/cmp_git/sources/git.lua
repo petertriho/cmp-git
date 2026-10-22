@@ -9,11 +9,18 @@ local trailers = require("cmp_git.provider.capabilities.trailers")
 ---@field cache_trailer_values table<integer, table<string, cmp_git.TrailerValue[]>>
 local Git = {}
 
+-- The fields of the caches, which are keyed by buffer number
+local CACHE_FIELDS = { "cache_commits", "cache_trailer_keys", "cache_trailer_identities", "cache_trailer_values" }
+
+---The sources that are alive. `:CmpGitClearCache` drops their caches.
+local instances = setmetatable({}, { __mode = "k" })
+
 ---@param overrides cmp_git.Config.Git
 function Git.new(overrides)
     local self = setmetatable({}, {
         __index = Git,
     })
+    instances[self] = true
 
     self.cache_commits = {}
     self.cache_trailer_keys = {}
@@ -23,6 +30,21 @@ function Git.new(overrides)
     self.config = overrides or {}
 
     return self
+end
+
+---Drop the cached commits and trailers of the buffer in all sources, or of all buffers.
+---@param bufnr? integer
+function Git.clear_caches(bufnr)
+    for source in pairs(instances) do
+        for _, field in ipairs(CACHE_FIELDS) do
+            if bufnr then
+                source[field][bufnr] = nil
+            else
+                -- A new table, so that a git command that ends after the clear fills the old one
+                source[field] = {}
+            end
+        end
+    end
 end
 
 ---@param callback fun(commits: cmp_git.CompletionList)

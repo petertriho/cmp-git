@@ -224,10 +224,14 @@ end
 
 local Core = {}
 
+---The cores that are alive. `:CmpGitClearCache` discovers the remote with their configs.
+local instances = setmetatable({}, { __mode = "k" })
+
 function Core.new(overrides)
     local self = setmetatable({}, {
         __index = Core,
     })
+    instances[self] = true
 
     self.config = config.normalize(overrides)
     self.hosts = vim.list_extend(vim.list_extend({}, self.config.github.hosts), self.config.gitlab.hosts)
@@ -278,6 +282,24 @@ function Core.new(overrides)
     end
 
     return self
+end
+
+---@return table[] cores The cores that are alive, in no order.
+function Core.instances()
+    return vim.tbl_keys(instances)
+end
+
+---Find the remote of the buffer with the remote options of the config.
+---@param bufnr? integer The buffer, by default the current one.
+---@param on_complete fun(git_info: cmp_git.GitInfo)
+function Core:discover_remote(bufnr, on_complete)
+    require("cmp_git.repository").discover(self.config.remotes, {
+        enableRemoteUrlRewrites = self.config.enableRemoteUrlRewrites,
+        ssh_aliases = self.config.ssh_aliases,
+        hosts = self.hosts,
+        on_complete = on_complete,
+        bufnr = bufnr,
+    })
 end
 
 ---The trigger character that starts the last word of the text before the cursor. A request that the user did not
@@ -471,13 +493,7 @@ function Core:_complete(context, callback, routes)
         return controller
     end
 
-    require("cmp_git.repository").discover(self.config.remotes, {
-        enableRemoteUrlRewrites = self.config.enableRemoteUrlRewrites,
-        ssh_aliases = self.config.ssh_aliases,
-        hosts = self.hosts,
-        on_complete = run,
-        bufnr = context.bufnr,
-    })
+    self:discover_remote(context.bufnr, run)
 
     return controller
 end
