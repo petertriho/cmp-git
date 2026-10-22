@@ -104,6 +104,7 @@ local ENV_NAMES = {
     "GIT_INDEX_FILE",
     "GIT_WORK_TREE",
     "HOME",
+    "XDG_CACHE_HOME",
     "XDG_CONFIG_HOME",
 }
 
@@ -185,6 +186,8 @@ local function setup_case()
     end
     vim.fn.mkdir(temp_root .. "/home", "p")
     vim.env.HOME = temp_root .. "/home"
+    -- The disk cache of the GitHub and GitLab items goes to `stdpath("cache")`
+    vim.env.XDG_CACHE_HOME = temp_root .. "/cache"
     vim.env.GIT_CONFIG_GLOBAL = "/dev/null"
     vim.env.GIT_CONFIG_NOSYSTEM = "1"
     -- A temporary directory outside a repository must not resolve to a repository above it
