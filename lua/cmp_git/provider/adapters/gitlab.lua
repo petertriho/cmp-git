@@ -24,7 +24,9 @@ end
 
 local function env()
     return {
-        GITLAB_TOKEN = vim.fn.getenv("GITLAB_TOKEN"),
+        -- `vim.env` is nil for an unset variable. `vim.fn.getenv` gives `vim.NIL`, which the command passes as the
+        -- string "vim.NIL".
+        GITLAB_TOKEN = vim.env.GITLAB_TOKEN,
         NO_COLOR = 1,
     }
 end

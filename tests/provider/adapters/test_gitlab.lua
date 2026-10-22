@@ -1,5 +1,6 @@
 local helpers = require("tests.helpers")
 local adapter = require("cmp_git.provider.adapters.gitlab")
+local command = require("cmp_git.command")
 local config = require("cmp_git.config")
 
 local eq = helpers.eq
@@ -72,12 +73,36 @@ T["issue_state_and_limit"] = function()
 end
 
 T["token_header"] = function()
-    vim.env.GITLAB_TOKEN = "secret"
     local request = adapter.issues_request(gitlab, "#", gitlab_config().issues)
+    eq(request.commands[1].env.GITLAB_TOKEN, nil, "no token for glab")
+    eq(#request.commands[2].args, 2, "no token, no curl header")
+
+    vim.env.GITLAB_TOKEN = "secret"
+    request = adapter.issues_request(gitlab, "#", gitlab_config().issues)
 
     eq(request.commands[1].env.GITLAB_TOKEN, "secret", "glab gets the token")
     eq(request.commands[2].args[3], "-H", "curl header flag")
     eq(request.commands[2].args[4], "Authorization: Bearer secret", "curl sends the token")
+end
+
+T["unset_token_does_not_reach_glab"] = function()
+    local glab = adapter.issues_request(gitlab, "#", gitlab_config().issues).commands[1]
+    local seen
+    local job = helpers.not_nil(
+        command.build(
+            { exec = "sh", args = { "-c", 'printf "%s" "${GITLAB_TOKEN-unset}"' }, env = glab.env },
+            function(stdout)
+                seen = stdout
+            end
+        )
+    )
+    job:start()
+    helpers.wait_for(function()
+        return seen ~= nil
+    end, "the command completes")
+
+    -- glab prefers GITLAB_TOKEN over the credentials from `glab auth login`
+    eq(seen, "unset", "the glab environment has no GITLAB_TOKEN")
 end
 
 T["handle_item_fills_null_description"] = function()
