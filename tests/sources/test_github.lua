@@ -1,6 +1,7 @@
 local helpers = require("tests.helpers")
 local command = require("cmp_git.command")
 local config = require("cmp_git.config")
+local repository = require("cmp_git.repository")
 local GitHub = require("cmp_git.sources.github")
 
 local eq = helpers.eq
@@ -37,6 +38,22 @@ end
 
 local git_info = { host = "github.com", owner = "owner", repo = "repo" }
 
+---Make PATH a directory with only these commands until the end of the case.
+---@param scripts table<string, string> The shell script body of each command, by name.
+---@return string bin The directory.
+local function fake_commands(scripts)
+    local bin = helpers.tempdir()
+    for name, body in pairs(scripts) do
+        local path = bin .. "/" .. name
+        local file = assert(io.open(path, "w"))
+        file:write("#!/bin/sh\n" .. body .. "\n")
+        file:close()
+        vim.uv.fs_chmod(path, tonumber("755", 8))
+    end
+    helpers.stub(vim.env, "PATH", bin)
+    return bin
+end
+
 local records = {
     issue = { number = 1, title = "an issue", body = "", updatedAt = "2024-01-01T00:00:00Z" },
     pr = { number = 2, title = "a pull request", body = "", updatedAt = "2024-01-01T00:00:00Z" },
@@ -49,10 +66,8 @@ local function fake_github()
     local source = GitHub.new(config.normalize({}).github)
     local requests = { issue = 0, pr = 0 }
 
-    -- Do not run `gh repo set-default`
-    helpers.stub(source, "_normalize_git_info", function(_, info)
-        return info
-    end)
+    -- No gh on PATH, so that the default repository lookup does not run
+    fake_commands({})
     helpers.stub(command, "build_fallback_list", function(commands, callback, handle_item)
         local kind = commands[1].args[1]
         return {
@@ -127,10 +142,8 @@ local function manual_github()
     local source = GitHub.new(config.normalize({}).github)
     local jobs = {}
 
-    -- Do not run `gh repo set-default`
-    helpers.stub(source, "_normalize_git_info", function(_, info)
-        return info
-    end)
+    -- No gh on PATH, so that the default repository lookup does not run
+    fake_commands({})
     helpers.stub(command, "build_fallback_list", function(commands, callback, handle_item)
         local kind = commands[1].args[1]
         local job = { command = "fake", started = false, cancelled = false }
@@ -195,6 +208,184 @@ T["issues_and_change_requests_cancel_both"] = function()
     helpers.not_nil(controller):cancel()
 
     eq({ jobs.issue.cancelled, jobs.pr.cancelled }, { true, true }, "both jobs are cancelled")
+    eq(lists, {}, "a cancelled request gets no list")
+end
+
+---A GitHub source whose jobs answer at once and record the repository that they ask for. With `default_repo`, a fake
+---`gh repo set-default --view` prints it and records the directory that it runs in.
+---@param default_repo? string nil for no gh on PATH.
+---@return cmp_git.Source.GitHub source
+---@return string[] repos The `owner/repo` of each job, in order.
+---@return fun(): string[] gh_calls The directories of the `gh repo set-default` calls so far.
+local function recording_github(default_repo)
+    local log_path = helpers.tempdir() .. "/gh_calls"
+    local scripts = {}
+    if default_repo then
+        scripts.gh = table.concat({
+            'if [ "$1 $2 $3" != "repo set-default --view" ]; then exit 1; fi',
+            string.format("pwd -P >> '%s'", log_path),
+            string.format("printf '%%s\\n' '%s'", default_repo),
+        }, "\n")
+    end
+    fake_commands(scripts)
+
+    local repos = {}
+    ---@param args string[]
+    local function record(args)
+        -- `gh issue list --repo host/owner/repo` or `gh api repos/owner/repo/...`
+        if args[1] == "api" then
+            table.insert(repos, args[2]:match("^repos/([^/]+/[^/]+)/"))
+        else
+            table.insert(repos, args[4]:match("^[^/]+/(.+)$"))
+        end
+    end
+    helpers.stub(command, "build_fallback_list", function(commands, callback)
+        record(commands[1].args)
+        return helpers.fake_job(function()
+            callback({ items = {}, isIncomplete = false }, true)
+        end)
+    end)
+    helpers.stub(command, "build_fallback", function(commands, callback)
+        record(commands[1].args)
+        return helpers.fake_job(function()
+            callback("", false)
+        end)
+    end)
+
+    local function gh_calls()
+        if vim.fn.filereadable(log_path) == 0 then
+            return {}
+        end
+        return vim.fn.readfile(log_path)
+    end
+
+    return GitHub.new(config.normalize({}).github), repos, gh_calls
+end
+
+local REQUESTS = { "complete_issues", "complete_change_requests", "complete_issues_and_change_requests" }
+
+---A new git info for each request, so that a change by one request cannot reach the next one.
+---@return cmp_git.GitInfo
+local function remote()
+    return { host = "github.com", owner = "owner", repo = "repo" }
+end
+
+T["the_default_repository_is_looked_up_once_without_blocking"] = function()
+    local source, repos, gh_calls = recording_github("upstream/project")
+    local cwd = helpers.tempdir()
+    helpers.stub(repository, "get_cwd", function()
+        return cwd
+    end)
+    local callback, lists = helpers.recorder()
+
+    local info = remote()
+    eq(source:complete_issues(callback, info, "#"), true, "the host is handled")
+    eq(#lists, 0, "the request does not wait for gh")
+    helpers.wait_for(function()
+        return #lists == 1
+    end, "the issues answer")
+    eq(repos, { "upstream/project" }, "the issues come from the default repository")
+    eq(info, remote(), "the git info of the caller does not change")
+    eq(gh_calls(), { cwd }, "gh runs in the directory of the buffer")
+
+    -- A buffer without cached lists, so that the requests need the repository
+    vim.api.nvim_set_current_buf(helpers.buffer({}, "markdown"))
+    source:complete_mentions(callback, remote(), "@")
+    source:complete_issues_and_change_requests(callback, remote(), "#")
+
+    eq(#lists, 3, "the known default repository answers at once")
+    eq(#repos, 5, "issues, mention preflight, mentions, issues, pull requests")
+    for i, repo in ipairs(repos) do
+        eq(repo, "upstream/project", "request " .. i .. " uses the default repository")
+    end
+    eq(gh_calls(), { cwd }, "gh runs once for the repository")
+end
+
+T["requests_during_the_lookup_share_it"] = function()
+    local source, repos, gh_calls = recording_github("upstream/project")
+    local callback, lists = helpers.recorder()
+
+    source:complete_issues(callback, remote(), "#")
+    source:complete_mentions(callback, remote(), "@")
+    helpers.wait_for(function()
+        return #lists == 2
+    end, "both requests answer")
+
+    eq(#gh_calls(), 1, "one gh call")
+    eq(repos, { "upstream/project", "upstream/project", "upstream/project" }, "the default repository")
+end
+
+T["without_a_default_repository_the_remote_is_used"] = function()
+    local source, repos, gh_calls = recording_github("")
+    local callback, lists = helpers.recorder()
+
+    source:complete_issues(callback, remote(), "#")
+    helpers.wait_for(function()
+        return #lists == 1
+    end, "the issues answer")
+    vim.api.nvim_set_current_buf(helpers.buffer({}, "markdown"))
+    source:complete_issues(callback, remote(), "#")
+
+    eq(#lists, 2, "the second request answers at once")
+    eq(repos, { "owner/repo", "owner/repo" }, "the remote repository")
+    eq(#gh_calls(), 1, "gh runs once")
+end
+
+T["a_cache_hit_does_not_run_gh"] = function()
+    local source, repos = recording_github("upstream/project")
+    local bufnr = vim.api.nvim_get_current_buf()
+    source.cache.issues[bufnr] = {}
+    source.cache.change_requests[bufnr] = {}
+    source.cache.mentions[bufnr] = { items = {}, in_progress = false }
+    local callback, lists = helpers.recorder()
+
+    for _, method in ipairs(vim.list_extend({ "complete_mentions" }, REQUESTS)) do
+        source[method](source, callback, remote(), "#")
+    end
+
+    eq(#lists, 4, "each cache hit answers at once")
+    eq(repos, {}, "no command runs")
+    eq(source.default_repos, {}, "no lookup starts")
+end
+
+T["without_gh_the_remote_is_used"] = function()
+    local source, repos = recording_github(nil)
+    local callback, lists = helpers.recorder()
+
+    for _, method in ipairs(REQUESTS) do
+        vim.api.nvim_set_current_buf(helpers.buffer({}, "markdown"))
+        source[method](source, callback, remote(), "#")
+    end
+
+    eq(#lists, 3, "each request answers at once")
+    eq(repos, { "owner/repo", "owner/repo", "owner/repo", "owner/repo" }, "the remote repository")
+end
+
+T["an_octo_buffer_keeps_its_repository"] = function()
+    local source, repos, gh_calls = recording_github("upstream/project")
+    vim.api.nvim_set_current_buf(helpers.buffer({}, "octo"))
+    local callback, lists = helpers.recorder()
+
+    source:complete_issues(callback, remote(), "#")
+    source:complete_mentions(callback, remote(), "@")
+
+    eq(#lists, 2, "each request answers at once")
+    eq(repos, { "owner/repo", "owner/repo", "owner/repo" }, "the repository of the octo buffer")
+    eq(gh_calls(), {}, "gh does not run")
+end
+
+T["a_cancel_during_the_lookup_starts_no_request"] = function()
+    local source, repos = recording_github("upstream/project")
+    local callback, lists = helpers.recorder()
+
+    local _, controller = source:complete_issues(callback, remote(), "#")
+    helpers.not_nil(controller):cancel()
+    helpers.wait_for(function()
+        local lookup = source.default_repos["github.com/owner/repo"]
+        return lookup ~= nil and lookup.done
+    end, "the lookup ends")
+
+    eq(repos, {}, "no request starts")
     eq(lists, {}, "a cancelled request gets no list")
 end
 
