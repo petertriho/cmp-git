@@ -52,6 +52,7 @@ end
 
 function Blink:get_completions(ctx, callback)
     local cancelled = false
+    local responded = false
     local cursor = cursor_from_context(ctx)
     -- blink.cmp gives the full line in `ctx.line`. Pattern trigger actions must match up to the cursor.
     local line = ctx.cursor_before_line or string.sub(ctx.line or vim.api.nvim_get_current_line(), 1, cursor.character)
@@ -61,9 +62,14 @@ function Blink:get_completions(ctx, callback)
         line = line,
         bufnr = ctx.bufnr or vim.api.nvim_get_current_buf(),
     }, function(list)
-        if cancelled then
+        -- blink.cmp adds the items of each response of a request to the items of the earlier responses, but each list
+        -- of cmp-git repeats the earlier items, for example the next page of mentions. Only the first response is
+        -- needed: blink.cmp keeps its `is_incomplete_forward`, so it asks again on the next keystroke, and that request
+        -- gets the cached items.
+        if cancelled or responded then
             return
         end
+        responded = true
 
         callback({
             items = list.items,
@@ -72,9 +78,12 @@ function Blink:get_completions(ctx, callback)
         })
     end)
 
+    -- blink.cmp cancels a request when it asks again, which it does on each keystroke after an incomplete response.
+    -- After the first response, the request only fills the cache that the next request reads, for example with the
+    -- next pages of mentions, so it continues.
     return function()
         cancelled = true
-        if controller and controller.cancel then
+        if not responded and controller and controller.cancel then
             controller:cancel()
         end
     end
