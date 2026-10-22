@@ -101,6 +101,7 @@ has these jobs:
 | `Quality`        | `make format-check`, `make lint`, and `make typecheck` in the default shell                               | Yes    |
 | `Neovim stable`  | `make test` in the default shell                                                                          | Yes    |
 | `Neovim 0.12.0`  | `make test` in the `nvim-0_12_0` shell                                                                    | Yes    |
+| `Nightly cache`  | `scripts/nightly-cache.sh check` (the locked nightly Neovim is in the cache for each system)              | Yes    |
 | `Neovim nightly` | `make test` with the newest `neovim-nightly-overlay` commit that is in the cache, not the locked revision | No     |
 
 A weekly schedule (Monday 06:00 UTC) runs only the nightly job. GitHub disables scheduled workflows after 60 days
@@ -119,6 +120,18 @@ job then fails, do these steps on the Dependabot branch:
 1. Run `make format`.
 2. Fix the lint and type warnings, if there are any.
 3. Push the changes to the branch.
+
+A `nix` update can lock a `neovim-nightly-overlay` commit whose Neovim is not in the cache yet. Then
+`nix develop .#nightly` builds Neovim from source, and the `Nightly cache` job fails. The overlay updates each day at
+00:00 UTC, and its CI pushes the build to the cache later. If the job fails, do these steps. Step 2 removes the
+changes that you pushed to the branch.
+
+1. Later the same day, run the job again.
+2. If the job still fails, comment `@dependabot recreate` on the pull request. Dependabot then locks the newest
+   overlay commit.
+3. If you pushed changes to the branch before step 2, push them again.
+
+To check the locked nightly Neovim on your computer, run `scripts/nightly-cache.sh check`.
 
 Dependabot does not change the Neovim 0.12.0 pin in `flake.nix`.
 

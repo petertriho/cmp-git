@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # Finds nightly Neovim builds of the `nightly` dev shell in nix-community.cachix.org.
 #
+#   scripts/nightly-cache.sh check
+#       Fails when the cache has no build of the locked neovim-nightly-overlay for a system of the flake.
+#
 #   scripts/nightly-cache.sh latest [count]
 #       Prints the newest of the last `count` (default 10) neovim-nightly-overlay commits whose build for this system
 #       is in the cache. Needs an authenticated `gh`.
@@ -10,7 +13,7 @@ cache=https://nix-community.cachix.org
 overlay=nix-community/neovim-nightly-overlay
 
 usage() {
-    echo "Usage: $0 latest [count]" >&2
+    echo "Usage: $0 check | latest [count]" >&2
     exit 2
 }
 
@@ -37,6 +40,21 @@ in_cache() {
     esac
 }
 
+check() {
+    local systems system path missing=0
+    systems=$(nix eval --raw --no-write-lock-file .#devShells --apply 'shells: toString (builtins.attrNames shells)')
+    for system in $systems; do
+        path=$(neovim_path "$system")
+        if in_cache "$path"; then
+            echo "In the cache: $system $path"
+        else
+            echo "Not in the cache: $system $path" >&2
+            missing=1
+        fi
+    done
+    return "$missing"
+}
+
 latest() {
     local count=${1:-10} system revs rev path
     system=$(nix eval --raw --impure --expr builtins.currentSystem)
@@ -54,6 +72,7 @@ latest() {
 }
 
 case ${1:-} in
+check) check ;;
 latest)
     shift
     latest "$@"
