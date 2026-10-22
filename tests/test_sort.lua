@@ -51,6 +51,14 @@ T["default_provider_sorts"] = function()
     recent_first(sort.github.pull_requests, "updatedAt", "2020-01-01T00:00:00Z", "2024-01-01T00:00:00Z")
     recent_first(sort.gitlab.issues, "updated_at", "2020-01-01T00:00:00.000Z", "2024-01-01T00:00:00.000Z")
     recent_first(sort.gitlab.merge_requests, "updated_at", "2020-01-01T00:00:00.000Z", "2024-01-01T00:00:00.000Z")
+    local without_date = {}
+    local old_issue = { updatedAt = "1990-01-01T00:00:00Z" }
+    local old_merge_request = { updated_at = "1990-01-01T00:00:00.000Z" }
+    ok(sort.github.issues(without_date) > sort.github.issues(old_issue), "an issue without a date sorts last")
+    ok(
+        sort.gitlab.merge_requests(without_date) > sort.gitlab.merge_requests(old_merge_request),
+        "a merge request without a date sorts last"
+    )
     eq(sort.github.mentions, nil, "GitHub mentions keep the API order")
     eq(sort.gitlab.mentions, nil, "GitLab mentions keep the API order")
 end

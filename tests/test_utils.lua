@@ -23,24 +23,34 @@ T["url_encode"] = function()
 end
 
 T["parse_github_date"] = function()
-    eq(
-        utils.parse_github_date("2024-01-02T03:04:05Z"),
-        os.time({ year = 2024, month = 1, day = 2, hour = 3, min = 4, sec = 5 }),
-        "UTC date"
-    )
+    eq(utils.parse_github_date("2024-01-02T03:04:05Z"), 1704164645, "UTC date")
+    eq(utils.parse_github_date("2000-02-29T12:00:00Z"), 951825600, "leap day")
+    eq(utils.parse_github_date("1999-12-31T23:59:59Z"), 946684799, "end of a year")
+    eq(utils.parse_github_date("2100-03-01T00:00:00Z"), 4107542400, "after a century year without a leap day")
 end
 
 T["parse_gitlab_date"] = function()
-    local with_offset = os.time({ year = 2024, month = 1, day = 2, hour = 8, min = 34, sec = 5 })
+    eq(utils.parse_gitlab_date("2024-01-02T03:04:05.678Z"), 1704164645, "UTC date with milliseconds")
+    eq(utils.parse_gitlab_date("2024-01-02T03:04:05Z"), 1704164645, "UTC date without milliseconds")
+    eq(utils.parse_gitlab_date("2024-01-02T03:04:05.678+05:30"), 1704144845, "a + offset is ahead of UTC")
+    eq(utils.parse_gitlab_date("2024-01-02T03:04:05.678-05:30"), 1704184445, "a - offset is behind UTC")
+end
 
-    eq(utils.parse_gitlab_date("2024-01-02T03:04:05.678+05:30"), with_offset, "date with a + offset")
-    -- The offset sign is not applied, so both signs give the same time
-    eq(utils.parse_gitlab_date("2024-01-02T03:04:05.678-05:30"), with_offset, "date with a - offset")
-    eq(
-        utils.parse_gitlab_date("2024-01-02T03:04:05.678Z"),
-        os.time({ year = 2024, month = 1, day = 2, hour = 3, min = 4, sec = 5 }),
-        "UTC date without offset captures"
-    )
+T["parse_dates_ignore_the_local_time_zone"] = function()
+    -- A POSIX time zone 5 hours behind UTC, which needs no time zone database
+    helpers.stub(vim.env, "TZ", "XYZ+05")
+
+    eq(utils.parse_github_date("2024-01-02T03:04:05Z"), 1704164645, "GitHub date")
+    eq(utils.parse_gitlab_date("2024-01-02T03:04:05.678Z"), 1704164645, "GitLab date")
+end
+
+T["parse_dates_without_a_valid_value"] = function()
+    for _, parse in ipairs({ utils.parse_github_date, utils.parse_gitlab_date }) do
+        eq(parse(nil), 0, "a missing date is the oldest")
+        eq(parse(vim.NIL), 0, "a JSON null date is the oldest")
+        eq(parse("yesterday"), 0, "an unknown format is the oldest")
+        eq(parse("2024-01-02T03:04:05"), 0, "a date without a time zone is the oldest")
+    end
 end
 
 return T
