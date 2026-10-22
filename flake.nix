@@ -4,7 +4,7 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     multiverse.url = "github:fzakaria/nixpkgs-multiverse";
-    # No `follows` on its nixpkgs input, so the builds match nix-community.cachix.org
+    # No `follows` on its inputs, so the builds match nix-community.cachix.org
     neovim-nightly-overlay.url = "github:nix-community/neovim-nightly-overlay";
   };
 
@@ -46,7 +46,9 @@
           default = shell pkgs.neovim-unwrapped;
           # The minimum supported version
           nvim-0_12_0 = shell (mv.fast.version "neovim-unwrapped" "0.12.0");
-          nightly = shell neovim-nightly-overlay.packages.${system}.default;
+          # The overlay CI pushes only this output to nix-community.cachix.org. It uses the nixpkgs of the
+          # overlay's dev partition, so `packages.${system}.default` is a different build that is not in the cache.
+          nightly = shell neovim-nightly-overlay.checks.${system}.neovim;
         }
       );
     };
