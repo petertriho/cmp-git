@@ -37,16 +37,17 @@ end
 
 local git_info = { host = "github.com", owner = "owner", repo = "repo" }
 
+local records = {
+    issue = { number = 1, title = "an issue", body = "", updatedAt = "2024-01-01T00:00:00Z" },
+    pr = { number = 2, title = "a pull request", body = "", updatedAt = "2024-01-01T00:00:00Z" },
+}
+
 ---A GitHub source whose `gh` commands give one issue and one pull request. `requests` counts the commands that ran.
 ---@return cmp_git.Source.GitHub source
 ---@return { issue: integer, pr: integer } requests
 local function fake_github()
     local source = GitHub.new(config.normalize({}).github)
     local requests = { issue = 0, pr = 0 }
-    local records = {
-        issue = { number = 1, title = "an issue", body = "", updatedAt = "2024-01-01T00:00:00Z" },
-        pr = { number = 2, title = "a pull request", body = "", updatedAt = "2024-01-01T00:00:00Z" },
-    }
 
     -- Do not run `gh repo set-default`
     helpers.stub(source, "_normalize_git_info", function(_, info)
@@ -112,6 +113,89 @@ T["issues_and_change_requests_after_a_cached_change_request"] = function()
         "the cached pull requests come after the issues"
     )
     eq(requests, { issue = 1, pr = 1 }, "each command runs once")
+end
+
+---@class tests.GitHubJob: cmp_git.SystemJob
+---@field started boolean
+---@field cancelled boolean
+---@field respond fun(success: boolean) Complete the job with its record, or fail it.
+
+---A GitHub source whose `gh` jobs wait until the case completes them.
+---@return cmp_git.Source.GitHub source
+---@return table<string, tests.GitHubJob> jobs The last job of each kind, `issue` or `pr`.
+local function manual_github()
+    local source = GitHub.new(config.normalize({}).github)
+    local jobs = {}
+
+    -- Do not run `gh repo set-default`
+    helpers.stub(source, "_normalize_git_info", function(_, info)
+        return info
+    end)
+    helpers.stub(command, "build_fallback_list", function(commands, callback, handle_item)
+        local kind = commands[1].args[1]
+        local job = { command = "fake", started = false, cancelled = false }
+        function job.start()
+            job.started = true
+        end
+        function job.cancel()
+            job.cancelled = true
+        end
+        function job.respond(success)
+            if success then
+                callback({ items = { handle_item(vim.deepcopy(records[kind])) }, isIncomplete = false }, true)
+            else
+                callback({ items = {}, isIncomplete = false }, false)
+            end
+        end
+        jobs[kind] = job
+        return job
+    end)
+
+    return source, jobs
+end
+
+T["issues_and_change_requests_start_at_once"] = function()
+    local source, jobs = manual_github()
+    local callback, lists = helpers.recorder()
+
+    source:complete_issues_and_change_requests(callback, git_info, "#")
+    eq({ jobs.issue.started, jobs.pr.started }, { true, true }, "both commands run at once")
+
+    jobs.pr.respond(true)
+    eq(#lists, 0, "the list waits for the issues")
+    jobs.issue.respond(true)
+
+    eq(#lists, 1, "one list")
+    eq(labels(lists[1].items), { "#1: an issue", "#2: a pull request" }, "issues, then pull requests")
+end
+
+T["issues_and_change_requests_keep_the_items_of_a_request_that_succeeds"] = function()
+    for _, failed in ipairs({ "issue", "pr" }) do
+        local source, jobs = manual_github()
+        local callback, lists = helpers.recorder()
+
+        source:complete_issues_and_change_requests(callback, git_info, "#")
+        jobs.issue.respond(failed ~= "issue")
+        jobs.pr.respond(failed ~= "pr")
+
+        eq(#lists, 1, failed .. " failed: one list")
+        eq(
+            labels(lists[1].items),
+            failed == "issue" and { "#2: a pull request" } or { "#1: an issue" },
+            failed .. " failed: the items of the other request"
+        )
+    end
+end
+
+T["issues_and_change_requests_cancel_both"] = function()
+    local source, jobs = manual_github()
+    local callback, lists = helpers.recorder()
+
+    local _, controller = source:complete_issues_and_change_requests(callback, git_info, "#")
+    helpers.not_nil(controller):cancel()
+
+    eq({ jobs.issue.cancelled, jobs.pr.cancelled }, { true, true }, "both jobs are cancelled")
+    eq(lists, {}, "a cancelled request gets no list")
 end
 
 return T

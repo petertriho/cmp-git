@@ -136,56 +136,53 @@ function GitHub:complete_issues_and_change_requests(callback, git_info, trigger_
 
     git_info = self:_normalize_git_info(git_info)
 
-    local issue_items = {}
-    local state = { cancelled = false, active = nil }
-    local controller = {
-        command = "github_issues_and_change_requests",
-        cancel = function()
-            state.cancelled = true
-            if state.active and state.active.cancel then
-                state.active:cancel()
-            end
-        end,
-    }
+    local results = {}
+    local pending = 2
+    local cancelled = false
 
-    -- The capability jobs fill the caches. On a cache hit, a capability calls the callback at once and gives no job,
-    -- so the pull requests are requested only after the issues are known.
-    local function complete_change_requests()
-        if state.cancelled then
-            return
-        end
-
-        local change_requests_job = self:_change_requests_job(function(args)
-            if state.cancelled then
+    -- Each capability calls back once: at once on a cache hit, and with an empty list on a failure. So a failure of
+    -- one request still gives the items of the other.
+    ---@param kind "issues" | "change_requests"
+    local function collect(kind)
+        return function(list)
+            if cancelled then
                 return
             end
+            results[kind] = list.items
+            pending = pending - 1
+            if pending > 0 then
+                return
+            end
+
             -- A new list, so that the issue cache does not get the pull requests
-            local items = vim.list_extend(vim.list_extend({}, issue_items), args.items)
+            local items = vim.list_extend(vim.list_extend({}, results.issues), results.change_requests)
             log.fmt_debug("Got %d issues and prs", #items)
             callback({ items = items, isIncomplete = false })
-        end, git_info, trigger_char)
-
-        if change_requests_job then
-            state.active = change_requests_job
-            change_requests_job:start()
         end
     end
 
-    local issues_job = self:_issues_job(function(args)
-        if state.cancelled then
-            return
-        end
-        issue_items = args.items
-    end, git_info, trigger_char)
-
+    local issues_job = self:_issues_job(collect("issues"), git_info, trigger_char)
+    local change_requests_job = self:_change_requests_job(collect("change_requests"), git_info, trigger_char)
+    -- Both commands run at once, so that a cold request waits for the slower one, not for both in turn
     if issues_job then
-        state.active = issues_job
-        issues_job:start(complete_change_requests)
-    else
-        complete_change_requests()
+        issues_job:start()
+    end
+    if change_requests_job then
+        change_requests_job:start()
     end
 
-    return true, controller
+    return true,
+        {
+            command = "github_issues_and_change_requests",
+            cancel = function()
+                cancelled = true
+                for _, job in ipairs({ issues_job or false, change_requests_job or false }) do
+                    if job and job.cancel then
+                        job:cancel()
+                    end
+                end
+            end,
+        }
 end
 
 ---@param callback fun(list: cmp_git.CompletionList)
