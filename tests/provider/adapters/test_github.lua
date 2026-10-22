@@ -4,7 +4,6 @@ local command = require("cmp_git.command")
 local config = require("cmp_git.config")
 
 local eq = helpers.eq
-local ok = helpers.ok
 
 local T = helpers.new_set()
 
@@ -215,7 +214,18 @@ T["mentions_request"] = function()
         "github.com",
     }, "gh mention arguments")
     eq(request.commands[1].env.CLICOLOR, 0, "gh output has no colors")
-    ok(curl_url(request.commands[2]):match("/collaborators%?per_page=50&page=2$"), "curl mention pagination")
+    eq(
+        curl_url(request.commands[2]),
+        "https://api.github.com/repos/owner/repo/collaborators?per_page=50&page=2",
+        "curl mention URL"
+    )
+    eq(
+        curl_url(
+            adapter.mentions_request(enterprise, "@", github_config().mentions, { page = 1, page_size = 100 }).commands[2]
+        ),
+        "https://github.example.com/api/v3/repos/owner/repo/contributors?per_page=100&page=1",
+        "curl mention URL for an enterprise host"
+    )
 
     local without_context = adapter.mentions_request(github, "@", github_config().mentions, {
         page = 1,
