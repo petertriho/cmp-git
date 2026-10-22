@@ -241,15 +241,39 @@ function Core.new(overrides)
     end
 
     self.trigger_characters_str = table.concat(self.trigger_characters, "")
-    self.keyword_pattern = string.format("[%s]\\S*", self.trigger_characters_str)
+    local trigger_pattern = nil
+    if #self.trigger_characters > 0 then
+        -- In a Vim collection, `]`, `^`, `-`, and `\` need a backslash. A backslash before another character would
+        -- add a backslash to the collection.
+        local collection = string.gsub(self.trigger_characters_str, "[%]%^%-\\]", "\\%0")
+        trigger_pattern = "[" .. collection .. [[]\S*]]
+    end
+
+    -- nil when there is nothing to match, because an empty collection is an invalid regex. nvim-cmp then uses its
+    -- default keyword pattern.
+    self.keyword_pattern = trigger_pattern
     if #patterns > 0 then
-        if #self.trigger_characters > 0 then
-            table.insert(patterns, self.keyword_pattern)
+        if trigger_pattern then
+            table.insert(patterns, trigger_pattern)
         end
         self.keyword_pattern = [[\%(]] .. table.concat(patterns, [[\|]]) .. [[\)]]
     end
 
     return self
+end
+
+---The trigger character that starts the last word of the text before the cursor. A request that the user did not
+---start with a trigger character, such as one for the next character after `#`, has none.
+---@param line string The text before the cursor.
+---@param trigger_characters string[]
+---@return string?
+function Core.find_trigger_character(line, trigger_characters)
+    if #trigger_characters == 0 then
+        return nil
+    end
+
+    -- `vim.pesc` escapes each character that is special in a Lua pattern set
+    return string.match(line, "([" .. vim.pesc(table.concat(trigger_characters)) .. "])%S*$")
 end
 
 local function find_trigger_start(line, trigger_character, cursor_character)

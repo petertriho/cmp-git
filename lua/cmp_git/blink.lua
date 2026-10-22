@@ -29,12 +29,7 @@ local function trigger_character_from_context(ctx, line, trigger_characters)
         return ctx.trigger_character
     end
 
-    if #trigger_characters == 0 then
-        return nil
-    end
-
-    local escaped = table.concat(trigger_characters, "")
-    return string.match(line, "%s*([" .. escaped .. "])%S*$")
+    return Core.find_trigger_character(line, trigger_characters)
 end
 
 local function cursor_from_context(ctx)

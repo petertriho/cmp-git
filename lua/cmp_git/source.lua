@@ -27,14 +27,14 @@ function Source.new(overrides)
 end
 
 ---@param params cmp_git.CmpCompletionParams
----@param trigger_characters_str string
+---@param trigger_characters string[]
 ---@return string?
-local function trigger_character_from_params(params, trigger_characters_str)
+local function trigger_character_from_params(params, trigger_characters)
     local trigger_kind = params.completion_context.triggerKind
     -- nvim-cmp asks again with TriggerForIncompleteCompletions (3) when the user types after an incomplete list, such
     -- as the first page of mentions. Like Invoked (1), it has no trigger character.
     if trigger_kind == 1 or trigger_kind == 3 then
-        return string.match(params.context.cursor_before_line, "%s*([" .. trigger_characters_str .. "])%S*$")
+        return Core.find_trigger_character(params.context.cursor_before_line, trigger_characters)
     elseif trigger_kind == 2 then
         return params.completion_context.triggerCharacter
     end
@@ -51,7 +51,7 @@ end
 ---@param params cmp_git.CmpCompletionParams
 ---@return cmp_git.CompletionContext
 function Source:_context_from_params(params)
-    local trigger_character = trigger_character_from_params(params, self.trigger_characters_str)
+    local trigger_character = trigger_character_from_params(params, self.core:get_trigger_characters())
 
     return {
         trigger_character = trigger_character,

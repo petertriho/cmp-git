@@ -97,6 +97,46 @@ T["custom_trigger_actions_remove_trailers"] = function()
     eq(core.keyword_pattern, "[:]\\S*", "keyword pattern without pattern entries is unchanged")
 end
 
+-- Characters that are special in a Vim collection or a Lua pattern set. `^` comes first, where it would negate the
+-- set, and `-` between `#` and `@` would make a range that contains `+`.
+local SPECIAL_TRIGGER_CHARACTERS = { "^", "#", "-", "@", "%", "]", "\\", "[" }
+
+---@param characters string[]
+---@return table core
+local function core_with_triggers(characters)
+    local trigger_actions = {}
+    for _, character in ipairs(characters) do
+        table.insert(trigger_actions, { trigger_character = character, actions = { "git_commits" } })
+    end
+    return Core.new({ trigger_actions = trigger_actions })
+end
+
+T["trigger_characters_are_escaped"] = function()
+    local core = core_with_triggers(SPECIAL_TRIGGER_CHARACTERS)
+    local regex = vim.regex([[\%(]] .. core.keyword_pattern .. [[\)\m$]])
+
+    for _, character in ipairs(SPECIAL_TRIGGER_CHARACTERS) do
+        local line = "see " .. character .. "ab"
+        eq(regex:match_str(line), 4, "keyword offset of " .. vim.inspect(line))
+        eq(
+            Core.find_trigger_character(line, core:get_trigger_characters()),
+            character,
+            "trigger character of " .. vim.inspect(line)
+        )
+    end
+    for _, line in ipairs({ "see ab", "see +ab" }) do
+        eq(regex:match_str(line), nil, "no keyword offset for " .. vim.inspect(line))
+    end
+    eq(Core.find_trigger_character("see +ab", core:get_trigger_characters()), nil, "no trigger in a range")
+
+    local brackets = core_with_triggers({ "[", "]" })
+    eq(vim.regex(brackets.keyword_pattern):match_str("see \\ab"), nil, "brackets do not add a backslash")
+
+    local without_triggers = Core.new({ trigger_actions = {} })
+    eq(without_triggers:get_keyword_pattern(), nil, "no keyword pattern without trigger characters")
+    eq(Core.find_trigger_character("see #ab", {}), nil, "no trigger character without trigger characters")
+end
+
 T["invalid_trigger_action_pattern_is_skipped"] = function()
     local core = Core.new({
         trigger_actions = {

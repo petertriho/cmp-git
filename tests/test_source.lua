@@ -248,6 +248,29 @@ T["nvim_cmp_incomplete_list_requests_find_the_trigger"] = function()
     eq(lists[1].items[1].label, "@login", "the request gets the mentions")
 end
 
+T["nvim_cmp_special_trigger_characters"] = function()
+    local source = Source.new({
+        trigger_actions = {
+            { trigger_character = "%", actions = { "github_issues" } },
+            { trigger_character = "]", actions = { "github_issues" } },
+        },
+    })
+    local triggers = {}
+    source.sources.github = {
+        complete_issues = function(_, _, _, trigger_char)
+            table.insert(triggers, trigger_char)
+            return true
+        end,
+    }
+
+    for _, line in ipairs({ "see %ab", "see ]ab" }) do
+        local context = source:_context_from_params(cmp_params(line, 1))
+        source:_run_trigger_actions(context.trigger_character, function() end, cmp_params(line, 1), {})
+    end
+
+    eq(triggers, { "%", "]" }, "special trigger characters route")
+end
+
 T["source_new_uses_normalized_config"] = function()
     local source = Source.new({
         github = {
