@@ -31,19 +31,21 @@ local function env()
     }
 end
 
-local function curl_args(curl_url)
-    local args = {
-        "-s",
-        curl_url,
-    }
+---@param curl_url string
+---@return cmp_git.CommandSpec
+local function curl_command(curl_url)
+    local args = { "-s" }
+    local stdin = nil
 
-    if vim.fn.exists("$GITLAB_TOKEN") == 1 then
-        local token = vim.fn.getenv("GITLAB_TOKEN")
-        table.insert(args, "-H")
-        table.insert(args, string.format("Authorization: Bearer %s", token))
+    local token = vim.env.GITLAB_TOKEN
+    if token and token ~= "" then
+        -- `-H @-` reads the header from stdin, so that the token is not in the process list
+        vim.list_extend(args, { "-H", "@-" })
+        stdin = string.format("Authorization: Bearer %s\n", token)
     end
 
-    return args
+    table.insert(args, curl_url)
+    return { exec = "curl", args = args, stdin = stdin }
 end
 
 function M.issues_request(git_info, trigger_char, config)
@@ -58,18 +60,15 @@ function M.issues_request(git_info, trigger_char, config)
                 },
                 env = env(),
             },
-            {
-                exec = "curl",
-                args = curl_args(
-                    string.format(
-                        "https://%s/api/v4/projects/%s/issues?per_page=%d&state=%s",
-                        git_info.host,
-                        id,
-                        config.limit,
-                        config.state
-                    )
-                ),
-            },
+            curl_command(
+                string.format(
+                    "https://%s/api/v4/projects/%s/issues?per_page=%d&state=%s",
+                    git_info.host,
+                    id,
+                    config.limit,
+                    config.state
+                )
+            ),
         },
         handle_item = function(issue)
             if issue.description == vim.NIL then
@@ -92,18 +91,15 @@ function M.change_requests_request(git_info, trigger_char, config)
                 },
                 env = env(),
             },
-            {
-                exec = "curl",
-                args = curl_args(
-                    string.format(
-                        "https://%s/api/v4/projects/%s/merge_requests?per_page=%d&state=%s",
-                        git_info.host,
-                        id,
-                        config.limit,
-                        config.state
-                    )
-                ),
-            },
+            curl_command(
+                string.format(
+                    "https://%s/api/v4/projects/%s/merge_requests?per_page=%d&state=%s",
+                    git_info.host,
+                    id,
+                    config.limit,
+                    config.state
+                )
+            ),
         },
         handle_item = function(mr)
             return format.item(config, trigger_char, mr)
@@ -123,12 +119,9 @@ function M.mentions_request(git_info, trigger_char, config)
                 },
                 env = env(),
             },
-            {
-                exec = "curl",
-                args = curl_args(
-                    string.format("https://%s/api/v4/projects/%s/users?per_page=%d", git_info.host, id, config.limit)
-                ),
-            },
+            curl_command(
+                string.format("https://%s/api/v4/projects/%s/users?per_page=%d", git_info.host, id, config.limit)
+            ),
         },
         handle_item = function(mention)
             return format.item(config, trigger_char, mention)

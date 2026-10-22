@@ -13,6 +13,7 @@ local M = {}
 ---@field exec string
 ---@field args string[]
 ---@field env? table<string, string | integer> Added to the environment of Neovim.
+---@field stdin? string Written to the standard input. Secrets go here, because other users can read the arguments.
 
 ---@param spec cmp_git.CommandSpec
 ---@param callback fun(result: string, success: boolean): nil
@@ -59,6 +60,7 @@ function M.build(spec, callback)
             local ok, handle = pcall(vim.system, vim.list_extend({ spec.exec }, spec.args), {
                 text = true,
                 env = spec.env,
+                stdin = spec.stdin,
                 cwd = repository.get_cwd(),
             }, function(result)
                 vim.schedule(function()
