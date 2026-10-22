@@ -39,16 +39,18 @@ extra-trusted-public-keys = nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq
 
 ## Make targets
 
-| Target                       | Action                                                                                              |
-| ---------------------------- | --------------------------------------------------------------------------------------------------- |
-| `make test`                  | Runs all tests.                                                                                     |
-| `make test-file FILE=<path>` | Runs one test file.                                                                                 |
-| `make format`                | Formats `lua/` and `tests/` with StyLua.                                                            |
-| `make format-check`          | Checks the formatting.                                                                              |
-| `make lint`                  | Lints `lua/` and `tests/` with Selene. Warnings fail the target.                                    |
-| `make typecheck`             | Checks the types with lua-language-server. Warnings fail the target.                                |
-| `make ci`                    | Runs `format-check`, `lint`, `typecheck`, and `test`.                                               |
-| `make test-deps`             | Clones mini.nvim at `MINI_VERSION` into `deps/`. `test`, `test-file`, and `typecheck` run it first. |
+| Target                         | Action                                                                                              |
+| ------------------------------ | --------------------------------------------------------------------------------------------------- |
+| `make test`                    | Runs all tests.                                                                                     |
+| `make test-file FILE=<path>`   | Runs one test file.                                                                                 |
+| `make format`                  | Formats `lua/`, `tests/`, and `benchmarks/` with StyLua.                                            |
+| `make format-check`            | Checks the formatting.                                                                              |
+| `make lint`                    | Lints `lua/`, `tests/`, and `benchmarks/` with Selene. Warnings fail the target.                    |
+| `make typecheck`               | Checks the types with lua-language-server. Warnings fail the target.                                |
+| `make ci`                      | Runs `format-check`, `lint`, `typecheck`, and `test`.                                               |
+| `make test-deps`               | Clones mini.nvim at `MINI_VERSION` into `deps/`. `test`, `test-file`, and `typecheck` run it first. |
+| `make bench`                   | Runs the benchmarks. Options go in `BENCH_ARGS`.                                                    |
+| `make bench-compare REF=<rev>` | Compares the benchmarks of `<rev>` (default `main`) with the working tree.                          |
 
 To use a different tool, set its variable: `NVIM`, `STYLUA`, `SELENE`, or `LUA_LANGUAGE_SERVER`. For example:
 
@@ -100,6 +102,53 @@ rev=$(scripts/nightly-cache.sh latest)
 nix develop .#nightly --no-write-lock-file \
   --override-input neovim-nightly-overlay "github:nix-community/neovim-nightly-overlay/$rev" -c make test
 ```
+
+## Benchmarks
+
+The benchmarks in `benchmarks/` measure the two costs that users feel: the work that runs while they type, and the time
+until the completion items show. Nothing in them uses the network.
+
+| Group        | Cases                            | Measures                                                                              |
+| ------------ | -------------------------------- | ------------------------------------------------------------------------------------- |
+| `keystroke/` | `benchmarks/cases/keystroke.lua` | The checks that nvim-cmp and blink.cmp make on each keystroke, and declined requests. |
+| `request/`   | `benchmarks/cases/request.lua`   | Routing, parsing, and item formatting for one request. Also the startup cost.         |
+| `e2e/`       | `benchmarks/cases/e2e.lua`       | One request from start to the final callback, in a git repository with 1000 commits.  |
+
+The `e2e/` cases run the real git commands. A fake `gh` in a temporary directory answers the GitHub requests at once,
+so the times include the process starts, but not the network or the run time of the real `gh`. `cold` cases use a new
+source for each request. `warm` cases repeat a request that the cache can answer.
+
+Each line of the report has these values:
+
+| Value      | Meaning                                                                                                  |
+| ---------- | -------------------------------------------------------------------------------------------------------- |
+| `median`   | The median time of one operation.                                                                        |
+| `alloc`    | The Lua memory that one operation allocates. It does not change between runs, so it shows small changes. |
+| `main`     | `e2e/` only. The main-thread time of one request. Neovim cannot handle a keystroke during this time.     |
+| `block`    | `e2e/` only. The longest uninterrupted main-thread slice of one request.                                 |
+| `spawns`   | The processes that one operation starts.                                                                 |
+| `blocking` | The synchronous process calls (`vim.fn.system`) of one operation. These stop Neovim until they finish.   |
+
+To run the benchmarks:
+
+```sh
+make bench
+make bench BENCH_ARGS="--filter keystroke"
+```
+
+To compare your changes with `main`:
+
+```sh
+make bench-compare
+```
+
+`scripts/bench-compare.sh` runs the cases of the working tree on the `lua/` code of both revisions, two runs each,
+and keeps the best value of each side. It reports a regression when a time grows by more than 25%, an allocation
+grows by more than 10%, or a process count grows. Very small changes do not count. The options of
+`benchmarks/compare.lua` change the limits.
+
+To add a case, add it to the file of its group. A case that starts a process must be an async case that calls `done`.
+Use the fixtures in `benchmarks/fixtures.lua` so that the case does not use the network.
 
 ## CI
 

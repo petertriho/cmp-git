@@ -4,9 +4,10 @@ SELENE ?= selene
 LUA_LANGUAGE_SERVER ?= lua-language-server
 MINI_VERSION := v0.18.0
 MINI_DIR := deps/mini.nvim
-LUA_PATHS := lua tests
+LUA_PATHS := lua tests benchmarks
+REF ?= main
 
-.PHONY: test-deps test test-file format format-check lint typecheck ci
+.PHONY: test-deps test test-file bench bench-compare format format-check lint typecheck ci
 
 test-deps:
 	@if [ ! -d "$(MINI_DIR)/.git" ]; then \
@@ -26,6 +27,14 @@ test-file: test-deps
 	@test -n "$(FILE)" || (printf '%s\n' 'Usage: make test-file FILE=tests/**/test_*.lua' >&2; exit 2)
 	TEST_FILE="$(FILE)" $(NVIM) --headless --noplugin -u tests/minimal_init.lua \
 		-c "lua MiniTest.run_file(vim.env.TEST_FILE)"
+
+# Prints one line for each case. Options go in BENCH_ARGS, for example BENCH_ARGS="--filter keystroke".
+bench:
+	$(NVIM) --headless --clean -l benchmarks/run.lua $(BENCH_ARGS)
+
+# Compares the benchmarks of REF with the working tree
+bench-compare:
+	NVIM="$(NVIM)" scripts/bench-compare.sh "$(REF)"
 
 format:
 	$(STYLUA) $(LUA_PATHS)
