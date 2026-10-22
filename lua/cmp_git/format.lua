@@ -11,17 +11,17 @@ local M = {
     git = {
         ---@type cmp_git.FormatConfig<cmp_git.Commit>
         commits = {
-            label = function(trigger_char, commit)
+            label = function(_trigger_char, commit)
                 return string.format("%s: %s", commit.sha:sub(0, 7), commit.title)
             end,
             filterText = function(trigger_char, commit)
                 -- If the trigger char is not part of the label, no items will show up
                 return string.format("%s %s %s", trigger_char, commit.sha:sub(0, 7), commit.title)
             end,
-            insertText = function(trigger_char, commit)
+            insertText = function(_trigger_char, commit)
                 return commit.sha
             end,
-            documentation = function(trigger_char, commit)
+            documentation = function(_trigger_char, commit)
                 return {
                     kind = "markdown",
                     value = string.format(
@@ -38,16 +38,16 @@ local M = {
         trailers = {
             ---@type cmp_git.FormatConfig<cmp_git.TrailerKey>
             keys = {
-                label = function(trigger_char, trailer)
+                label = function(_trigger_char, trailer)
                     return trailer.key
                 end,
-                filterText = function(trigger_char, trailer)
+                filterText = function(_trigger_char, trailer)
                     return trailer.key
                 end,
-                insertText = function(trigger_char, trailer)
+                insertText = function(_trigger_char, trailer)
                     return trailer.key .. ": "
                 end,
-                documentation = function(trigger_char, trailer)
+                documentation = function(_trigger_char, trailer)
                     return {
                         kind = "markdown",
                         value = string.format(
@@ -63,7 +63,7 @@ local M = {
             -- `Key:Ad`). Then the nvim-cmp offset starts at the colon, and the inserted value needs a space after it.
             ---@type cmp_git.FormatConfig<cmp_git.TrailerIdentity>
             identities = {
-                label = function(trigger_char, identity)
+                label = function(_trigger_char, identity)
                     return string.format("%s <%s>", identity.name, identity.email)
                 end,
                 filterText = function(trigger_char, identity)
@@ -75,7 +75,7 @@ local M = {
                 insertText = function(trigger_char, identity)
                     return string.format("%s%s <%s>", trigger_char and " " or "", identity.name, identity.email)
                 end,
-                documentation = function(trigger_char, identity)
+                documentation = function(_trigger_char, identity)
                     local source = identity.source
                     if identity.is_self then
                         source = "You"
@@ -91,7 +91,7 @@ local M = {
             },
             ---@type cmp_git.FormatConfig<cmp_git.TrailerValue>
             values = {
-                label = function(trigger_char, trailer)
+                label = function(_trigger_char, trailer)
                     return trailer.value
                 end,
                 filterText = function(trigger_char, trailer)
@@ -103,7 +103,7 @@ local M = {
                 insertText = function(trigger_char, trailer)
                     return (trigger_char and " " or "") .. trailer.value
                 end,
-                documentation = function(trigger_char, trailer)
+                documentation = function(_trigger_char, trailer)
                     return {
                         kind = "markdown",
                         value = string.format(
@@ -121,16 +121,16 @@ local M = {
     github = {
         ---@type cmp_git.FormatConfig<cmp_git.GitHub.Issue>
         issues = {
-            label = function(trigger_char, issue)
+            label = function(_trigger_char, issue)
                 return string.format("#%s: %s", issue.number, issue.title)
             end,
-            insertText = function(trigger_char, issue)
+            insertText = function(_trigger_char, issue)
                 return string.format("#%s", issue.number)
             end,
             filterText = function(trigger_char, issue)
                 return string.format("%s %s %s", trigger_char, issue.number, issue.title)
             end,
-            documentation = function(trigger_char, issue)
+            documentation = function(_trigger_char, issue)
                 return {
                     kind = "markdown",
                     value = string.format("# %s\n\n%s", issue.title, issue.body),
@@ -139,16 +139,16 @@ local M = {
         },
         ---@type cmp_git.FormatConfig<cmp_git.GitHub.Mention>
         mentions = {
-            label = function(trigger_char, mention)
+            label = function(_trigger_char, mention)
                 return string.format("@%s", mention.login)
             end,
-            insertText = function(trigger_char, mention)
+            insertText = function(_trigger_char, mention)
                 return string.format("@%s", mention.login)
             end,
-            filterText = function(trigger_char, mention)
+            filterText = function(_trigger_char, mention)
                 return string.format("@%s", mention.login)
             end,
-            documentation = function(trigger_char, mention)
+            documentation = function(_trigger_char, mention)
                 return {
                     kind = "markdown",
                     value = string.format("# %s", mention.login),
@@ -157,16 +157,16 @@ local M = {
         },
         ---@type cmp_git.FormatConfig<cmp_git.GitHub.PullRequest>
         pull_requests = {
-            label = function(trigger_char, pr)
+            label = function(_trigger_char, pr)
                 return string.format("#%s: %s", pr.number, pr.title)
             end,
-            insertText = function(trigger_char, pr)
+            insertText = function(_trigger_char, pr)
                 return string.format("#%s", pr.number)
             end,
             filterText = function(trigger_char, pr)
                 return string.format("%s %s %s", trigger_char, pr.number, pr.title)
             end,
-            documentation = function(trigger_char, pr)
+            documentation = function(_trigger_char, pr)
                 return {
                     kind = "markdown",
                     value = string.format("# %s\n\n%s", pr.title, pr.body),
@@ -177,16 +177,16 @@ local M = {
     gitlab = {
         ---@type cmp_git.FormatConfig<any>
         issues = {
-            label = function(trigger_char, issue)
+            label = function(_trigger_char, issue)
                 return string.format("#%s: %s", issue.iid, issue.title)
             end,
-            insertText = function(trigger_char, issue)
+            insertText = function(_trigger_char, issue)
                 return string.format("#%s", issue.iid)
             end,
             filterText = function(trigger_char, issue)
                 return string.format("%s %s %s", trigger_char, issue.iid, issue.title)
             end,
-            documentation = function(trigger_char, issue)
+            documentation = function(_trigger_char, issue)
                 return {
                     kind = "markdown",
                     value = string.format("# %s\n\n%s", issue.title, issue.description),
@@ -195,16 +195,16 @@ local M = {
         },
         ---@type cmp_git.FormatConfig<any>
         mentions = {
-            label = function(trigger_char, mention)
+            label = function(_trigger_char, mention)
                 return string.format("@%s", mention.username)
             end,
-            insertText = function(trigger_char, mention)
+            insertText = function(_trigger_char, mention)
                 return string.format("@%s", mention.username)
             end,
             filterText = function(trigger_char, mention)
                 return string.format("%s %s", trigger_char, mention.username)
             end,
-            documentation = function(trigger_char, mention)
+            documentation = function(_trigger_char, mention)
                 return {
                     kind = "markdown",
                     value = string.format("# %s\n\n%s", mention.username, mention.name),
@@ -213,16 +213,16 @@ local M = {
         },
         ---@type cmp_git.FormatConfig<any>
         merge_requests = {
-            label = function(trigger_char, mr)
+            label = function(_trigger_char, mr)
                 return string.format("!%s: %s", mr.iid, mr.title)
             end,
-            insertText = function(trigger_char, mr)
+            insertText = function(_trigger_char, mr)
                 return string.format("!%s", mr.iid)
             end,
             filterText = function(trigger_char, mr)
                 return string.format("%s %s %s", trigger_char, mr.iid, mr.title)
             end,
-            documentation = function(trigger_char, mr)
+            documentation = function(_trigger_char, mr)
                 return {
                     kind = "markdown",
                     value = string.format("# %s\n\n%s", mr.title, mr.description),
