@@ -75,11 +75,12 @@ local builtin_trigger_availability = {
 }
 
 ---@param pattern string
+---@param field "pattern" | "keyword_pattern" The config field, for the warning.
 ---@return any? regex
-local function compile_pattern(pattern)
+local function compile_pattern(pattern, field)
     local ok, regex = pcall(vim.regex, [[\%(]] .. pattern .. [[\)$]])
     if not ok then
-        log.warn(string.format("Invalid trigger action pattern %s: %s", vim.inspect(pattern), regex))
+        log.warn(string.format("Invalid trigger action %s %s: %s", field, vim.inspect(pattern), regex))
         return nil
     end
     return regex
@@ -109,13 +110,23 @@ local function normalize_trigger_action(configured_action)
     end
 
     local regex = nil
+    local keyword_pattern = nil
     local trigger_character = configured_action.trigger_character
     if configured_action.pattern then
-        regex = compile_pattern(configured_action.pattern)
+        regex = compile_pattern(configured_action.pattern, "pattern")
         if not regex then
             return {}
         end
         trigger_character = nil
+
+        keyword_pattern = configured_action.pattern
+        -- An invalid keyword pattern would make nvim-cmp fail on each keystroke
+        if
+            configured_action.keyword_pattern
+            and compile_pattern(configured_action.keyword_pattern, "keyword_pattern")
+        then
+            keyword_pattern = configured_action.keyword_pattern
+        end
     end
 
     local normalized = {}
@@ -124,7 +135,7 @@ local function normalize_trigger_action(configured_action)
         table.insert(normalized, {
             debug_name = action_name,
             trigger_character = trigger_character,
-            pattern = configured_action.pattern,
+            keyword_pattern = keyword_pattern,
             regex = regex,
             available = builtin_trigger_availability[action_name],
             action = function(core, callback, context, git_info, trigger_char)
@@ -176,8 +187,8 @@ function Core.new(overrides)
         for _, trigger_action in ipairs(normalized) do
             table.insert(self.trigger_actions, trigger_action)
             if trigger_action.regex then
-                if not vim.tbl_contains(patterns, trigger_action.pattern) then
-                    table.insert(patterns, trigger_action.pattern)
+                if not vim.tbl_contains(patterns, trigger_action.keyword_pattern) then
+                    table.insert(patterns, trigger_action.keyword_pattern)
                 end
             elseif
                 trigger_action.trigger_character

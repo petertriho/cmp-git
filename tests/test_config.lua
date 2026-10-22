@@ -160,6 +160,30 @@ T["config_trailer_defaults"] = function()
     ok(not vim.tbl_contains(normalized.git.trailers.filetypes, "octo"), "no trailers in octo")
 end
 
+T["config_trailer_value_pattern_has_no_lookbehind"] = function()
+    local value_entry = config.normalize({}).trigger_actions[2]
+
+    -- A lookbehind makes Vim use its backtracking engine, which is slow on long lines
+    eq(value_entry.pattern:find([[\@<=]], 1, true), nil, "value pattern has no lookbehind")
+    eq(value_entry.keyword_pattern:find([[\@<=]], 1, true), nil, "value keyword pattern has no lookbehind")
+end
+
+T["config_normalize_upgrades_the_lookbehind_value_pattern"] = function()
+    local lookbehind = [[\%(^[[:alnum:]-]\+:\s*\)\@<=\%([^[:space:]<>:#@!][^<>:#@!]*\%(<[^>]*\)\?\)\?]]
+    local user_entry = { pattern = lookbehind, actions = { "git_trailer_values" } }
+    local custom_entry = { pattern = [[^Refs:\s*\zs\S*]], actions = { "git_trailer_values" } }
+    local defaults = config.normalize({}).trigger_actions[2]
+
+    local normalized = config.normalize({ trigger_actions = { user_entry, custom_entry } })
+
+    eq(normalized.trigger_actions[1].pattern, defaults.pattern, "lookbehind pattern becomes the default pattern")
+    eq(normalized.trigger_actions[1].keyword_pattern, defaults.keyword_pattern, "upgrade adds the keyword pattern")
+    eq(normalized.trigger_actions[1].actions, { "git_trailer_values" }, "upgrade keeps the actions")
+    eq(user_entry.pattern, lookbehind, "upgrade does not change the user config")
+    eq(user_entry.keyword_pattern, nil, "upgrade does not add fields to the user config")
+    ok(normalized.trigger_actions[2] == custom_entry, "other pattern entries are kept")
+end
+
 T["config_git_filter_alias_skips_trailers"] = function()
     local git_filter = function()
         return "git"
