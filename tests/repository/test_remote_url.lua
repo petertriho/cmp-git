@@ -27,4 +27,62 @@ T["parse_remote_url"] = function()
     eq(alias.repo, "repo", "alias remote repo")
 end
 
+T["parse_remote_url_repo_with_git_in_name"] = function()
+    eq(
+        remote_url.parse("https://github.com/user/user.github.io.git"),
+        { host = "github.com", owner = "user", repo = "user.github.io" },
+        "only a trailing .git is removed"
+    )
+    eq(remote_url.parse("git@github.com:owner/git.git").repo, "git", "a repo named git")
+end
+
+T["parse_remote_url_subgroups"] = function()
+    local expected = { host = "gitlab.com", owner = "group/sub", repo = "repo" }
+    eq(remote_url.parse("https://gitlab.com/group/sub/repo"), expected, "https remote in a subgroup")
+    eq(remote_url.parse("https://gitlab.com/group/sub/repo.git"), expected, "https remote in a subgroup with .git")
+    eq(remote_url.parse("git@gitlab.com:group/sub/repo.git"), expected, "scp-like remote in a subgroup")
+    eq(remote_url.parse("ssh://git@gitlab.com/group/sub/repo.git"), expected, "ssh url remote in a subgroup")
+end
+
+T["parse_remote_url_ports"] = function()
+    eq(
+        remote_url.parse("ssh://git@host:2222/group/sub/repo"),
+        { host = "host", owner = "group/sub", repo = "repo" },
+        "the ssh port is not part of the host"
+    )
+    eq(
+        remote_url.parse("https://gitlab.example.com:8443/group/repo.git"),
+        { host = "gitlab.example.com:8443", owner = "group", repo = "repo" },
+        "the https port is part of the host, because the API is on the same origin"
+    )
+    eq(remote_url.parse("git://example.com:9418/owner/repo.git").host, "example.com", "the git daemon port")
+end
+
+T["parse_remote_url_credentials"] = function()
+    eq(
+        remote_url.parse("https://user:token@github.com/o/r"),
+        { host = "github.com", owner = "o", repo = "r" },
+        "credentials are not part of the host"
+    )
+    eq(remote_url.parse("https://token@github.com:8443/o/r").host, "github.com:8443", "a token and a port")
+    eq(remote_url.parse("org-123@github.com:owner/repo.git").host, "github.com", "an scp-like user other than git")
+    eq(remote_url.parse("git+ssh://git@github.com/owner/repo.git").host, "github.com", "a git+ssh remote")
+end
+
+T["parse_remote_url_trailing_slash"] = function()
+    local expected = { host = "github.com", owner = "owner", repo = "repo" }
+    eq(remote_url.parse("https://github.com/owner/repo/"), expected, "a trailing slash")
+    eq(remote_url.parse("https://github.com/owner/repo.git/"), expected, "a trailing slash after .git")
+    eq(remote_url.parse("git@github.com:owner/repo.git\n"), expected, "a trailing newline")
+end
+
+T["parse_remote_url_unsupported"] = function()
+    eq(remote_url.parse(nil), {}, "no URL")
+    eq(remote_url.parse(""), {}, "an empty URL")
+    eq(remote_url.parse("/srv/git/project.git"), {}, "a local path")
+    eq(remote_url.parse("./project"), {}, "a relative path")
+    eq(remote_url.parse("file:///srv/git/owner/project.git"), {}, "a file URL")
+    eq(remote_url.parse("https://github.com/repo"), {}, "a URL without an owner")
+end
+
 return T
