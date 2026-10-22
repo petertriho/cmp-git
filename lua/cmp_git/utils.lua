@@ -1,9 +1,33 @@
 local M = {}
 
+local byte = string.byte
+
+-- The bytes that `%s` matches
+local SPACE = { [9] = true, [10] = true, [11] = true, [12] = true, [13] = true, [32] = true }
+
+---The bounds of `s:sub(first, last)` without its leading and trailing whitespace, so that a parser can trim a field
+---without a copy of it. It reads each byte at most once, unlike patterns such as `^%s*(.-)%s*$` and `^%s*(.*%S)`,
+---which take quadratic time on long runs of whitespace.
+---@param s string
+---@param first integer
+---@param last integer
+---@return integer first
+---@return integer last Less than `first` when the range has only whitespace.
+function M.trim_range(s, first, last)
+    while first <= last and SPACE[byte(s, first)] do
+        first = first + 1
+    end
+    while last >= first and SPACE[byte(s, last)] do
+        last = last - 1
+    end
+    return first, last
+end
+
 ---@param s string
 ---@return string
 function M.trim(s)
-    return (s:gsub("^%s*(.-)%s*$", "%1"))
+    local first, last = M.trim_range(s, 1, #s)
+    return string.sub(s, first, last)
 end
 
 ---Split NUL-terminated records. A trailing record without a NUL is dropped.

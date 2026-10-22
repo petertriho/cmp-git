@@ -2,12 +2,54 @@ local helpers = require("tests.helpers")
 local utils = require("cmp_git.utils")
 
 local eq = helpers.eq
+local ok = helpers.ok
 
 local T = helpers.new_set()
 
 T["trim"] = function()
     eq(utils.trim("  subject line \n"), "subject line", "trims both ends")
     eq(utils.trim("   "), "", "whitespace only")
+end
+
+T["trim_matches_the_pattern_trim"] = function()
+    -- The pattern that `trim` used before, which is correct but quadratic
+    local function pattern_trim(s)
+        return (s:gsub("^%s*(.-)%s*$", "%1"))
+    end
+
+    local cases = {
+        "",
+        " ",
+        "\t\n\v\f\r ",
+        "a",
+        " a",
+        "a ",
+        "\ta b\tc\n",
+        "\r\nline one\r\nline two\r\n",
+        "  inner   spaces  ",
+        "\0 nul \0",
+        " \031unit separator\031 ",
+        " Ünïcödé ",
+        "a" .. string.rep(" ", 100) .. "b",
+    }
+    for _, s in ipairs(cases) do
+        eq(utils.trim(s), pattern_trim(s), "trim of " .. vim.inspect(s))
+    end
+
+    eq({ utils.trim_range("  ab  ", 1, 6) }, { 3, 4 }, "range without the surrounding spaces")
+    eq({ utils.trim_range("x  ab  x", 2, 7) }, { 4, 5 }, "range inside a string")
+    local first, last = utils.trim_range("x    x", 2, 5)
+    ok(first > last, "range with only spaces is empty")
+end
+
+T["trim_takes_linear_time"] = function()
+    -- The old pattern took about 3 s for each of these strings
+    local run = string.rep(" ", 32000)
+    local start = os.clock()
+    eq(utils.trim("a" .. run .. "b"), "a" .. run .. "b", "inner spaces are kept")
+    eq(utils.trim(run), "", "only spaces")
+    eq(utils.trim(run .. "a" .. run), "a", "spaces around one character")
+    ok(os.clock() - start < 0.25, "trim of long runs of spaces is fast")
 end
 
 T["split_nul"] = function()
