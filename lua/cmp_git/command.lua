@@ -6,7 +6,7 @@ local M = {}
 
 ---@class cmp_git.SystemJob
 ---@field command string
----@field start fun(self: cmp_git.SystemJob, on_complete?: fun(success: boolean): nil, suppress_failure_callback?: boolean): nil
+---@field start fun(self: cmp_git.SystemJob, on_complete?: fun(success: boolean), suppress_failure_callback?: boolean)
 ---@field cancel? fun(self: cmp_git.SystemJob): nil
 
 ---@class cmp_git.CommandSpec
@@ -115,7 +115,8 @@ function M.fallback(first, second)
     end
 
     return {
-        command = first and first.command or second.command,
+        -- The check above leaves at least one job
+        command = first and first.command or (second --[[@as cmp_git.SystemJob]]).command,
         active = nil,
         cancelled = false,
         start = function(_, on_complete)
@@ -127,6 +128,7 @@ function M.fallback(first, second)
             end
 
             if not first then
+                ---@cast second -nil
                 if job.cancelled then
                     done(false)
                     return

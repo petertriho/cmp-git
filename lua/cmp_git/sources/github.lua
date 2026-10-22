@@ -8,7 +8,15 @@ local log = require("cmp_git.log")
 ---@field in_progress boolean
 ---@field items cmp_git.CompletionItem[]
 
+---@class cmp_git.Source.GitHub.Cache
+---@field issues table<integer, cmp_git.CompletionItem[]>
+---@field mentions table<integer, cmp_git.AsyncItemList>
+---@field change_requests table<integer, cmp_git.CompletionItem[]>
+---@field pull_requests table<integer, cmp_git.CompletionItem[]> The `change_requests` table.
+
 ---@class cmp_git.Source.GitHub
+---@field config cmp_git.Config.GitHub
+---@field cache cmp_git.Source.GitHub.Cache
 local GitHub = {}
 
 ---@param overrides cmp_git.Config.GitHub
@@ -19,13 +27,9 @@ function GitHub.new(overrides)
 
     local change_requests_cache = {}
     self.cache = {
-        ---@type table<integer, cmp_git.CompletionItem[]>
         issues = {},
-        ---@type table<integer, cmp_git.AsyncItemList>
         mentions = {},
-        ---@type table<integer, cmp_git.CompletionItem[]>
         change_requests = change_requests_cache,
-        ---@type table<integer, cmp_git.CompletionItem[]>
         pull_requests = change_requests_cache,
     }
 

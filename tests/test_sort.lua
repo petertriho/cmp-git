@@ -32,9 +32,9 @@ T["default_git_sorts"] = function()
     eq(sort.git.trailers.identities({ diff = -5 }), "0000000000", "future identities sort as now")
     ok(sort.git.trailers.identities({ diff = 5 }) < sort.git.trailers.identities({ diff = 50 }), "recent identities")
 
-    local frequent = sort.git.trailers.values({ count = 3, diff = 500 })
-    local recent = sort.git.trailers.values({ count = 1, diff = 5 })
-    local old = sort.git.trailers.values({ count = 1, diff = 50 })
+    local frequent = sort.git.trailers.values({ key = "Assisted-by", value = "Codex", count = 3, diff = 500 })
+    local recent = sort.git.trailers.values({ key = "Assisted-by", value = "Claude", count = 1, diff = 5 })
+    local old = sort.git.trailers.values({ key = "Assisted-by", value = "Copilot", count = 1, diff = 50 })
     ok(frequent < recent, "trailer values sort by use count")
     ok(recent < old, "trailer values with the same count sort by age")
 end

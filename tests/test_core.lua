@@ -5,6 +5,9 @@ local repository = require("cmp_git.repository")
 
 local eq = helpers.eq
 
+-- The cases replace the provider sources with partial fakes
+---@diagnostic disable: missing-fields
+
 local T = helpers.new_set()
 
 T["git_commit_edit_range_is_preserved"] = function()

@@ -2,6 +2,11 @@ local commits = require("cmp_git.provider.capabilities.commits")
 local trailers = require("cmp_git.provider.capabilities.trailers")
 
 ---@class cmp_git.Source.Git
+---@field config cmp_git.Config.Git
+---@field cache_commits table<integer, cmp_git.Commit[]>
+---@field cache_trailer_keys table<integer, cmp_git.TrailerKey[]>
+---@field cache_trailer_identities table<integer, cmp_git.TrailerIdentity[]>
+---@field cache_trailer_values table<integer, table<string, cmp_git.TrailerValue[]>>
 local Git = {}
 
 ---@param overrides cmp_git.Config.Git
@@ -10,13 +15,9 @@ function Git.new(overrides)
         __index = Git,
     })
 
-    ---@type table<integer, cmp_git.Commit[]>
     self.cache_commits = {}
-    ---@type table<integer, cmp_git.TrailerKey[]>
     self.cache_trailer_keys = {}
-    ---@type table<integer, cmp_git.TrailerIdentity[]>
     self.cache_trailer_identities = {}
-    ---@type table<integer, table<string, cmp_git.TrailerValue[]>>
     self.cache_trailer_values = {}
 
     self.config = overrides or {}
@@ -79,7 +80,8 @@ function Git:get_trailer_values(callback, context)
             cache = self.cache_trailer_values,
             callback = callback,
             config = self.config.trailers.values,
-            key = trailers.line_key(context.line),
+            -- The values route only matches lines with a key
+            key = trailers.line_key(context.line) --[[@as string]],
             trigger_char = trailers.attached_trigger(context.line),
             bufnr = bufnr,
         })

@@ -2,8 +2,10 @@ local helpers = require("tests.helpers")
 local Source = require("cmp_git.source")
 
 local eq = helpers.eq
-local neq = helpers.neq
 local ok = helpers.ok
+
+-- The cases replace the provider sources with partial fakes
+---@diagnostic disable: missing-fields
 
 local T = helpers.new_set()
 
@@ -137,6 +139,7 @@ T["legacy_trigger_action_aliases"] = function()
 end
 
 T["legacy_trigger_action_arguments"] = function()
+    ---@type { sources: cmp_git.Sources, trigger_char: string, callback: function, params: table, git_info: cmp_git.GitInfo }?
     local received = nil
     local callback = function() end
     local params = { context = {} }
@@ -162,12 +165,12 @@ T["legacy_trigger_action_arguments"] = function()
 
     source:_run_trigger_actions("#", callback, params, git_info)
 
-    neq(received, nil, "legacy trigger action runs")
-    ok(received.sources == source.sources, "legacy trigger action receives sources")
-    eq(received.trigger_char, "#", "legacy trigger action receives trigger character")
-    ok(received.callback == callback, "legacy trigger action receives callback")
-    ok(received.params == params, "legacy trigger action receives params")
-    ok(received.git_info == git_info, "legacy trigger action receives git info")
+    local actual = helpers.not_nil(received, "legacy trigger action runs")
+    ok(actual.sources == source.sources, "legacy trigger action receives sources")
+    eq(actual.trigger_char, "#", "legacy trigger action receives trigger character")
+    ok(actual.callback == callback, "legacy trigger action receives callback")
+    ok(actual.params == params, "legacy trigger action receives params")
+    ok(actual.git_info == git_info, "legacy trigger action receives git info")
 end
 
 T["source_new_uses_normalized_config"] = function()

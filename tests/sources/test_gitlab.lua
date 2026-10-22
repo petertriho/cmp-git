@@ -28,7 +28,7 @@ T["gitlab_instance_state_isolation"] = function()
         "GitLab instance validates default host"
     )
 
-    first.cache.issues[1] = { { label = "first" } }
+    first.cache.issues[1] = {}
     eq(second.cache.issues[1], nil, "GitLab issue cache is instance-local")
     ok(first.cache.mentions ~= second.cache.mentions, "GitLab mention cache table is instance-local")
     ok(first.cache.merge_requests ~= second.cache.merge_requests, "GitLab MR cache table is instance-local")

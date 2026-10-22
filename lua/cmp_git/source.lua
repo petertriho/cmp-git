@@ -1,5 +1,10 @@
 local Core = require("cmp_git.core")
 
+---The fields of nvim-cmp's `cmp.SourceCompletionApiParams` that cmp-git reads.
+---@class cmp_git.CmpCompletionParams
+---@field context { cursor_before_line: string, cursor: { row: integer, col: integer, character: integer } }
+---@field completion_context { triggerKind: integer, triggerCharacter?: string }
+
 local Source = {}
 
 function Source.new(overrides)
@@ -21,8 +26,9 @@ function Source.new(overrides)
     return self
 end
 
----@param params cmp.SourceCompletionApiParams
----@param callback fun(args: cmp_git.CompletionList)
+---@param params cmp_git.CmpCompletionParams
+---@param trigger_characters_str string
+---@return string?
 local function trigger_character_from_params(params, trigger_characters_str)
     if params.completion_context.triggerKind == 1 then
         return string.match(params.context.cursor_before_line, "%s*([" .. trigger_characters_str .. "])%S*$")
@@ -45,7 +51,7 @@ function Source:_context_from_params(params)
     }
 end
 
----@param params cmp.SourceCompletionApiParams
+---@param params cmp_git.CmpCompletionParams
 ---@param callback fun(args: cmp_git.CompletionList)
 function Source:_complete(params, callback)
     return self.core:_complete(self:_context_from_params(params), callback)
@@ -53,7 +59,7 @@ end
 
 ---@param trigger_character string?
 ---@param callback fun(args: cmp_git.CompletionList)
----@param params cmp.SourceCompletionApiParams
+---@param params cmp_git.CmpCompletionParams
 ---@param git_info cmp_git.GitInfo
 function Source:_run_trigger_actions(trigger_character, callback, params, git_info)
     return self.core:_run_trigger_actions(trigger_character, callback, {
@@ -65,8 +71,7 @@ function Source:_run_trigger_actions(trigger_character, callback, params, git_in
     }, git_info)
 end
 
----@module 'cmp'
----@param params cmp.SourceCompletionApiParams
+---@param params cmp_git.CmpCompletionParams
 ---@param callback fun(args: cmp_git.CompletionList)
 function Source:complete(params, callback)
     return self.core:complete(self:_context_from_params(params), callback)

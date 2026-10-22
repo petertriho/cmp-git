@@ -2,7 +2,6 @@ local helpers = require("tests.helpers")
 local command = require("cmp_git.command")
 
 local eq = helpers.eq
-local neq = helpers.neq
 
 local T = helpers.new_set()
 
@@ -20,8 +19,7 @@ T["fallback"] = function()
         result = { stdout = stdout, success = success }
     end)
 
-    local job = command.fallback(first, second)
-    neq(job, nil, "fallback job is created")
+    local job = helpers.not_nil(command.fallback(first, second), "fallback job is created")
     job:start()
 
     helpers.wait_for(function()
@@ -49,7 +47,7 @@ T["command_fallback_cancels_active_job"] = function()
         end,
     }
 
-    local job = command.fallback(first, second)
+    local job = helpers.not_nil(command.fallback(first, second))
     job:start()
     job:cancel()
 
@@ -59,11 +57,12 @@ end
 
 T["command_build_cancel_suppresses_callback"] = function()
     local called = false
-    local job = command.build({ exec = "sh", args = { "-c", "sleep 0.2; printf done" } }, function()
-        called = true
-    end)
-
-    neq(job, nil, "cancellable command job is created")
+    local job = helpers.not_nil(
+        command.build({ exec = "sh", args = { "-c", "sleep 0.2; printf done" } }, function()
+            called = true
+        end),
+        "cancellable command job is created"
+    )
     job:start()
     job:cancel()
     vim.wait(350)
@@ -73,13 +72,14 @@ end
 
 T["build_job"] = function()
     local list
-    local job = command.build_list({ exec = "sh", args = { "-c", 'printf \'[{"name":"item"}]\'' } }, function(result)
-        list = result
-    end, function(item)
-        return { label = item.name }
-    end)
-
-    neq(job, nil, "json job is created")
+    local job = helpers.not_nil(
+        command.build_list({ exec = "sh", args = { "-c", 'printf \'[{"name":"item"}]\'' } }, function(result)
+            list = result
+        end, function(item)
+            return { label = item.name }
+        end),
+        "json job is created"
+    )
     job:start()
 
     helpers.wait_for(function()
