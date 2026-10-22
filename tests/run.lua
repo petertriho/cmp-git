@@ -15,6 +15,8 @@ local issue_capability = require("cmp_git.provider.capabilities.issues")
 local mention_capability = require("cmp_git.provider.capabilities.mentions")
 local commit_capability = require("cmp_git.provider.capabilities.commits")
 local change_request_capability = require("cmp_git.provider.capabilities.change_requests")
+local trailer_capability = require("cmp_git.provider.capabilities.trailers")
+local repository = require("cmp_git.repository")
 
 local failures = {}
 
@@ -962,6 +964,666 @@ local function test_git_instance_state_isolation()
 
     assert_eq(second.cache_commits[1], nil, "Git commit cache is instance-local")
     assert_true(first.cache_commits ~= second.cache_commits, "Git commit cache table is instance-local")
+    assert_true(first.cache_trailer_keys ~= second.cache_trailer_keys, "Git trailer key cache is instance-local")
+    assert_true(
+        first.cache_trailer_identities ~= second.cache_trailer_identities,
+        "Git trailer identities cache is instance-local"
+    )
+    assert_true(first.cache_trailer_values ~= second.cache_trailer_values, "Git trailer values cache is instance-local")
+end
+
+local function trailer_buffer(lines, filetype)
+    local bufnr = vim.api.nvim_create_buf(false, true)
+    vim.bo[bufnr].filetype = filetype or "gitcommit"
+    vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, lines)
+    return bufnr
+end
+
+local function test_config_trailer_defaults()
+    local normalized = config.normalize({})
+
+    assert_eq(normalized.trigger_actions[1].actions[1], "git_trailer_keys", "trailer keys action is first")
+    assert_eq(normalized.trigger_actions[2].actions[1], "git_trailer_identities", "trailer identities action is second")
+    assert_eq(
+        normalized.trigger_actions[2].actions[2],
+        "git_trailer_values",
+        "trailer values action follows identities"
+    )
+    assert_eq(normalized.git.trailers.values.limit, 1000, "trailer values scan limit")
+    assert_eq(normalized.trigger_actions[3].trigger_character, ":", "commit trigger follows trailer actions")
+    assert_eq(normalized.git.trailers.keys.limit, 100, "trailer keys scan limit")
+    assert_eq(normalized.git.trailers.identities.limit, 1000, "trailer identities scan limit")
+    assert_eq(normalized.git.trailers.keys.builtin[1], "Co-authored-by", "built-in keys start with Co-authored-by")
+    assert_true(vim.tbl_contains(normalized.git.trailers.keys.builtin, "Fixes"), "built-in keys contain Fixes")
+    assert_true(
+        vim.tbl_contains(normalized.git.trailers.identities.keys, "Signed-off-by"),
+        "identity keys contain Signed-off-by"
+    )
+    assert_true(
+        not vim.tbl_contains(normalized.git.trailers.identities.keys, "Fixes"),
+        "identity keys do not contain Fixes"
+    )
+    assert_true(vim.tbl_contains(normalized.git.trailers.filetypes, "gitcommit"), "trailers in gitcommit")
+    assert_true(not vim.tbl_contains(normalized.git.trailers.filetypes, "octo"), "no trailers in octo")
+end
+
+local function test_custom_trigger_actions_remove_trailers()
+    local core = Core.new({
+        trigger_actions = {
+            { trigger_character = ":", actions = { "git_commits" } },
+        },
+    })
+
+    assert_eq(#core.trigger_actions, 1, "custom trigger actions replace the trailer entries")
+    assert_eq(core.keyword_pattern, "[:]\\S*", "keyword pattern without pattern entries is unchanged")
+end
+
+local function test_invalid_trigger_action_pattern_is_skipped()
+    local core = Core.new({
+        trigger_actions = {
+            { pattern = [[\%(]], actions = { "git_trailer_keys" } },
+            { trigger_character = ":", actions = { "git_commits" } },
+        },
+    })
+
+    assert_eq(#core.trigger_actions, 1, "invalid pattern entry is skipped")
+    assert_eq(core.trigger_actions[1].debug_name, "git_commits", "valid entry is kept")
+end
+
+local function test_config_git_filter_alias_skips_trailers()
+    local git_filter = function()
+        return "git"
+    end
+    local normalized = config.normalize({ git = { filter_fn = git_filter } })
+
+    assert_eq(normalized.git.commits.format.filterText, git_filter, "git filter alias applies to commits")
+    assert_true(
+        normalized.git.trailers.keys.format.filterText ~= git_filter,
+        "git filter alias does not apply to trailer keys"
+    )
+    assert_true(
+        normalized.git.trailers.identities.format.filterText ~= git_filter,
+        "git filter alias does not apply to trailer identities"
+    )
+    assert_true(
+        normalized.git.trailers.values.format.filterText ~= git_filter,
+        "git filter alias does not apply to trailer values"
+    )
+end
+
+local function test_core_keyword_pattern_offsets()
+    local core = Core.new({})
+    local regex = vim.regex([[\%(]] .. core.keyword_pattern .. [[\)\m$]])
+    local cases = {
+        { "Co-auth", 0 },
+        { "Co-authored-by:", 14 },
+        { "Co-authored-by: Ada Lo", 16 },
+        { "Co-authored-by: Ada <ada@ex", 16 },
+        { "Note: see #12", 10 },
+        { "Note: thanks @ada", 13 },
+        { "Note: see :abc", 10 },
+        { "refs :abc", 5 },
+        { "fix #12", 4 },
+        { "cc @ad", 3 },
+        { "see !4", 4 },
+        { "body text he", nil },
+    }
+
+    for _, case in ipairs(cases) do
+        assert_eq(regex:match_str(case[1]), case[2], "keyword offset for " .. vim.inspect(case[1]))
+    end
+end
+
+local function test_trailer_routing()
+    local core = Core.new({})
+    local calls = {}
+    local function record(name, handled)
+        return function()
+            table.insert(calls, name)
+            return handled
+        end
+    end
+    core.sources.git = {
+        get_commits = record("commits", true),
+        get_trailer_keys = record("keys", true),
+        get_trailer_identities = record("identities", true),
+        get_trailer_values = record("values", true),
+        may_have_trailer_values = function()
+            return true
+        end,
+    }
+    core.sources.gitlab = {
+        complete_issues = record("gitlab_issues", false),
+        complete_mentions = record("gitlab_mentions", false),
+        complete_change_requests = record("gitlab_change_requests", false),
+    }
+    core.sources.github = {
+        complete_issues_and_change_requests = record("github_issues", true),
+        complete_mentions = record("github_mentions", true),
+    }
+
+    local cases = {
+        { line = "Co-auth", expected = "keys" },
+        { line = "Co-authored-by:", trigger = ":", expected = "identities" },
+        { line = "Co-authored-by: Ada", expected = "identities" },
+        { line = "Co-authored-by: Ada <ada@", trigger = "@", expected = "identities" },
+        { line = "Fixes:", trigger = ":", expected = "commits" },
+        { line = "Fixes: #12", trigger = "#", expected = "gitlab_issues,github_issues" },
+        { line = "Fixes: 29", expected = "values" },
+        { line = "Assisted-by:Co", trigger = ":", expected = "values" },
+        { line = "Note: plain text", expected = "values" },
+    }
+
+    for _, case in ipairs(cases) do
+        calls = {}
+        local bufnr = trailer_buffer({ "feat: subject", "", case.line })
+        core:_run_trigger_actions(case.trigger, function() end, {
+            cursor = { row = 3, character = #case.line },
+            line = case.line,
+            bufnr = bufnr,
+        }, {})
+        vim.api.nvim_buf_delete(bufnr, { force = true })
+
+        assert_eq(table.concat(calls, ","), case.expected, "route for " .. vim.inspect(case.line))
+    end
+end
+
+local function test_trailer_gating()
+    local trailers_config = config.normalize({}).git.trailers
+    local function available(lines, row, line, kind, filetype)
+        local bufnr = trailer_buffer(lines, filetype)
+        local result = trailer_capability.available(trailers_config, {
+            bufnr = bufnr,
+            cursor = { row = row },
+            line = line,
+        }, kind)
+        vim.api.nvim_buf_delete(bufnr, { force = true })
+        return result
+    end
+
+    assert_true(available({ "subject", "", "Co" }, 3, "Co", "keys"), "keys after the blank line")
+    assert_true(
+        available({ "subject", "", "Signed-off-by: Ada <ada@example.com>", "Co" }, 4, "Co", "keys"),
+        "keys after another trailer"
+    )
+    assert_true(
+        available({ "subject", "", "Co" }, 3, "Co", "keys", "NeogitCommitMessage"),
+        "keys in Neogit commit messages"
+    )
+    assert_true(available({ "subject", "", "Co" }, 3, "Co", "keys", "gitcommit.markdown"), "keys in compound filetype")
+    assert_true(not available({ "Co" }, 1, "Co", "keys"), "no keys on the subject line")
+    assert_true(not available({ "subject", "Co" }, 2, "Co", "keys"), "no keys on row 2")
+    assert_true(not available({ "subject", "", "body text", "Co" }, 4, "Co", "keys"), "no keys inside a paragraph")
+    assert_true(not available({ "subject", "", "Co" }, 3, "Co", "keys", "octo"), "no keys in octo")
+    assert_true(
+        available({ "subject", "", "" }, 3, "Co-authored-by: Ad", "identities"),
+        "identities for an identity key"
+    )
+    assert_true(
+        available({ "subject", "", "" }, 3, "co-AUTHORED-by: Ad", "identities"),
+        "identity keys match case-insensitively"
+    )
+    assert_true(not available({ "subject", "", "" }, 3, "Fixes: Ad", "identities"), "no identities for other keys")
+    assert_true(not available({ "subject", "Ad" }, 2, "Co-authored-by: Ad", "identities"), "no identities on row 2")
+    assert_true(available({ "subject", "", "" }, 3, "Assisted-by: Co", "values"), "values for any key")
+    assert_true(available({ "subject", "", "" }, 3, "Fixes: ", "values"), "values for an empty value after a space")
+    assert_true(not available({ "subject", "", "" }, 3, "Fixes:", "values"), "no values right after the colon")
+    assert_true(not available({ "subject", "", "body", "" }, 4, "Fixes: 2", "values"), "no values inside a paragraph")
+end
+
+local function test_core_pre_route_skips_repository()
+    local original_is_git_repo = repository.is_git_repo
+    local checks = 0
+    repository.is_git_repo = function()
+        checks = checks + 1
+    end
+
+    local core = Core.new({})
+    local bufnr = trailer_buffer({ "fe" })
+    local lists = {}
+    core:complete({ cursor = { row = 1, character = 2 }, line = "fe", bufnr = bufnr }, function(list)
+        table.insert(lists, list)
+    end)
+
+    assert_eq(checks, 0, "declined request does not check the repository")
+    assert_eq(#lists, 1, "declined request calls the callback once")
+    assert_eq(#lists[1].items, 0, "declined request has no items")
+    assert_eq(lists[1].isIncomplete, false, "declined request is complete")
+
+    local source = Source.new({})
+    source:complete({
+        context = { cursor_before_line = "fe", cursor = { row = 1, col = 3, character = 2 } },
+        completion_context = { triggerKind = 1 },
+    }, function() end)
+    assert_eq(checks, 0, "declined nvim-cmp request does not check the repository")
+
+    core:complete(
+        { trigger_character = ":", cursor = { row = 1, character = 3 }, line = "fe:", bufnr = bufnr },
+        function() end
+    )
+    assert_eq(checks, 1, "matched request checks the repository")
+
+    repository.is_git_repo = original_is_git_repo
+    vim.api.nvim_buf_delete(bufnr, { force = true })
+end
+
+local function test_trailer_text_edits()
+    local core = Core.new({})
+    local bufnr = trailer_buffer({ "subject", "", "" })
+    core.sources.git.cache_trailer_keys[bufnr] = { { key = "Co-authored-by", count = 1, builtin_index = 1 } }
+    core.sources.git.cache_trailer_identities[bufnr] = {
+        { name = "Ada Lovelace", email = "ada@example.com", diff = 0, source = "author", is_self = false },
+    }
+    core.sources.git.cache_trailer_values[bufnr] = {
+        ["assisted-by"] = { { key = "Assisted-by", value = "Codex", count = 1, diff = 0 } },
+    }
+
+    local function run(line, trigger)
+        local result
+        core:_run_trigger_actions(trigger, function(list)
+            result = list
+        end, { cursor = { row = 3, character = #line }, line = line, bufnr = bufnr }, {})
+        return result.items[1]
+    end
+
+    local key = run("Co-au")
+    assert_eq(key.textEdit.range.start.character, 0, "trailer key edit starts at the line start")
+    assert_eq(key.textEdit.range["end"].character, 5, "trailer key edit ends at the cursor")
+    assert_eq(key.textEdit.newText, "Co-authored-by: ", "trailer key inserts the key and a space")
+
+    local identity = run("Co-authored-by: Ad")
+    assert_eq(identity.textEdit.range.start.character, 16, "trailer identity edit starts at the value")
+    assert_eq(identity.textEdit.range["end"].character, 18, "trailer identity edit ends at the cursor")
+    assert_eq(identity.textEdit.newText, "Ada Lovelace <ada@example.com>", "trailer identity inserts the identity")
+    assert_eq(identity.filterText, "Ada Lovelace <ada@example.com>", "trailer identity filters on the identity")
+
+    local attached = run("Co-authored-by:", ":")
+    assert_eq(attached.textEdit.range.start.character, 15, "attached trailer identity edit starts after the colon")
+    assert_eq(attached.textEdit.newText, " Ada Lovelace <ada@example.com>", "attached trailer identity adds a space")
+    assert_eq(attached.filterText, ": Ada Lovelace <ada@example.com>", "attached trailer identity filters on the colon")
+
+    local email = run("Co-authored-by: Ada <ada@", "@")
+    assert_eq(email.textEdit.range.start.character, 16, "trailer identity edit ignores the @ trigger in the email")
+    assert_eq(email.textEdit.newText, "Ada Lovelace <ada@example.com>", "trailer identity ignores the @ trigger")
+
+    local value = run("Assisted-by: Co")
+    assert_eq(value.textEdit.range.start.character, 13, "trailer value edit starts at the value")
+    assert_eq(value.textEdit.newText, "Codex", "trailer value inserts the earlier value")
+    assert_eq(value.filterText, "Codex", "trailer value filters on the value")
+
+    local attached_value = run("Assisted-by:Co", ":")
+    assert_eq(attached_value.textEdit.range.start.character, 12, "attached trailer value edit starts after the colon")
+    assert_eq(attached_value.textEdit.newText, " Codex", "attached trailer value adds a space")
+    assert_eq(attached_value.filterText, ": Codex", "attached trailer value filters on the colon")
+
+    vim.api.nvim_buf_delete(bufnr, { force = true })
+end
+
+local function test_trailer_keys_parse_and_sort()
+    local result = table.concat({
+        "Signed-off-by\031co-authored-by\0",
+        "\nChange-Id\0",
+        "\nsigned-off-by\0",
+        "\n%(trailers:keyonly,separator=%x1f)\0",
+        "\n\0",
+    })
+    local keys = trailer_capability.keys.parse(result, { builtin = { "Co-authored-by", "Signed-off-by", "Fixes" } })
+    local by_key = {}
+    for _, trailer in ipairs(keys) do
+        by_key[trailer.key] = trailer
+    end
+
+    assert_eq(#keys, 4, "trailer key count")
+    assert_eq(by_key["Signed-off-by"].count, 2, "trailer keys count case-insensitively")
+    assert_eq(by_key["Co-authored-by"].count, 1, "built-in trailer key casing wins")
+    assert_eq(by_key["Change-Id"].count, 1, "mined trailer key count")
+    assert_eq(by_key["Change-Id"].builtin_index, nil, "mined trailer key has no built-in index")
+    assert_eq(by_key["Fixes"].count, 0, "unused built-in trailer key is kept")
+
+    local items = trailer_capability.keys.items(keys, config.normalize({}).git.trailers.keys, nil)
+    table.sort(items, function(a, b)
+        return a.sortText < b.sortText
+    end)
+    local labels = {}
+    for _, item in ipairs(items) do
+        table.insert(labels, item.label)
+    end
+    assert_eq(table.concat(labels, ","), "Signed-off-by,Co-authored-by,Change-Id,Fixes", "trailer key sort order")
+    assert_eq(items[1].insertText, "Signed-off-by: ", "trailer key insert text")
+end
+
+local function test_trailer_identities_request()
+    local spec = trailer_capability.identities.request({
+        keys = { "Co-authored-by", "bad key", "Signed-off-by" },
+        limit = 5,
+    })
+
+    assert_eq(spec.exec, "git", "trailer identities command exec")
+    assert_eq(spec.args[3], "5", "trailer identities command limit")
+    assert_eq(
+        spec.args[4],
+        "--format=%at%x1f%aN%x1f%aE%x1f%(trailers:key=Co-authored-by,key=Signed-off-by,unfold,separator=%x1f)%x00",
+        "trailer identities command format"
+    )
+end
+
+local function test_trailer_identities_parse()
+    local now = os.time()
+    local log_result = table.concat({
+        tostring(now - 10)
+            .. "\031Ada Lovelace\031ada@example.com"
+            .. "\031Co-authored-by: Grace Hopper <grace@example.com>"
+            .. "\031Signed-off-by: Ada Lovelace <ADA@example.com>\0",
+        "\n" .. tostring(now - 20) .. "\031Ada L\031ada@example.com\031Co-authored-by: no email here\0",
+        "\n" .. tostring(now - 30) .. "\031Me\031me@example.com\031\0",
+        "\n",
+    })
+    local identities = trailer_capability.identities.parse(log_result, "Me Myself <ME@example.com> 1792648118 +1100\n")
+
+    assert_eq(#identities, 3, "trailer identities dedupe by email")
+    assert_eq(identities[1].name, "Ada Lovelace", "trailer identities keep the most recent name")
+    assert_eq(identities[1].source, "author", "trailer identities record the author source")
+    assert_eq(identities[2].email, "grace@example.com", "trailer identities include trailer values")
+    assert_eq(identities[2].source, "Co-authored-by", "trailer identities record the trailer key")
+    assert_true(identities[2].diff >= 10, "trailer identities use the commit time")
+    assert_eq(identities[3].name, "Me", "your identity in history keeps the history record")
+    assert_eq(identities[3].is_self, true, "your identity in history is marked")
+
+    local only_self = trailer_capability.identities.parse("", "Solo <solo@example.com> 1 +0000")
+    assert_eq(#only_self, 1, "your identity without history is added")
+    assert_eq(only_self[1].is_self, true, "your identity without history is marked")
+    assert_eq(only_self[1].diff, 0, "your identity without history sorts first")
+    assert_eq(only_self[1].source, "self", "your identity without history has the self source")
+end
+
+local function test_trailer_capabilities_use_cache_and_runner()
+    local builds = {}
+    local runner = {
+        build = function(spec, callback)
+            table.insert(builds, spec.args[1])
+            return {
+                command = "git",
+                start = function()
+                    if spec.args[1] == "var" then
+                        callback("Me <me@example.com> 1 +0000", true)
+                    else
+                        callback("fatal: no commits", false)
+                    end
+                end,
+            }
+        end,
+    }
+    local trailers_config = config.normalize({}).git.trailers
+
+    local key_lists = {}
+    local key_args = {
+        cache = {},
+        callback = function(list)
+            table.insert(key_lists, list)
+        end,
+        config = trailers_config.keys,
+        runner = runner,
+        bufnr = 50,
+    }
+    trailer_capability.keys.complete(key_args)
+    trailer_capability.keys.complete(key_args)
+
+    assert_eq(table.concat(builds, ","), "log", "trailer keys run once")
+    assert_eq(#key_lists, 2, "trailer keys callback on miss and hit")
+    assert_eq(#key_lists[1].items, #trailers_config.keys.builtin, "failed log still gives the built-in keys")
+
+    builds = {}
+    local identities_lists = {}
+    local identities_args = {
+        cache = {},
+        callback = function(list)
+            table.insert(identities_lists, list)
+        end,
+        config = trailers_config.identities,
+        runner = runner,
+        bufnr = 51,
+    }
+    trailer_capability.identities.complete(identities_args)
+    trailer_capability.identities.complete(identities_args)
+
+    assert_eq(table.concat(builds, ","), "log,var", "trailer identities run log and var once")
+    assert_eq(#identities_lists, 2, "trailer identities callback on miss and hit")
+    assert_eq(identities_lists[1].items[1].label, "Me <me@example.com>", "failed log still gives your identity")
+end
+
+local function test_trailer_identities_job_cancel()
+    local pending
+    local builds = 0
+    local runner = {
+        build = function(_spec, callback)
+            builds = builds + 1
+            return {
+                command = "git",
+                start = function()
+                    pending = callback
+                end,
+            }
+        end,
+    }
+    local called = false
+    local job = trailer_capability.identities.complete({
+        cache = {},
+        callback = function()
+            called = true
+        end,
+        config = config.normalize({}).git.trailers.identities,
+        runner = runner,
+        bufnr = 52,
+    })
+
+    job:cancel()
+    pending("", true)
+
+    assert_eq(builds, 1, "cancelled trailer identities job does not start git var")
+    assert_true(not called, "cancelled trailer identities job does not call back")
+end
+
+local function test_blink_adapter_matches_text_before_cursor()
+    local blink = Blink.new({})
+    local received
+    blink.core = {
+        get_trigger_characters = function()
+            return { "#" }
+        end,
+        complete = function(_, context, _callback)
+            received = context
+            return { cancel = function() end }
+        end,
+    }
+
+    blink:get_completions({ cursor = { 3, 5 }, line = "fix #12 later", bufnr = 1 }, function() end)
+
+    assert_eq(received.line, "fix #", "blink passes the text before the cursor")
+    assert_eq(received.trigger_character, "#", "blink detects the trigger before the cursor")
+    assert_eq(received.cursor.row, 3, "blink converts the cursor row")
+    assert_eq(received.cursor.character, 5, "blink converts the cursor column")
+end
+
+local function test_trailer_capabilities_with_git()
+    if vim.fn.executable("git") ~= 1 then
+        return
+    end
+
+    local env_names = { "GIT_CONFIG_GLOBAL", "GIT_CONFIG_NOSYSTEM", "GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL" }
+    local saved_env = {}
+    for _, name in ipairs(env_names) do
+        saved_env[name] = vim.env[name]
+    end
+    vim.env.GIT_CONFIG_GLOBAL = "/dev/null"
+    vim.env.GIT_CONFIG_NOSYSTEM = "1"
+
+    local dir = vim.fn.tempname()
+    vim.fn.mkdir(dir, "p")
+    local function git(args)
+        local base = { "git", "-C", dir, "-c", "user.name=Ada Lovelace", "-c", "user.email=ada@example.com" }
+        local result = vim.system(vim.list_extend(base, args), { text = true }):wait()
+        assert_eq(result.code, 0, "test git command " .. table.concat(args, " ") .. ": " .. (result.stderr or ""))
+    end
+    git({ "init", "-q" })
+    git({
+        "commit",
+        "-q",
+        "--allow-empty",
+        "--no-verify",
+        "-m",
+        "feat: first\n\nCo-authored-by: Grace Hopper <grace@example.com>\nChange-Id: I1234\nAssisted-by: Codex",
+    })
+
+    vim.env.GIT_AUTHOR_NAME = "Test Self"
+    vim.env.GIT_AUTHOR_EMAIL = "self@example.com"
+    local cwd = vim.fn.getcwd()
+    vim.cmd.cd(dir)
+
+    local trailers_config = config.normalize({}).git.trailers
+    local key_list, identities_list, values_list
+    trailer_capability.keys.complete({
+        cache = {},
+        callback = function(list)
+            key_list = list
+        end,
+        config = trailers_config.keys,
+        bufnr = 60,
+    })
+    trailer_capability.identities.complete({
+        cache = {},
+        callback = function(list)
+            identities_list = list
+        end,
+        config = trailers_config.identities,
+        bufnr = 61,
+    })
+    trailer_capability.values.complete({
+        cache = {},
+        callback = function(list)
+            values_list = list
+        end,
+        config = trailers_config.values,
+        key = "assisted-by",
+        bufnr = 62,
+    })
+    wait_for(function()
+        return key_list ~= nil and identities_list ~= nil and values_list ~= nil
+    end, "trailer capabilities complete with git")
+
+    vim.cmd.cd(cwd)
+    -- A nil value unsets the variable again
+    for _, name in ipairs(env_names) do
+        vim.env[name] = saved_env[name]
+    end
+    vim.fn.delete(dir, "rf")
+
+    local keys = {}
+    for _, item in ipairs(key_list and key_list.items or {}) do
+        keys[item.label] = item.data.count
+    end
+    assert_eq(keys["Change-Id"], 1, "git trailer keys include mined keys")
+    assert_eq(keys["Co-authored-by"], 1, "git trailer keys count built-in keys")
+
+    local identities = {}
+    for _, item in ipairs(identities_list and identities_list.items or {}) do
+        identities[item.label] = item.data
+    end
+    assert_true(identities["Ada Lovelace <ada@example.com>"] ~= nil, "git trailer identities include authors")
+    assert_eq(
+        identities["Grace Hopper <grace@example.com>"] and identities["Grace Hopper <grace@example.com>"].source,
+        "Co-authored-by",
+        "git trailer identities include trailer values"
+    )
+    assert_eq(
+        identities["Test Self <self@example.com>"] and identities["Test Self <self@example.com>"].is_self,
+        true,
+        "git trailer identities include your identity"
+    )
+    assert_eq(values_list and values_list.items[1] and values_list.items[1].label, "Codex", "git trailer values")
+end
+
+local function test_trailer_values_request_and_parse()
+    local spec = trailer_capability.values.request({ limit = 7 })
+    assert_eq(spec.args[3], "7", "trailer values command limit")
+    assert_eq(
+        spec.args[4],
+        "--format=%at%x1f%(trailers:only,unfold,separator=%x1f)%x00",
+        "trailer values command format"
+    )
+
+    local now = os.time()
+    local result = table.concat({
+        tostring(now - 10)
+            .. '\031Assisted-by: Codex\031Fixes: 29c8d7267dd7 ("fix: snippet edit range")'
+            .. "\031Co-authored-by: Grace Hopper <grace@example.com>\0",
+        "\n" .. tostring(now - 20) .. "\031assisted-by: Codex\031Assisted-by: claude-code Opus 5\031Ref:\0",
+        "\n",
+    })
+    local by_key = trailer_capability.values.parse(result)
+
+    assert_eq(#by_key["assisted-by"], 2, "trailer values dedupe by value")
+    assert_eq(by_key["assisted-by"][1].key, "Assisted-by", "trailer values keep the first key casing")
+    assert_eq(by_key["assisted-by"][1].count, 2, "trailer values count across key casing")
+    assert_eq(by_key["fixes"][1].value, '29c8d7267dd7 ("fix: snippet edit range")', "trailer values keep colons")
+    assert_eq(by_key["co-authored-by"][1].value, "Grace Hopper <grace@example.com>", "trailer values keep identities")
+    assert_eq(by_key["ref"], nil, "trailer values skip empty values")
+
+    local items = trailer_capability.values.items(by_key, "Assisted-By", config.normalize({}).git.trailers.values, nil)
+    table.sort(items, function(a, b)
+        return a.sortText < b.sortText
+    end)
+    assert_eq(items[1].label, "Codex", "trailer values sort by use count")
+    assert_eq(items[2].label, "claude-code Opus 5", "trailer values for the key only")
+    assert_eq(#items, 2, "trailer values filter by key")
+end
+
+local function test_trailer_values_cache_and_fall_through()
+    local builds = 0
+    local runner = {
+        build = function(_spec, callback)
+            builds = builds + 1
+            return {
+                command = "git",
+                start = function()
+                    callback("fatal: no commits", false)
+                end,
+            }
+        end,
+    }
+    local lists = {}
+    local args = {
+        cache = {},
+        callback = function(list)
+            table.insert(lists, list)
+        end,
+        config = config.normalize({}).git.trailers.values,
+        key = "Assisted-by",
+        runner = runner,
+        bufnr = 53,
+    }
+
+    assert_true(
+        trailer_capability.values.may_have(args.cache, { bufnr = 53, line = "Assisted-by: C" }),
+        "unknown cache"
+    )
+    trailer_capability.values.complete(args)
+    trailer_capability.values.complete(args)
+
+    assert_eq(builds, 1, "trailer values run once")
+    assert_eq(#lists, 2, "trailer values callback on miss and hit")
+    assert_eq(#lists[1].items, 0, "failed log gives no trailer values")
+    assert_true(
+        not trailer_capability.values.may_have(args.cache, { bufnr = 53, line = "Assisted-by: C" }),
+        "cached history without values for the key"
+    )
+
+    local core = Core.new({})
+    local bufnr = trailer_buffer({ "feat: subject", "", "Note: plain text" })
+    local context = { cursor = { row = 3, character = 16 }, line = "Note: plain text", bufnr = bufnr }
+    assert_eq(#core:_route(context), 1, "body line with a key routes to values before the first fetch")
+    core.sources.git.cache_trailer_values[bufnr] = {}
+    assert_eq(#core:_route(context), 0, "body line without history values falls through")
+    vim.api.nvim_buf_delete(bufnr, { force = true })
 end
 
 test_handle_response()
@@ -998,6 +1660,24 @@ test_blink_adapter_suppresses_stale_callbacks_after_cancel()
 test_github_instance_state_isolation()
 test_gitlab_instance_state_isolation()
 test_git_instance_state_isolation()
+test_config_trailer_defaults()
+test_custom_trigger_actions_remove_trailers()
+test_invalid_trigger_action_pattern_is_skipped()
+test_config_git_filter_alias_skips_trailers()
+test_core_keyword_pattern_offsets()
+test_trailer_routing()
+test_trailer_gating()
+test_core_pre_route_skips_repository()
+test_trailer_text_edits()
+test_trailer_keys_parse_and_sort()
+test_trailer_identities_request()
+test_trailer_identities_parse()
+test_trailer_capabilities_use_cache_and_runner()
+test_trailer_identities_job_cancel()
+test_blink_adapter_matches_text_before_cursor()
+test_trailer_capabilities_with_git()
+test_trailer_values_request_and_parse()
+test_trailer_values_cache_and_fall_through()
 
 if #failures > 0 then
     for _, failure in ipairs(failures) do

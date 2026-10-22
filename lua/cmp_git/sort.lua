@@ -6,6 +6,27 @@ local M = {
         commits = function(commit) -- nil, "sha", "title", "description", "author_name", "author_email", "commit_timestamp", or custom function
             return string.format("%010d", commit.diff)
         end,
+        trailers = {
+            ---@param trailer cmp_git.TrailerKey
+            keys = function(trailer) -- nil, "key", or custom function
+                -- Most used first, then built-in order, then mined keys
+                return string.format(
+                    "%010d%05d%s",
+                    1e9 - trailer.count,
+                    trailer.builtin_index or 99999,
+                    trailer.key:lower()
+                )
+            end,
+            ---@param identity cmp_git.TrailerIdentity
+            identities = function(identity) -- nil, "name", "email", or custom function
+                return string.format("%010d", math.max(0, identity.diff))
+            end,
+            ---@param trailer cmp_git.TrailerValue
+            values = function(trailer) -- nil, "value", or custom function
+                -- Most used first, then most recent
+                return string.format("%010d%010d", 1e9 - trailer.count, math.max(0, trailer.diff))
+            end,
+        },
     },
     github = {
         ---@param issue cmp_git.GitHub.Issue
