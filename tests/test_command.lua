@@ -1,5 +1,6 @@
 local helpers = require("tests.helpers")
 local command = require("cmp_git.command")
+local repository = require("cmp_git.repository")
 
 local eq = helpers.eq
 
@@ -89,6 +90,45 @@ T["build_job"] = function()
     eq(#list.items, 1, "json job item count")
     eq(list.items[1].label, "item", "json job item label")
     eq(list.isIncomplete, false, "json job completion flag")
+end
+
+T["spawn_error_is_a_failed_command"] = function()
+    helpers.stub(repository, "get_cwd", function()
+        return helpers.tempdir() .. "/missing"
+    end)
+    local result
+    local completed
+    local job = helpers.not_nil(command.build({ exec = "sh", args = { "-c", "printf out" } }, function(stdout, success)
+        result = { stdout = stdout, success = success }
+    end))
+
+    job:start(function(success)
+        completed = success
+    end)
+    helpers.wait_for(function()
+        return completed ~= nil
+    end, "the job completes")
+
+    eq(result, { stdout = "", success = false }, "the callback gets a failure")
+    eq(completed, false, "the job fails")
+end
+
+T["env_adds_to_the_environment"] = function()
+    helpers.stub(vim.env, "CMP_GIT_TEST_INHERITED", "inherited")
+    local seen
+    local job = helpers.not_nil(command.build({
+        exec = "sh",
+        args = { "-c", 'printf "%s %s" "$CMP_GIT_TEST_INHERITED" "$CMP_GIT_TEST_ADDED"' },
+        env = { CMP_GIT_TEST_ADDED = 1 },
+    }, function(stdout)
+        seen = stdout
+    end))
+    job:start()
+    helpers.wait_for(function()
+        return seen ~= nil
+    end, "the command completes")
+
+    eq(seen, "inherited 1", "the command gets the variables of Neovim and of the spec")
 end
 
 return T
