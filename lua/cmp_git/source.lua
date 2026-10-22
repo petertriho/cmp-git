@@ -30,9 +30,12 @@ end
 ---@param trigger_characters_str string
 ---@return string?
 local function trigger_character_from_params(params, trigger_characters_str)
-    if params.completion_context.triggerKind == 1 then
+    local trigger_kind = params.completion_context.triggerKind
+    -- nvim-cmp asks again with TriggerForIncompleteCompletions (3) when the user types after an incomplete list, such
+    -- as the first page of mentions. Like Invoked (1), it has no trigger character.
+    if trigger_kind == 1 or trigger_kind == 3 then
         return string.match(params.context.cursor_before_line, "%s*([" .. trigger_characters_str .. "])%S*$")
-    elseif params.completion_context.triggerKind == 2 then
+    elseif trigger_kind == 2 then
         return params.completion_context.triggerCharacter
     end
 
