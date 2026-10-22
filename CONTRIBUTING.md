@@ -1,0 +1,132 @@
+# Contributing
+
+## Requirements
+
+Use one of these setups:
+
+- Nix with flakes, and direnv. The flake gives the same tool versions that CI uses.
+- These tools on your `PATH`: Neovim >= 0.12, git, make, [StyLua](https://github.com/JohnnyMorganz/StyLua),
+  [Selene](https://github.com/Kampfkarren/selene), and
+  [lua-language-server](https://github.com/LuaLS/lua-language-server).
+
+CI is authoritative. Other versions of these tools can give different results.
+
+The first `make test` or `make typecheck` clones mini.nvim, so it needs network access.
+
+## Development shells
+
+To load the default shell when you enter the repository:
+
+1. Install Nix and enable flakes.
+2. Install direnv and hook it into your shell.
+3. In the repository, run `direnv allow`.
+
+The flake has three shells. Each shell also has StyLua, Selene, lua-language-server, make, and git.
+
+| Shell         | Neovim                                                   | Command                     |
+| ------------- | -------------------------------------------------------- | --------------------------- |
+| `default`     | The stable release in the locked nixpkgs                 | `nix develop`               |
+| `nvim-0_12_0` | 0.12.0, the minimum supported version                    | `nix develop .#nvim-0_12_0` |
+| `nightly`     | The nightly build in the locked `neovim-nightly-overlay` | `nix develop .#nightly`     |
+
+The nightly builds are in the nix-community binary cache. Without this cache, Nix builds Neovim from source. To use
+the cache, add these lines to your Nix config:
+
+```
+extra-substituters = https://nix-community.cachix.org
+extra-trusted-public-keys = nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs=
+```
+
+## Make targets
+
+| Target                       | Action                                                                                              |
+| ---------------------------- | --------------------------------------------------------------------------------------------------- |
+| `make test`                  | Runs all tests.                                                                                     |
+| `make test-file FILE=<path>` | Runs one test file.                                                                                 |
+| `make format`                | Formats `lua/` and `tests/` with StyLua.                                                            |
+| `make format-check`          | Checks the formatting.                                                                              |
+| `make lint`                  | Lints `lua/` and `tests/` with Selene. Warnings fail the target.                                    |
+| `make typecheck`             | Checks the types with lua-language-server. Warnings fail the target.                                |
+| `make ci`                    | Runs `format-check`, `lint`, `typecheck`, and `test`.                                               |
+| `make test-deps`             | Clones mini.nvim at `MINI_VERSION` into `deps/`. `test`, `test-file`, and `typecheck` run it first. |
+
+To use a different tool, set its variable: `NVIM`, `STYLUA`, `SELENE`, or `LUA_LANGUAGE_SERVER`. For example:
+
+```sh
+make test NVIM=~/.local/bin/nvim
+```
+
+`make typecheck` gets `$VIMRUNTIME` from `$(NVIM)`, so lua-language-server checks the code against the Neovim API of
+that version.
+
+## Tests
+
+The tests use [mini.test](https://github.com/nvim-mini/mini.nvim/blob/main/readmes/mini-test.md). The files in
+`tests/` mirror the modules in `lua/cmp_git/`. mini.test collects the files that match `tests/**/test_*.lua`.
+
+- `tests/minimal_init.lua` adds the repository and mini.nvim to `runtimepath`.
+- `tests/helpers.lua` has the expectations, the fakes, and the hooks for each case.
+
+Start each test file with `local T = helpers.new_set()`. The hooks of this set isolate each case:
+
+- They capture `vim.notify`, so log messages do not print. To read the messages, call `helpers.flush()`, and then
+  read `helpers.notifications`.
+- They unset `GITHUB_API_TOKEN` and `GITLAB_TOKEN`.
+- They isolate git from your user config and your system config.
+- They restore the cwd, the buffers, and the values that `helpers.stub` replaced.
+- They delete the directories from `helpers.tempdir` and `helpers.git_repo`.
+
+Do not use the network in tests. Use fake runners and fake adapters in place of `gh`, `glab`, and `curl`.
+
+To run one test file:
+
+```sh
+make test-file FILE=tests/test_core.lua
+```
+
+To run the tests on Neovim 0.12.0 and on nightly:
+
+```sh
+nix develop .#nvim-0_12_0 -c make test
+nix develop .#nightly -c make test
+```
+
+## CI
+
+The workflow in `.github/workflows/ci.yml` runs on pushes to `main`, on pull requests, and on manual dispatch. It
+has these jobs:
+
+| Job              | Steps                                                                         | Blocks |
+| ---------------- | ----------------------------------------------------------------------------- | ------ |
+| `Quality`        | `make format-check`, `make lint`, and `make typecheck` in the default shell   | Yes    |
+| `Neovim stable`  | `make test` in the default shell                                              | Yes    |
+| `Neovim 0.12.0`  | `make test` in the `nvim-0_12_0` shell                                        | Yes    |
+| `Neovim nightly` | `make test` with the latest `neovim-nightly-overlay`, not the locked revision | No     |
+
+A weekly schedule (Monday 06:00 UTC) runs only the nightly job. GitHub disables scheduled workflows after 60 days
+without repository activity. To enable the schedule again, use the Actions tab of the repository.
+
+## Dependency updates
+
+Each month, Dependabot opens up to two grouped pull requests:
+
+- `github-actions` updates the action SHAs in the workflow.
+- `nix` updates the inputs in `flake.lock`.
+
+A nixpkgs update can change the versions of StyLua, Selene, lua-language-server, and stable Neovim. If the `Quality`
+job then fails, do these steps on the Dependabot branch:
+
+1. Run `make format`.
+2. Fix the lint and type warnings, if there are any.
+3. Push the changes to the branch.
+
+Dependabot does not change the Neovim 0.12.0 pin in `flake.nix`.
+
+### Update mini.nvim
+
+Dependabot does not update mini.nvim. To update it:
+
+1. Find the latest release tag of [mini.nvim](https://github.com/nvim-mini/mini.nvim/releases).
+2. Set `MINI_VERSION` in the `Makefile` to the tag.
+3. Run `make test`. `make test-deps` checks out the new tag in `deps/mini.nvim`.
+4. Commit the `Makefile`.
