@@ -76,13 +76,23 @@ T["token_header"] = function()
     local request = adapter.issues_request(gitlab, "#", gitlab_config().issues)
     eq(request.commands[1].env.GITLAB_TOKEN, nil, "no token for glab")
     eq(#request.commands[2].args, 2, "no token, no curl header")
+    eq(request.commands[2].stdin, nil, "no token, no stdin")
 
     vim.env.GITLAB_TOKEN = "secret"
-    request = adapter.issues_request(gitlab, "#", gitlab_config().issues)
-
-    eq(request.commands[1].env.GITLAB_TOKEN, "secret", "glab gets the token")
-    eq(request.commands[2].args[3], "-H", "curl header flag")
-    eq(request.commands[2].args[4], "Authorization: Bearer secret", "curl sends the token")
+    local requests = {
+        issues = adapter.issues_request(gitlab, "#", gitlab_config().issues),
+        merge_requests = adapter.change_requests_request(gitlab, "!", gitlab_config().merge_requests),
+        mentions = adapter.mentions_request(gitlab, "@", gitlab_config().mentions),
+    }
+    for name, token_request in pairs(requests) do
+        local curl = token_request.commands[2]
+        eq(token_request.commands[1].env.GITLAB_TOKEN, "secret", name .. ": glab gets the token")
+        eq(curl.stdin, "Authorization: Bearer secret\n", name .. ": curl reads the token header from stdin")
+        eq(vim.tbl_contains(curl.args, "@-"), true, name .. ": curl reads headers from stdin")
+        for _, arg in ipairs(curl.args) do
+            eq(arg:find("secret", 1, true), nil, name .. ": the token is not an argument")
+        end
+    end
 end
 
 T["unset_token_does_not_reach_glab"] = function()

@@ -114,15 +114,56 @@ T["enterprise_host"] = function()
     )
 end
 
+---The requests that run curl, so that a case can check each of them.
+---@return table<string, cmp_git.Provider.ListRequest>
+local function all_requests()
+    return {
+        issues = adapter.issues_request(github, "#", github_config().issues),
+        change_requests = adapter.change_requests_request(github, "#", github_config().pull_requests),
+        preflight = adapter.mentions_preflight_request(github),
+        mentions = adapter.mentions_request(github, "@", github_config().mentions, { page = 1, page_size = 100 }),
+    }
+end
+
 T["token_header"] = function()
     local request = adapter.issues_request(github, "#", github_config().issues)
     eq(curl_header(request.commands[2], "Authorization"), nil, "no token, no header")
+    eq(request.commands[2].stdin, nil, "no token, no stdin")
     eq(request.commands[1].env.GITHUB_API_TOKEN, nil, "no token for gh")
 
     vim.env.GITHUB_API_TOKEN = "secret"
-    request = adapter.issues_request(github, "#", github_config().issues)
-    eq(curl_header(request.commands[2], "Authorization"), "token secret", "curl sends the token")
-    eq(request.commands[1].env.GITHUB_API_TOKEN, "secret", "gh gets the token")
+    for name, token_request in pairs(all_requests()) do
+        local curl = token_request.commands[2]
+        eq(curl.stdin, "Authorization: token secret\n", name .. ": curl reads the token header from stdin")
+        eq(curl_header(curl, "Authorization"), nil, name .. ": the token is not an argument")
+        eq(vim.tbl_contains(curl.args, "@-"), true, name .. ": curl reads headers from stdin")
+        eq(token_request.commands[1].env.GITHUB_API_TOKEN, "secret", name .. ": gh gets the token")
+    end
+end
+
+T["token_reaches_curl_on_stdin"] = function()
+    local bin = helpers.tempdir()
+    local file = assert(io.open(bin .. "/curl", "w"))
+    -- Prints the arguments on the first line, then stdin
+    file:write('#!/bin/sh\nprintf "%s\\n" "$*"\ncat\n')
+    file:close()
+    vim.uv.fs_chmod(bin .. "/curl", tonumber("755", 8))
+    helpers.stub(vim.env, "PATH", bin .. ":" .. vim.env.PATH)
+    vim.env.GITHUB_API_TOKEN = "secret"
+
+    local output
+    local curl = adapter.issues_request(github, "#", github_config().issues).commands[2]
+    local job = helpers.not_nil(command.build(curl, function(stdout)
+        output = stdout
+    end))
+    job:start()
+    helpers.wait_for(function()
+        return output ~= nil
+    end, "the command completes")
+
+    local lines = vim.split(output, "\n", { trimempty = true })
+    eq(lines[1]:find("secret", 1, true), nil, "the arguments have no token")
+    eq(lines[2], "Authorization: token secret", "stdin has the token header")
 end
 
 T["unset_token_does_not_reach_gh"] = function()

@@ -34,22 +34,26 @@ local function env()
     }
 end
 
-local function curl_args(curl_url)
+---@param curl_url string
+---@return cmp_git.CommandSpec
+local function curl_command(curl_url)
     local args = {
         "-s",
         "-L",
         "-H",
         "Accept: application/vnd.github.v3+json",
-        curl_url,
     }
+    local stdin = nil
 
-    if vim.fn.exists("$GITHUB_API_TOKEN") == 1 then
-        local token = vim.fn.getenv("GITHUB_API_TOKEN")
-        table.insert(args, "-H")
-        table.insert(args, string.format("Authorization: token %s", token))
+    local token = vim.env.GITHUB_API_TOKEN
+    if token and token ~= "" then
+        -- `-H @-` reads the header from stdin, so that the token is not in the process list
+        vim.list_extend(args, { "-H", "@-" })
+        stdin = string.format("Authorization: token %s\n", token)
     end
 
-    return args
+    table.insert(args, curl_url)
+    return { exec = "curl", args = args, stdin = stdin }
 end
 
 local function normalize_body(item)
@@ -100,7 +104,7 @@ function M.issues_request(git_info, trigger_char, config)
     return {
         commands = {
             { exec = "gh", args = gh_args, env = env() },
-            { exec = "curl", args = curl_args(github_url(git_info.host, curl_path)) },
+            curl_command(github_url(git_info.host, curl_path)),
         },
         handle_item = function(issue)
             normalize_body(issue)
@@ -142,22 +146,19 @@ function M.change_requests_request(git_info, trigger_char, config)
                 },
                 env = env(),
             },
-            {
-                exec = "curl",
-                args = curl_args(
-                    github_url(
-                        git_info.host,
-                        string.format(
-                            "repos/%s/%s/pulls?state=%s&per_page=%d&page=%d",
-                            git_info.owner,
-                            git_info.repo,
-                            config.state,
-                            config.limit,
-                            1
-                        )
+            curl_command(
+                github_url(
+                    git_info.host,
+                    string.format(
+                        "repos/%s/%s/pulls?state=%s&per_page=%d&page=%d",
+                        git_info.owner,
+                        git_info.repo,
+                        config.state,
+                        config.limit,
+                        1
                     )
-                ),
-            },
+                )
+            ),
         },
         handle_item = function(pr)
             normalize_body(pr)
@@ -179,15 +180,12 @@ function M.mentions_preflight_request(git_info)
                 },
                 env = env(),
             },
-            {
-                exec = "curl",
-                args = curl_args(
-                    github_url(
-                        git_info.host,
-                        string.format("repos/%s/%s/collaborators/testing/permission", git_info.owner, git_info.repo)
-                    )
-                ),
-            },
+            curl_command(
+                github_url(
+                    git_info.host,
+                    string.format("repos/%s/%s/collaborators/testing/permission", git_info.owner, git_info.repo)
+                )
+            ),
         },
         handle_result = function(result)
             local ok, parsed = pcall(vim.json.decode, result)
@@ -221,22 +219,19 @@ function M.mentions_request(git_info, trigger_char, config, opts)
                 },
                 env = env(),
             },
-            {
-                exec = "curl",
-                args = curl_args(
-                    github_url(
-                        git_info.host,
-                        string.format(
-                            "repos/%s/%s/%s?per_page=%d&page=%d",
-                            git_info.owner,
-                            git_info.repo,
-                            member_type,
-                            opts.page_size,
-                            opts.page
-                        )
+            curl_command(
+                github_url(
+                    git_info.host,
+                    string.format(
+                        "repos/%s/%s/%s?per_page=%d&page=%d",
+                        git_info.owner,
+                        git_info.repo,
+                        member_type,
+                        opts.page_size,
+                        opts.page
                     )
-                ),
-            },
+                )
+            ),
         },
         handle_item = function(mention)
             return format.item(config, trigger_char, mention)

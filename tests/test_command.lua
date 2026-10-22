@@ -113,6 +113,19 @@ T["spawn_error_is_a_failed_command"] = function()
     eq(completed, false, "the job fails")
 end
 
+T["stdin"] = function()
+    local seen
+    local job = helpers.not_nil(command.build({ exec = "sh", args = { "-c", "cat" }, stdin = "from stdin\n" }, function(stdout)
+        seen = stdout
+    end))
+    job:start()
+    helpers.wait_for(function()
+        return seen ~= nil
+    end, "the command completes")
+
+    eq(seen, "from stdin\n", "the command reads the stdin of the spec")
+end
+
 T["env_adds_to_the_environment"] = function()
     helpers.stub(vim.env, "CMP_GIT_TEST_INHERITED", "inherited")
     local seen
