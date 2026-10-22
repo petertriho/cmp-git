@@ -1,5 +1,6 @@
 local helpers = require("tests.helpers")
 local Source = require("cmp_git.source")
+local repository = require("cmp_git.repository")
 
 local eq = helpers.eq
 local ok = helpers.ok
@@ -171,6 +172,69 @@ T["legacy_trigger_action_arguments"] = function()
     ok(actual.callback == callback, "legacy trigger action receives callback")
     ok(actual.params == params, "legacy trigger action receives params")
     ok(actual.git_info == git_info, "legacy trigger action receives git info")
+end
+
+---A source whose GitHub actions answer from a fake cache, in a repository with a GitHub remote.
+---@return table source
+---@return string[] calls
+local function github_source()
+    helpers.stub(repository, "is_git_repo", function(on_result)
+        on_result(true)
+    end)
+    helpers.stub(repository, "discover", function(_, opts)
+        opts.on_complete({ host = "github.com", owner = "owner", repo = "repo" })
+    end)
+
+    local source = Source.new({})
+    local calls = {}
+    local function answer(name, insert)
+        return function(_, callback)
+            table.insert(calls, name)
+            callback({ items = { { label = insert, insertText = insert } }, isIncomplete = false })
+            return true
+        end
+    end
+    source.sources.gitlab = {
+        complete_issues = function()
+            return false
+        end,
+        complete_mentions = function()
+            return false
+        end,
+    }
+    source.sources.github = {
+        complete_issues_and_change_requests = answer("issues", "#123"),
+        complete_mentions = answer("mentions", "@login"),
+    }
+    return source, calls
+end
+
+---The nvim-cmp parameters of a request at the end of `line`.
+---@param line string
+---@param trigger_kind integer
+---@return cmp_git.CmpCompletionParams
+local function cmp_params(line, trigger_kind)
+    return {
+        context = {
+            cursor_before_line = line,
+            cursor = { row = 1, col = #line + 1, character = vim.str_utfindex(line, "utf-16") },
+        },
+        completion_context = { triggerKind = trigger_kind },
+    }
+end
+
+T["nvim_cmp_text_edits_use_bytes"] = function()
+    local source = github_source()
+    eq(source:get_position_encoding_kind(), "utf-8", "the source reports byte positions")
+
+    for _, line in ipairs({ "für #12", "héllo @ab" }) do
+        local callback, lists = helpers.recorder()
+        source:complete(cmp_params(line, 1), callback)
+
+        local range = lists[1].items[1].textEdit.range
+        eq(range.start.character, #line:match("^.* "), "edit starts at the trigger byte of " .. vim.inspect(line))
+        eq(range["end"].character, #line, "edit ends at the cursor byte of " .. vim.inspect(line))
+    end
 end
 
 T["source_new_uses_normalized_config"] = function()
