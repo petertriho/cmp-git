@@ -441,7 +441,8 @@ T["trailer_capabilities_use_cache_and_runner"] = function()
                 if spec.args[1] == "var" then
                     callback("Me <me@example.com> 1 +0000", true)
                 else
-                    callback("fatal: no commits", false)
+                    -- A history without trailers
+                    callback("", true)
                 end
             end)
         end,
@@ -461,7 +462,7 @@ T["trailer_capabilities_use_cache_and_runner"] = function()
 
     eq(table.concat(builds, ","), "log", "trailer keys run once")
     eq(#key_lists, 2, "trailer keys callback on miss and hit")
-    eq(#key_lists[1].items, #trailers_config.keys.builtin, "failed log still gives the built-in keys")
+    eq(#key_lists[1].items, #trailers_config.keys.builtin, "history without trailers gives the built-in keys")
 
     builds = {}
     local identities_callback, identities_lists = helpers.recorder()
@@ -477,7 +478,86 @@ T["trailer_capabilities_use_cache_and_runner"] = function()
 
     eq(table.concat(builds, ","), "log,var", "trailer identities run log and var once")
     eq(#identities_lists, 2, "trailer identities callback on miss and hit")
-    eq(identities_lists[1].items[1].label, "Me <me@example.com>", "failed log still gives your identity")
+    eq(identities_lists[1].items[1].label, "Me <me@example.com>", "history without authors gives your identity")
+end
+
+---A runner whose commands give the outputs of a history with one commit by Ada, or fail.
+---@param fails { log?: boolean, var?: boolean, build?: boolean } The commands that fail. `build` gives no job, as when
+---git is not installed.
+---@return table runner
+---@return string[] builds The commands of the jobs that the runner made.
+local function failing_runner(fails)
+    local builds = {}
+    local runner = {
+        build = function(spec, callback)
+            if fails.build then
+                return nil
+            end
+
+            local name = spec.args[1]
+            table.insert(builds, name)
+            return helpers.fake_job(function()
+                if fails[name] then
+                    callback("", false)
+                elseif name == "var" then
+                    callback("Me <me@example.com> 1 +0000\n", true)
+                else
+                    callback("1700000000\031Ada\031ada@example.com\031Assisted-by: Codex\0\n", true)
+                end
+            end)
+        end,
+    }
+    return runner, builds
+end
+
+T["trailer_capabilities_answer_failures_without_caching"] = function()
+    local trailers_config = config.normalize({}).git.trailers
+
+    ---Runs a request two times, and checks that each request ends with one final list and that nothing is cached.
+    ---@return string[] labels The labels of the first list.
+    local function complete(kind, fails, expected_builds)
+        local runner, builds = failing_runner(fails)
+        local callback, lists = helpers.recorder()
+        local args = {
+            cache = {},
+            callback = callback,
+            config = trailers_config[kind],
+            key = "Assisted-by",
+            runner = runner,
+            bufnr = 54,
+        }
+        local reason = string.format("%s with %s", kind, vim.inspect(fails))
+
+        trailer_capability[kind].complete(args)
+        eq(#lists, 1, reason .. " calls back once")
+        eq(lists[1].isIncomplete, false, reason .. " gives a final list")
+        eq(args.cache[54], nil, reason .. " is not cached")
+
+        trailer_capability[kind].complete(args)
+        eq(#lists, 2, reason .. " calls back again")
+        eq(table.concat(builds, ","), expected_builds, reason .. " runs again")
+
+        local labels = {}
+        for _, item in ipairs(lists[1].items) do
+            table.insert(labels, item.label)
+        end
+        return labels
+    end
+
+    eq(
+        #complete("keys", { log = true }, "log,log"),
+        #trailers_config.keys.builtin,
+        "failed log gives the built-in keys"
+    )
+    eq(#complete("keys", { build = true }, ""), #trailers_config.keys.builtin, "no git gives the built-in keys")
+
+    eq(complete("identities", { log = true }, "log,var,log,var"), { "Me <me@example.com>" }, "failed log")
+    eq(complete("identities", { var = true }, "log,var,log,var"), { "Ada <ada@example.com>" }, "failed git var")
+    eq(complete("identities", { log = true, var = true }, "log,var,log,var"), {}, "failed log and git var")
+    eq(complete("identities", { build = true }, ""), {}, "no git gives no identities")
+
+    eq(complete("values", { log = true }, "log,log"), {}, "failed log gives no values")
+    eq(complete("values", { build = true }, ""), {}, "no git gives no values")
 end
 
 T["trailer_identities_job_cancel"] = function()
@@ -614,7 +694,8 @@ T["trailer_values_cache_and_fall_through"] = function()
         build = function(_spec, callback)
             builds = builds + 1
             return helpers.fake_job(function()
-                callback("fatal: no commits", false)
+                -- A history without trailers
+                callback("1700000000\0\n", true)
             end)
         end,
     }
@@ -634,7 +715,7 @@ T["trailer_values_cache_and_fall_through"] = function()
 
     eq(builds, 1, "trailer values run once")
     eq(#lists, 2, "trailer values callback on miss and hit")
-    eq(#lists[1].items, 0, "failed log gives no trailer values")
+    eq(#lists[1].items, 0, "history without trailers gives no trailer values")
     ok(
         not trailer_capability.values.may_have(args.cache, { bufnr = 53, line = "Assisted-by: C" }),
         "cached history without values for the key"

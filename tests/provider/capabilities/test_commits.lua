@@ -240,4 +240,44 @@ T["commit_capability_uses_parsed_cache_and_runner"] = function()
     eq(last_list.items[1].label, ":abcdef1: cache me", "commit capability maps cached commits")
 end
 
+T["commit_capability_answers_failures_without_caching"] = function()
+    local builds = 0
+    local failing_runner = {
+        build = function(_spec, callback)
+            builds = builds + 1
+            return helpers.fake_job(function()
+                -- As in a repository without commits
+                callback("", false)
+            end)
+        end,
+    }
+    local callback, lists = helpers.recorder()
+    local args = {
+        cache = {},
+        callback = callback,
+        config = commit_test_config(),
+        trigger_char = ":",
+        runner = failing_runner,
+        bufnr = 45,
+    }
+
+    commit_capability.complete(args)
+    eq(lists, { { items = {}, isIncomplete = false } }, "failed log gives one final empty list")
+    eq(args.cache[45], nil, "failed log is not cached")
+    commit_capability.complete(args)
+    eq(builds, 2, "the next request runs git log again")
+    eq(#lists, 2, "the next request calls back again")
+
+    callback, lists = helpers.recorder()
+    args.callback = callback
+    -- As when git is not installed
+    args.runner = {
+        build = function()
+            return nil
+        end,
+    }
+    eq(commit_capability.complete(args), nil, "no job without git")
+    eq(lists, { { items = {}, isIncomplete = false } }, "no git gives one final empty list")
+end
+
 return T
