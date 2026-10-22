@@ -165,6 +165,16 @@ T["discover_with_ssh_aliases"] = function()
     )
 end
 
+T["discover_with_ssh_aliases_as_plain_strings"] = function()
+    require_git()
+    local repo = helpers.git_repo({ remotes = { { "origin", "git@gh+work:owner/repo.git" } } })
+    vim.fn.chdir(repo.dir)
+
+    eq(discover({ ssh_aliases = { ["gh+work"] = "github.com" } }).host, "github.com", "an alias with a +")
+    eq(discover({ ssh_aliases = { ["gh+work"] = "git%1.example.com" } }).host, "git%1.example.com", "a host with a %")
+    eq(discover({ ssh_aliases = { ["gh.work"] = "github.com" } }).host, "gh+work", "a . in an alias is not a pattern")
+end
+
 T["discover_octo_buffer"] = function()
     local octo_config = { values = { github_hostname = "" } }
     helpers.stub(package.loaded, "octo.config", octo_config)

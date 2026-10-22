@@ -58,8 +58,10 @@ local function apply_ssh_aliases(metadata, ssh_aliases)
         return metadata
     end
 
-    for alias, host in pairs(ssh_aliases) do
-        metadata.host = metadata.host:gsub("^" .. alias:gsub("%-", "%%-"):gsub("%.", "%%.") .. "$", host, 1)
+    -- A plain lookup, because an alias or a host can have Lua pattern characters, such as `+` or `%`
+    local host = ssh_aliases[metadata.host]
+    if host ~= nil then
+        metadata.host = host
     end
 
     return metadata
