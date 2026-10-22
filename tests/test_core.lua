@@ -12,9 +12,10 @@ local ok = helpers.ok
 local T = helpers.new_set()
 
 T["git_commit_edit_range_is_preserved"] = function()
-    local items = { { insertText = "abcdef1" } }
-
-    Core.apply_text_edits(items, { cursor = { row = 3, character = 5 }, line = ":abcd", trigger_character = ":" })
+    local items = Core.apply_text_edits(
+        { { insertText = "abcdef1" } },
+        { cursor = { row = 3, character = 5 }, line = ":abcd", trigger_character = ":" }
+    )
 
     eq(items[1].textEdit.range.start.line, 2, "commit edit range start line")
     eq(items[1].textEdit.range.start.character, 0, "commit edit range start character")
@@ -32,8 +33,7 @@ T["core_text_edit_ranges_for_all_triggers"] = function()
     }
 
     for _, case in ipairs(cases) do
-        local items = { { insertText = case.insert } }
-        Core.apply_text_edits(items, {
+        local items = Core.apply_text_edits({ { insertText = case.insert } }, {
             cursor = { row = 1, character = case.cursor },
             line = case.line,
             trigger_character = case.trigger,
@@ -44,6 +44,46 @@ T["core_text_edit_ranges_for_all_triggers"] = function()
         eq(items[1].textEdit.range["end"].character, case.cursor, case.trigger .. " range ends at cursor")
         eq(items[1].textEdit.newText, case.insert, case.trigger .. " range inserts text")
     end
+end
+
+T["requests_get_new_item_tables"] = function()
+    local data = { number = 12 }
+    local cached = { { label = "#12: Fix", insertText = "#12", data = data } }
+    local core = Core.new({})
+    core.sources.gitlab = {
+        complete_issues = function()
+            return false
+        end,
+    }
+    core.sources.github = {
+        -- Like a cache hit of the issues capability
+        complete_issues_and_change_requests = function(_, callback)
+            callback({ items = cached, isIncomplete = false })
+            return true
+        end,
+    }
+    local callback, lists = helpers.recorder()
+    local function request(line)
+        core:_run_trigger_actions("#", callback, { cursor = { row = 1, character = #line }, line = line }, {})
+        return lists[#lists].items[1]
+    end
+
+    local first = request("see #1")
+    -- blink.cmp writes these into the items that it gets
+    first.pos = { 0, 6 }
+    first.score_offset = 3
+    local second = request("x #")
+
+    ok(first ~= cached[1] and second ~= first, "each request gets new item tables")
+    eq(cached[1].textEdit, nil, "the cached item has no text edit")
+    eq(first.textEdit.range["end"].character, 6, "a later request does not change the first text edit")
+    eq(second.textEdit.range.start.character, 2, "the second text edit starts at its trigger")
+    eq(second.textEdit.range["end"].character, 3, "the second text edit ends at its cursor")
+    eq(second.pos, nil, "the second item has no position of the first request")
+    eq(second.score_offset, nil, "the score offset does not grow")
+    eq(second.label, "#12: Fix", "the copy keeps the label")
+    ok(second.data == data, "the copy keeps the data")
+    eq(lists[2].isIncomplete, false, "the list keeps isIncomplete")
 end
 
 T["custom_trigger_actions_remove_trailers"] = function()
