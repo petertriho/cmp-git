@@ -31,6 +31,71 @@ T["fallback"] = function()
     eq(result.success, true, "fallback success")
 end
 
+---@param code integer
+---@return cmp_git.CommandSpec
+local function exit_with(code)
+    return { exec = "sh", args = { "-c", "exit " .. code } }
+end
+
+T["fallback_reports_the_last_failure"] = function()
+    for count = 1, 3 do
+        local specs = {}
+        for i = 1, count do
+            table.insert(specs, exit_with(i))
+        end
+        local calls = {}
+        local completed
+        local job = helpers.not_nil(command.build_fallback(specs, function(stdout, success)
+            table.insert(calls, { stdout = stdout, success = success })
+        end))
+
+        job:start(function(success)
+            completed = success
+        end)
+        helpers.wait_for(function()
+            return completed ~= nil
+        end, "the fallback completes")
+
+        eq(calls, { { stdout = "", success = false } }, count .. " failed commands give one failure callback")
+        eq(completed, false, count .. " failed commands fail the job")
+    end
+end
+
+T["fallback_list_reports_the_last_failure"] = function()
+    local calls = {}
+    local job = helpers.not_nil(command.build_fallback_list({ exit_with(1), exit_with(2) }, function(list, success)
+        table.insert(calls, { list = list, success = success })
+    end, function(item)
+        return item
+    end))
+    job:start()
+    helpers.wait_for(function()
+        return #calls > 0
+    end, "the fallback completes")
+    helpers.flush()
+
+    eq(calls, { { list = { items = {}, isIncomplete = false }, success = false } }, "one empty list")
+end
+
+T["fallback_skips_a_missing_executable"] = function()
+    local calls = {}
+    local job = helpers.not_nil(
+        command.build_fallback(
+            { exit_with(1), { exec = "cmp-git-missing-executable", args = {} } },
+            function(_, success)
+                table.insert(calls, success)
+            end
+        )
+    )
+    job:start()
+    helpers.wait_for(function()
+        return #calls > 0
+    end, "the fallback completes")
+    helpers.flush()
+
+    eq(calls, { false }, "the first command reports its failure when the second cannot run")
+end
+
 T["command_fallback_cancels_active_job"] = function()
     local first_cancelled = false
     local second_started = false
@@ -92,6 +157,25 @@ T["build_job"] = function()
     eq(list.isIncomplete, false, "json job completion flag")
 end
 
+T["build_list_reports_a_failure"] = function()
+    local calls = {}
+    local job = helpers.not_nil(command.build_list(exit_with(1), function(list, success)
+        table.insert(calls, { list = list, success = success })
+    end, function(item)
+        return item
+    end))
+    job:start()
+    helpers.wait_for(function()
+        return #calls > 0
+    end, "the job completes")
+
+    eq(
+        calls,
+        { { list = { items = {}, isIncomplete = false }, success = false } },
+        "a failed command gives an empty list"
+    )
+end
+
 T["spawn_error_is_a_failed_command"] = function()
     helpers.stub(repository, "get_cwd", function()
         return helpers.tempdir() .. "/missing"
@@ -115,9 +199,10 @@ end
 
 T["stdin"] = function()
     local seen
-    local job = helpers.not_nil(command.build({ exec = "sh", args = { "-c", "cat" }, stdin = "from stdin\n" }, function(stdout)
-        seen = stdout
-    end))
+    local job =
+        helpers.not_nil(command.build({ exec = "sh", args = { "-c", "cat" }, stdin = "from stdin\n" }, function(stdout)
+            seen = stdout
+        end))
     job:start()
     helpers.wait_for(function()
         return seen ~= nil

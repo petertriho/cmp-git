@@ -34,4 +34,56 @@ T["gitlab_instance_state_isolation"] = function()
     ok(first.cache.merge_requests ~= second.cache.merge_requests, "GitLab MR cache table is instance-local")
 end
 
+local git_info = { host = "gitlab.com", owner = "owner", repo = "repo" }
+local EMPTY = { items = {}, isIncomplete = false }
+
+---Make PATH a directory with only these commands until the end of the case.
+---@param scripts table<string, string> The shell script body of each command, by name.
+local function fake_commands(scripts)
+    local bin = helpers.tempdir()
+    for name, body in pairs(scripts) do
+        local path = bin .. "/" .. name
+        local file = assert(io.open(path, "w"))
+        file:write("#!/bin/sh\n" .. body .. "\n")
+        file:close()
+        vim.uv.fs_chmod(path, tonumber("755", 8))
+    end
+    helpers.stub(vim.env, "PATH", bin)
+end
+
+---Run a request of the source and return the lists that it gave.
+---@param source cmp_git.Source.Gitlab
+---@param method string
+---@param trigger_char string
+---@return cmp_git.CompletionList[]
+local function answers(source, method, trigger_char)
+    local callback, lists = helpers.recorder()
+    local handled = source[method](source, callback, git_info, trigger_char)
+    eq(handled, true, method .. " handles the host")
+    helpers.wait_for(function()
+        return #lists > 0
+    end, method .. " answers")
+    helpers.flush()
+    return lists
+end
+
+T["failed_commands_give_an_empty_list"] = function()
+    fake_commands({ glab = "exit 1", curl = "exit 22" })
+    local source = GitLab.new(config.normalize({}).gitlab)
+    local bufnr = vim.api.nvim_get_current_buf()
+
+    eq(answers(source, "complete_issues", "#"), { EMPTY }, "issues")
+    eq(answers(source, "complete_change_requests", "!"), { EMPTY }, "merge requests")
+    eq(source.cache.issues[bufnr], nil, "failed issues are not cached")
+    eq(source.cache.change_requests[bufnr], nil, "failed merge requests are not cached")
+end
+
+T["missing_commands_give_an_empty_list"] = function()
+    fake_commands({})
+    local source = GitLab.new(config.normalize({}).gitlab)
+
+    eq(answers(source, "complete_issues", "#"), { EMPTY }, "issues")
+    eq(answers(source, "complete_change_requests", "!"), { EMPTY }, "merge requests")
+end
+
 return T

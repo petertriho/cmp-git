@@ -27,7 +27,7 @@ T["issue_capability_uses_cache_and_runner"] = function()
             runner_count = runner_count + 1
             eq(commands[1].exec, "fake", "issue capability forwards commands")
             return helpers.fake_job(function()
-                callback({ items = { handle_item({ name = "one" }) }, isIncomplete = false })
+                callback({ items = { handle_item({ name = "one" }) }, isIncomplete = false }, true)
             end)
         end,
     }
@@ -54,6 +54,61 @@ T["issue_capability_uses_cache_and_runner"] = function()
     eq(last_list.items[1].label, "one", "issue capability caches mapped items")
     neq(job, nil, "issue capability returns started job")
     eq(cached_job, nil, "issue capability cache hit returns no job")
+end
+
+local EMPTY = { items = {}, isIncomplete = false }
+
+---@param runner table
+---@return cmp_git.Provider.CapabilityArgs args
+---@return cmp_git.CompletionList[] lists
+local function failing_args(runner)
+    local callback, lists = helpers.recorder()
+    return {
+        adapter = {
+            issues_request = function()
+                return { commands = {}, handle_item = function() end }
+            end,
+        },
+        cache = {},
+        callback = callback,
+        config = {},
+        git_info = {},
+        trigger_char = "#",
+        runner = runner,
+        bufnr = 42,
+    },
+        lists
+end
+
+T["failure_gives_an_empty_list_and_is_not_cached"] = function()
+    local runs = 0
+    local args, lists = failing_args({
+        build_fallback_list = function(_commands, callback)
+            return helpers.fake_job(function()
+                runs = runs + 1
+                callback({ items = {}, isIncomplete = false }, false)
+            end)
+        end,
+    })
+
+    issue_capability.complete(args)
+    issue_capability.complete(args)
+
+    eq(lists, { EMPTY, EMPTY }, "each request gets one empty list")
+    eq(args.cache[42], nil, "a failure is not cached")
+    eq(runs, 2, "the next request tries again")
+end
+
+T["no_runnable_command_gives_an_empty_list"] = function()
+    local args, lists = failing_args({
+        build_fallback_list = function()
+            return nil
+        end,
+    })
+
+    eq(issue_capability.complete(args), nil, "no job")
+    eq(lists, { EMPTY }, "one empty list")
+    eq(args.cache[42], nil, "nothing is cached")
 end
 
 return T

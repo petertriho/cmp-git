@@ -23,7 +23,7 @@ T["mention_capability_preflight_and_pagination"] = function()
                 for _, item in ipairs(raw_items) do
                     table.insert(items, handle_item(item))
                 end
-                callback({ items = items, isIncomplete = false })
+                callback({ items = items, isIncomplete = false }, true)
             end)
         end,
     }
