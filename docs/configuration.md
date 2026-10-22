@@ -20,6 +20,15 @@ An entry can use `pattern` in place of `trigger_character`. `pattern` is a Vim r
 entry applies when the pattern matches the text before the cursor, up to the cursor. The completed text starts at the
 start of the match. cmp-git also adds the patterns to the `nvim-cmp` keyword pattern.
 
+An entry can also have `keyword_pattern`. Then cmp-git adds `keyword_pattern` to the `nvim-cmp` keyword pattern in place
+of `pattern`. `nvim-cmp` filters the items on the text from the start of the keyword match.
+
+`nvim-cmp` matches the keyword pattern on each keystroke. Use `\zs`, not a lookbehind such as `\@<=`. A lookbehind
+makes Vim use its backtracking engine, and its time grows with the square of the line length.
+
+The trailer value entry of earlier versions used a lookbehind. If an entry has that pattern and no `keyword_pattern`,
+cmp-git uses the current trailer value patterns for it.
+
 The default trailer entries come before the `:` entry. As a result, `Co-authored-by:` completes identities, not
 commits.
 
@@ -196,10 +205,16 @@ A compound filetype, such as `gitcommit.markdown`, matches when one of its parts
 cmp-git gets the host, the owner, and the repository from the URL of a git remote. It reads the remotes in the order
 of `remotes`, and uses the first URL that it can parse. `remotes` can also be a single string.
 
-cmp-git runs git in the directory of the current file. If it finds no remote there, it uses the working directory of
-Neovim.
+cmp-git uses the git repository of the directory of the file in the buffer. If the buffer has no file, or if that
+directory is not in a git repository, cmp-git uses the working directory of Neovim.
 
-If `enableRemoteUrlRewrites` is `true`, cmp-git reads the URL with `git remote get-url`. This command applies the
+cmp-git keeps the repository and its remote URLs for each buffer. It reads them again in these cases:
+
+- The git config of the repository changes, for example after `git remote add`.
+- The repository came from the working directory of Neovim, and that directory changes.
+- cmp-git found no repository, and 5 seconds have passed.
+
+If `enableRemoteUrlRewrites` is `true`, cmp-git reads the URLs with `git remote -v`. This command applies the
 `url.<base>.insteadOf` rewrites. If it is `false`, cmp-git reads `remote.<name>.url` without rewrites.
 
 If a remote uses a host alias from your SSH config, add the alias and the real host to `ssh_aliases`:
@@ -215,8 +230,9 @@ require("cmp_git").setup({
 With this setup, cmp-git uses `github.com` for the remote `git@github-work:owner/repo.git`. The alias must match the
 full host.
 
-If you set a default repository with `gh repo set-default`, GitHub issues and pull requests come from that repository.
-GitHub mentions come from the repository of the remote.
+If you set a default repository with `gh repo set-default`, GitHub issues, pull requests, and mentions come from that
+repository. cmp-git reads the default repository once for each repository, so restart Neovim after you change it.
+cmp-git does not use the default repository in an `octo` buffer.
 
 In an `octo` buffer, cmp-git gets the owner and the repository from the buffer name. It gets the host from
 `github_hostname` in the Octo config. The default host is `github.com`.
@@ -276,4 +292,5 @@ To log missing executables, and the exit code and stderr of failed commands, set
 sends the messages with `vim.notify`.
 
 cmp-git caches the items for each buffer and does not refresh them. To get new items, wipe the buffer with
-`:bwipeout` and open the file again, or restart Neovim.
+`:bwipeout` and open the file again, or restart Neovim. cmp-git does not cache the result of a failed command or an
+HTTP error, so the next request tries again.
