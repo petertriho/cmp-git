@@ -135,4 +135,19 @@ function M.parse_github_date(d)
     return parse_date(d)
 end
 
+---Replace the missing and null text fields that the formats read. JSON null is `vim.NIL`, which a format would show as
+---the text "vim.NIL".
+---@generic T: table
+---@param item T
+---@param fields string[]
+---@return T item
+function M.empty_nulls(item, fields)
+    for _, field in ipairs(fields) do
+        if item[field] == nil or item[field] == vim.NIL then
+            item[field] = ""
+        end
+    end
+    return item
+end
+
 return M

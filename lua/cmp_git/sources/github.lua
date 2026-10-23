@@ -4,7 +4,6 @@ local command = require("cmp_git.command")
 local issues = require("cmp_git.provider.capabilities.issues")
 local mentions = require("cmp_git.provider.capabilities.mentions")
 local change_requests = require("cmp_git.provider.capabilities.change_requests")
-local log = require("cmp_git.log")
 
 ---The result of `gh repo set-default --view` for a repository. Until it is `done`, the requests wait in `waiters`.
 ---@class cmp_git.Source.GitHub.DefaultRepo
@@ -241,53 +240,11 @@ end
 ---@param issues_entry cmp_git.CacheEntry
 ---@param change_requests_entry cmp_git.CacheEntry
 function GitHub:_issues_and_change_requests(callback, git_info, trigger_char, issues_entry, change_requests_entry)
-    local results = {}
-    local pending = 2
-    local cancelled = false
-
-    -- Each capability calls back once: at once on a cache hit, and with an empty list on a failure. So a failure of
-    -- one request still gives the items of the other.
-    ---@param kind "issues" | "change_requests"
-    local function collect(kind)
-        return function(list)
-            if cancelled then
-                return
-            end
-            results[kind] = list.items
-            pending = pending - 1
-            if pending > 0 then
-                return
-            end
-
-            -- Each request gets new lists, because the cache keeps the raw items
-            local items = vim.list_extend(results.issues, results.change_requests)
-            log.fmt_debug("Got %d issues and prs", #items)
-            callback({ items = items, isIncomplete = false })
-        end
-    end
-
-    local issues_job = self:_issues_job(collect("issues"), git_info, trigger_char, issues_entry)
-    local change_requests_job =
-        self:_change_requests_job(collect("change_requests"), git_info, trigger_char, change_requests_entry)
-    -- Both commands run at once, so that a cold request waits for the slower one, not for both in turn
-    if issues_job then
-        issues_job:start()
-    end
-    if change_requests_job then
-        change_requests_job:start()
-    end
-
-    return {
-        command = "github_issues_and_change_requests",
-        cancel = function()
-            cancelled = true
-            for _, job in ipairs({ issues_job or false, change_requests_job or false }) do
-                if job and job.cancel then
-                    job:cancel()
-                end
-            end
-        end,
-    }
+    return change_requests.with_issues(callback, function(on_list)
+        return self:_issues_job(on_list, git_info, trigger_char, issues_entry)
+    end, function(on_list)
+        return self:_change_requests_job(on_list, git_info, trigger_char, change_requests_entry)
+    end)
 end
 
 ---@param callback fun(list: cmp_git.CompletionList)

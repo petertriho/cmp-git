@@ -31,21 +31,6 @@ local function env()
     }
 end
 
----Replace the missing and null text fields that the formats read. JSON null is `vim.NIL`, which a format would show as
----the text "vim.NIL".
----@generic T: table
----@param item T
----@param fields string[]
----@return T item
-local function empty_nulls(item, fields)
-    for _, field in ipairs(fields) do
-        if item[field] == nil or item[field] == vim.NIL then
-            item[field] = ""
-        end
-    end
-    return item
-end
-
 ---@param curl_url string
 ---@return cmp_git.CommandSpec
 local function curl_command(curl_url)
@@ -87,7 +72,7 @@ function M.issues_request(git_info, trigger_char, config)
             ),
         },
         handle_item = function(issue)
-            return format.item(config, trigger_char, empty_nulls(issue, { "title", "description" }))
+            return format.item(config, trigger_char, utils.empty_nulls(issue, { "title", "description" }))
         end,
     }
 end
@@ -115,7 +100,7 @@ function M.change_requests_request(git_info, trigger_char, config)
             ),
         },
         handle_item = function(mr)
-            return format.item(config, trigger_char, empty_nulls(mr, { "title", "description" }))
+            return format.item(config, trigger_char, utils.empty_nulls(mr, { "title", "description" }))
         end,
     }
 end
@@ -137,7 +122,7 @@ function M.mentions_request(git_info, trigger_char, config)
             ),
         },
         handle_item = function(mention)
-            return format.item(config, trigger_char, empty_nulls(mention, { "name" }))
+            return format.item(config, trigger_char, utils.empty_nulls(mention, { "name" }))
         end,
     }
 end

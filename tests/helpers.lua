@@ -138,6 +138,23 @@ function M.tempdir()
     return assert(vim.uv.fs_realpath(dir))
 end
 
+---Make PATH a directory with only these commands until the end of the case. The scripts can use only the builtins of
+---`sh`.
+---@param scripts table<string, string> The shell script body of each command, by name.
+---@return string bin The directory.
+function M.fake_commands(scripts)
+    local bin = M.tempdir()
+    for name, body in pairs(scripts) do
+        local path = bin .. "/" .. name
+        local file = assert(io.open(path, "w"))
+        file:write("#!/bin/sh\n" .. body .. "\n")
+        file:close()
+        vim.uv.fs_chmod(path, tonumber("755", 8))
+    end
+    M.stub(vim.env, "PATH", bin)
+    return bin
+end
+
 ---@class tests.GitRepo
 ---@field dir string
 ---@field git fun(...: string): string Runs git in the repository and returns stdout.
