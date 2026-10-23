@@ -4,6 +4,7 @@ local M = {}
 ---@field host string?
 ---@field owner string?
 ---@field repo string?
+---@field scheme? "http" | "https" The scheme of an http(s) remote. The Gitea and Forgejo API URLs use it.
 
 ---@param authority string `[user[:password]@]host[:port]`
 ---@return string? host
@@ -28,6 +29,7 @@ function M.parse(remote_url)
 
     local url = vim.trim(remote_url)
     local host, port, path ---@type string?, string?, string?
+    local web_scheme ---@type "http" | "https" | nil
     local scheme, rest = url:match("^(%a[%w+.-]*)://(.*)$")
     if scheme ~= nil then
         scheme = scheme:lower()
@@ -40,8 +42,11 @@ function M.parse(remote_url)
         host, port = split_authority(authority)
         -- The API of an http(s) remote is on the same origin. Other ports, such as the one of an `ssh://` remote,
         -- are not the port of the API.
-        if host ~= nil and port ~= "" and (scheme == "http" or scheme == "https") then
-            host = host .. ":" .. port
+        if scheme == "http" or scheme == "https" then
+            web_scheme = scheme
+            if host ~= nil and port ~= "" then
+                host = host .. ":" .. port
+            end
         end
     else
         -- Git reads `[user@]host:path` as an scp-like ssh URL when no slash comes before the first colon. Anything
@@ -65,7 +70,7 @@ function M.parse(remote_url)
         return {}
     end
 
-    return { host = host, owner = owner, repo = repo }
+    return { host = host, owner = owner, repo = repo, scheme = web_scheme }
 end
 
 return M

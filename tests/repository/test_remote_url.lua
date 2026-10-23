@@ -30,7 +30,7 @@ end
 T["parse_remote_url_repo_with_git_in_name"] = function()
     eq(
         remote_url.parse("https://github.com/user/user.github.io.git"),
-        { host = "github.com", owner = "user", repo = "user.github.io" },
+        { host = "github.com", owner = "user", repo = "user.github.io", scheme = "https" },
         "only a trailing .git is removed"
     )
     eq(remote_url.parse("git@github.com:owner/git.git").repo, "git", "a repo named git")
@@ -38,8 +38,9 @@ end
 
 T["parse_remote_url_subgroups"] = function()
     local expected = { host = "gitlab.com", owner = "group/sub", repo = "repo" }
-    eq(remote_url.parse("https://gitlab.com/group/sub/repo"), expected, "https remote in a subgroup")
-    eq(remote_url.parse("https://gitlab.com/group/sub/repo.git"), expected, "https remote in a subgroup with .git")
+    local https = vim.tbl_extend("force", expected, { scheme = "https" })
+    eq(remote_url.parse("https://gitlab.com/group/sub/repo"), https, "https remote in a subgroup")
+    eq(remote_url.parse("https://gitlab.com/group/sub/repo.git"), https, "https remote in a subgroup with .git")
     eq(remote_url.parse("git@gitlab.com:group/sub/repo.git"), expected, "scp-like remote in a subgroup")
     eq(remote_url.parse("ssh://git@gitlab.com/group/sub/repo.git"), expected, "ssh url remote in a subgroup")
 end
@@ -52,7 +53,7 @@ T["parse_remote_url_ports"] = function()
     )
     eq(
         remote_url.parse("https://gitlab.example.com:8443/group/repo.git"),
-        { host = "gitlab.example.com:8443", owner = "group", repo = "repo" },
+        { host = "gitlab.example.com:8443", owner = "group", repo = "repo", scheme = "https" },
         "the https port is part of the host, because the API is on the same origin"
     )
     eq(remote_url.parse("git://example.com:9418/owner/repo.git").host, "example.com", "the git daemon port")
@@ -61,7 +62,7 @@ end
 T["parse_remote_url_credentials"] = function()
     eq(
         remote_url.parse("https://user:token@github.com/o/r"),
-        { host = "github.com", owner = "o", repo = "r" },
+        { host = "github.com", owner = "o", repo = "r", scheme = "https" },
         "credentials are not part of the host"
     )
     eq(remote_url.parse("https://token@github.com:8443/o/r").host, "github.com:8443", "a token and a port")
@@ -71,9 +72,22 @@ end
 
 T["parse_remote_url_trailing_slash"] = function()
     local expected = { host = "github.com", owner = "owner", repo = "repo" }
-    eq(remote_url.parse("https://github.com/owner/repo/"), expected, "a trailing slash")
-    eq(remote_url.parse("https://github.com/owner/repo.git/"), expected, "a trailing slash after .git")
+    local https = vim.tbl_extend("force", expected, { scheme = "https" })
+    eq(remote_url.parse("https://github.com/owner/repo/"), https, "a trailing slash")
+    eq(remote_url.parse("https://github.com/owner/repo.git/"), https, "a trailing slash after .git")
     eq(remote_url.parse("git@github.com:owner/repo.git\n"), expected, "a trailing newline")
+end
+
+T["parse_remote_url_scheme"] = function()
+    eq(remote_url.parse("https://example.com/owner/repo.git").scheme, "https", "an https remote")
+    eq(
+        remote_url.parse("HTTP://127.0.0.1:3000/owner/repo.git"),
+        { host = "127.0.0.1:3000", owner = "owner", repo = "repo", scheme = "http" },
+        "an http remote keeps its port and its scheme in lowercase"
+    )
+    eq(remote_url.parse("git@example.com:owner/repo.git").scheme, nil, "an scp-like remote has no scheme")
+    eq(remote_url.parse("ssh://git@example.com/owner/repo.git").scheme, nil, "an ssh remote has no scheme")
+    eq(remote_url.parse("git://example.com/owner/repo.git").scheme, nil, "a git remote has no scheme")
 end
 
 T["parse_remote_url_unsupported"] = function()
