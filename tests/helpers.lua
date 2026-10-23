@@ -108,6 +108,9 @@ local ENV_NAMES = {
     "HOME",
     "XDG_CACHE_HOME",
     "XDG_CONFIG_HOME",
+    -- fj keeps its tokens in `keys.json` of the data directory
+    "XDG_DATA_HOME",
+    "APPDATA",
 }
 
 local temp_root = vim.fn.tempname()

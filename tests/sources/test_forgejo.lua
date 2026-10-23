@@ -35,6 +35,15 @@ local function complete(forgejo, method, trigger_char)
     end, lists[1].items)
 end
 
+---Give fj a login for codeberg.org with `token`.
+---@param token string
+local function fj_login(token)
+    vim.env.XDG_DATA_HOME = helpers.tempdir()
+    vim.fn.mkdir(vim.env.XDG_DATA_HOME .. "/forgejo-cli", "p")
+    local keys = { hosts = { ["codeberg.org"] = { type = "Application", token = token } } }
+    vim.fn.writefile({ vim.json.encode(keys) }, vim.env.XDG_DATA_HOME .. "/forgejo-cli/keys.json")
+end
+
 T["forgejo_hosts"] = function()
     local forgejo = source({ hosts = { "forgejo.example.com:3000" } })
 
@@ -69,6 +78,26 @@ T["without_a_token_the_public_items_come_from_curl"] = function()
     eq(complete(forgejo, "complete_change_requests", "!"), { "!2: A pull request" }, "the pull requests")
     eq(complete(forgejo, "complete_mentions", "@"), {}, "no mentions without a token")
     eq(log(), { PULLS_URL .. " " }, "one request without a token, and none for the mentions")
+end
+
+T["the_fj_token_gives_the_items"] = function()
+    fj_login("fj")
+    local log = fake_gitea_api.commands()
+
+    eq(complete(source(), "complete_mentions", "@"), { "@ada" }, "the assignees")
+    eq(log(), { API .. "assignees Authorization: token fj" }, "curl sends the fj token")
+end
+
+T["an_expired_fj_token_falls_back_to_the_token_variable"] = function()
+    fj_login("bad")
+    vim.env.FORGEJO_TOKEN = "secret"
+    local log = fake_gitea_api.commands()
+
+    eq(complete(source(), "complete_issues", "#"), { "#1: An issue" }, "the issues")
+    eq(log(), {
+        ISSUES_URL .. " Authorization: token bad",
+        ISSUES_URL .. " Authorization: token secret",
+    }, "the fj token fails, then FORGEJO_TOKEN gives the items")
 end
 
 return T
