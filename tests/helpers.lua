@@ -123,6 +123,12 @@ function M.stub(target, key, value)
     target[key] = value
 end
 
+---Run `fn` at the end of the current case, in reverse order with the restores of `M.stub`.
+---@param fn fun()
+function M.defer(fn)
+    table.insert(case.restores, fn)
+end
+
 ---An empty directory that the case hooks delete.
 ---@return string path The resolved path, so that it compares equal to `getcwd()`.
 function M.tempdir()
@@ -235,12 +241,16 @@ local function teardown_case()
 end
 
 ---The test set for a file. Its hooks isolate each case.
+---@param hooks? { pre_once?: fun(), post_once?: fun() } Run once before the first case and after the last case.
 ---@return table
-function M.new_set()
+function M.new_set(hooks)
+    hooks = hooks or {}
     return MiniTest.new_set({
         hooks = {
+            pre_once = hooks.pre_once,
             pre_case = setup_case,
             post_case = teardown_case,
+            post_once = hooks.post_once,
         },
     })
 end

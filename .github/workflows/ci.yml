@@ -66,6 +66,32 @@ jobs:
       - name: Test
         run: nix develop ".#${{ matrix.shell }}" -c make test
 
+  # The real gh, glab, tea, and fj, and real Gitea and Forgejo servers
+  integration:
+    name: Integration
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install Nix
+        uses: cachix/install-nix-action@448cde739abec1eaf0646249e3d25bb8d9bc7702 # v31.11.2
+        with:
+          extra_nix_config: |
+            extra-substituters = https://nix-community.cachix.org
+            extra-trusted-public-keys = nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs=
+      - name: Show versions
+        run: >-
+          nix develop .#integration -c sh -c
+          'nvim --version | head -1; gh --version | head -1; glab --version; tea --version; fj version;
+          gitea --version; forgejo --version'
+      - name: Test
+        env:
+          # A missing CLI or server fails its cases, and does not skip them
+          CMP_GIT_INTEGRATION_REQUIRE: 1
+        run: nix develop .#integration -c make test-integration
+
   # Shared runners are noisy, so a failed comparison is a warning to read in the job summary, not a failed check
   bench:
     name: Benchmarks
