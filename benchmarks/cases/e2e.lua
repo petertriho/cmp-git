@@ -26,7 +26,7 @@ local REQUESTS = {
     github_mentions = { row = 3, line = "See @", trigger_character = "@" },
 }
 
----Remove the cached GitHub and GitLab items from memory and from disk. Revisions before the disk cache have no cache
+---Remove the cached items of the providers from memory and from disk. Revisions before the disk cache have no cache
 ---module, and a new source is cold there.
 local function clear_cache()
     local ok, cache = pcall(require, "cmp_git.cache")
@@ -95,7 +95,7 @@ for _, name in ipairs({
     table.insert(cases, request_case(name, "cold"))
     table.insert(cases, request_case(name, "warm"))
 end
--- Only the GitHub and GitLab items have cache files
+-- Only the items of the providers have cache files, not the commits and the trailers
 for _, name in ipairs({ "github_issues_and_prs", "github_mentions" }) do
     table.insert(cases, request_case(name, "disk"))
 end

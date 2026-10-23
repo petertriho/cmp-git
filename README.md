@@ -23,6 +23,12 @@ Git source for [hrsh7th/nvim-cmp](https://github.com/hrsh7th/nvim-cmp) and [Sagh
 | Mentions       | @       |
 | Merge Requests | !       |
 
+| Gitea and Forgejo | Trigger |
+| ----------------- | ------- |
+| Issues            | #       |
+| Mentions          | @       |
+| Pull Requests     | #, !    |
+
 ## Requirements
 
 - Neovim >= 0.12
@@ -30,6 +36,9 @@ Git source for [hrsh7th/nvim-cmp](https://github.com/hrsh7th/nvim-cmp) and [Sagh
 - curl (>= 7.55)
 - [GitHub CLI](https://cli.github.com/) (optional, cmp-git uses curl if it is not available)
 - [GitLab CLI](https://gitlab.com/gitlab-org/cli) (optional, cmp-git uses curl if it is not available)
+- [tea](https://gitea.com/gitea/tea) >= 0.12.0 (optional, for Gitea, cmp-git uses curl if it is not available)
+- [forgejo-cli](https://codeberg.org/forgejo-contrib/forgejo-cli) (`fj`) (optional, for Forgejo, cmp-git reads the
+  token of `fj` and sends it with curl)
 
 ### GitHub private repositories
 
@@ -42,6 +51,21 @@ Git source for [hrsh7th/nvim-cmp](https://github.com/hrsh7th/nvim-cmp) and [Sagh
 - `curl`: Generate a [token](https://gitlab.com/-/profile/personal_access_tokens) with the `api` scope. Set the
   `GITLAB_TOKEN` environment variable to the token.
 - `GitLab CLI`: Run [glab auth login](https://glab.readthedocs.io/en/latest/auth/login.html).
+
+### Gitea private repositories
+
+- `curl`: Generate an access token in Settings > Applications on the server, with the `read:issue` and
+  `read:repository` scopes. Set the `GITEA_TOKEN` environment variable to the token.
+- `tea`: Run `tea login add` for the server. cmp-git uses the login whose URL is the host of the remote.
+
+### Forgejo private repositories
+
+- `curl`: Generate an access token in Settings > Applications on the server, with the `read:issue` and
+  `read:repository` scopes. Set the `FORGEJO_TOKEN` environment variable to the token.
+- `forgejo-cli`: Run `fj auth login` or `fj auth add-token` for the server. cmp-git reads the token that `fj` keeps for
+  the host.
+
+Without a token, `@` shows no Gitea and Forgejo mentions, also in a public repository. The assignees API needs a token.
 
 ## Installation
 
@@ -135,7 +159,7 @@ require("cmp_git").setup({
     enableRemoteUrlRewrites = false, -- enable git url rewrites, see https://git-scm.com/docs/git-config#Documentation/git-config.txt-urlltbasegtinsteadOf
     ssh_aliases = {}, -- SSH host aliases and their real hosts, such as { ["github-work"] = "github.com" }
     cache = {
-        ttl = 300, -- seconds after which a request also gets the GitHub and GitLab items again in the background
+        ttl = 300, -- seconds after which a request also gets the items again in the background
     },
     git = {
         commits = {
@@ -217,6 +241,46 @@ require("cmp_git").setup({
             format = format.gitlab.merge_requests,
         },
     },
+    gitea = {
+        hosts = {}, -- list of private instances of gitea, with the port and the path prefix if any, such as "example.com/gitea"
+        issues = {
+            limit = 50, -- the servers give at most 50 items
+            state = "open", -- open, closed, all
+            sort_by = sort.gitea.issues,
+            format = format.gitea.issues,
+        },
+        mentions = {
+            limit = 100,
+            sort_by = sort.gitea.mentions,
+            format = format.gitea.mentions,
+        },
+        pull_requests = {
+            limit = 50, -- the servers give at most 50 items
+            state = "open", -- open, closed, all
+            sort_by = sort.gitea.pull_requests,
+            format = format.gitea.pull_requests,
+        },
+    },
+    forgejo = {
+        hosts = {}, -- list of private instances of forgejo, with the port and the path prefix if any
+        issues = {
+            limit = 50, -- the servers give at most 50 items
+            state = "open", -- open, closed, all
+            sort_by = sort.forgejo.issues,
+            format = format.forgejo.issues,
+        },
+        mentions = {
+            limit = 100,
+            sort_by = sort.forgejo.mentions,
+            format = format.forgejo.mentions,
+        },
+        pull_requests = {
+            limit = 50, -- the servers give at most 50 items
+            state = "open", -- open, closed, all
+            sort_by = sort.forgejo.pull_requests,
+            format = format.forgejo.pull_requests,
+        },
+    },
     trigger_actions = {
         {
             pattern = [[^[[:alnum:]-]\+]],
@@ -233,15 +297,20 @@ require("cmp_git").setup({
         },
         {
             trigger_character = "#",
-            actions = { "gitlab_issues", "github_issues_and_change_requests" },
+            actions = {
+                "gitlab_issues",
+                "github_issues_and_change_requests",
+                "gitea_issues_and_change_requests",
+                "forgejo_issues_and_change_requests",
+            },
         },
         {
             trigger_character = "@",
-            actions = { "gitlab_mentions", "github_mentions" },
+            actions = { "gitlab_mentions", "github_mentions", "gitea_mentions", "forgejo_mentions" },
         },
         {
             trigger_character = "!",
-            actions = { "gitlab_change_requests" },
+            actions = { "gitlab_change_requests", "gitea_change_requests", "forgejo_change_requests" },
         },
     },
   }
@@ -255,8 +324,8 @@ require("cmp_git").setup({
 - [Format and sort items](docs/configuration.md#format-and-sort-items)
 - [Filetypes](docs/configuration.md#filetypes)
 - [Remotes and SSH aliases](docs/configuration.md#remotes-and-ssh-aliases)
-- [GitHub CLI, GitLab CLI, and curl](docs/configuration.md#github-cli-gitlab-cli-and-curl)
-- [Hosted GitHub and GitLab instances](docs/configuration.md#hosted-github-and-gitlab-instances)
+- [CLIs, tokens, and curl](docs/configuration.md#clis-tokens-and-curl)
+- [Hosted instances](docs/configuration.md#hosted-instances)
 - [Cache](docs/configuration.md#cache), and the `:CmpGitClearCache` command
 - [Troubleshooting](docs/configuration.md#troubleshooting)
 

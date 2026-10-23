@@ -21,13 +21,17 @@ To load the default shell when you enter the repository:
 2. Install direnv and hook it into your shell.
 3. In the repository, run `direnv allow`.
 
-The flake has three shells. Each shell also has StyLua, Selene, lua-language-server, make, and git.
+The flake has four shells. Each shell also has StyLua, Selene, lua-language-server, make, and git.
 
 | Shell         | Neovim                                                   | Command                     |
 | ------------- | -------------------------------------------------------- | --------------------------- |
 | `default`     | The stable release in the locked nixpkgs                 | `nix develop`               |
 | `nvim-0_12_0` | 0.12.0, the minimum supported version                    | `nix develop .#nvim-0_12_0` |
 | `nightly`     | The nightly build in the locked `neovim-nightly-overlay` | `nix develop .#nightly`     |
+| `integration` | The stable release, with the CLIs and the servers        | `nix develop .#integration` |
+
+The `integration` shell also has curl, `gh`, `glab`, `tea`, `fj`, and the `gitea` and `forgejo` servers. nixpkgs marks
+`forgejo` as broken on `aarch64-darwin`, so the shell has no `forgejo` there.
 
 The nightly builds are in the nix-community binary cache. Without this cache, Nix builds Neovim from source. To use
 the cache, add these lines to your Nix config:
@@ -41,8 +45,9 @@ extra-trusted-public-keys = nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq
 
 | Target                         | Action                                                                                              |
 | ------------------------------ | --------------------------------------------------------------------------------------------------- |
-| `make test`                    | Runs all tests.                                                                                     |
+| `make test`                    | Runs all tests, except the tests in `tests/integration/`.                                           |
 | `make test-file FILE=<path>`   | Runs one test file.                                                                                 |
+| `make test-integration`        | Runs the tests in `tests/integration/`. Use the `integration` shell.                                |
 | `make format`                  | Formats `lua/`, `tests/`, and `benchmarks/` with StyLua.                                            |
 | `make format-check`            | Checks the formatting.                                                                              |
 | `make lint`                    | Lints `lua/`, `tests/`, and `benchmarks/` with Selene. Warnings fail the target.                    |
@@ -63,8 +68,9 @@ that version.
 
 ## Tests
 
-The tests use [mini.test](https://github.com/nvim-mini/mini.nvim/blob/main/readmes/mini-test.md). The files in
-`tests/` mirror the modules in `lua/cmp_git/`. mini.test collects the files that match `tests/**/test_*.lua`.
+The tests use [mini.test](https://github.com/nvim-mini/mini.nvim/blob/main/readmes/mini-test.md). The files in `tests/`
+mirror the modules in `lua/cmp_git/`. mini.test collects the files that match `tests/**/test_*.lua`. `make test`
+collects the files outside `tests/integration/`, and `make test-integration` collects the files in it.
 
 - `tests/minimal_init.lua` adds the repository and mini.nvim to `runtimepath`.
 - `tests/helpers.lua` has the expectations, the fakes, and the hooks for each case.
@@ -73,13 +79,18 @@ Start each test file with `local T = helpers.new_set()`. The hooks of this set i
 
 - They capture `vim.notify`, so log messages do not print. To read the messages, call `helpers.flush()`, and then
   read `helpers.notifications`.
-- They unset `GITHUB_API_TOKEN` and `GITLAB_TOKEN`.
+- They unset `GITHUB_API_TOKEN`, `GITLAB_TOKEN`, `GITEA_TOKEN`, and `FORGEJO_TOKEN`.
+- They unset `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, and `APPDATA`, and set `HOME` to a temporary directory. Thus the
+  tea logins and the `fj` tokens of your user do not apply.
 - They isolate git from your user config and your system config.
-- They set `XDG_CACHE_HOME` to a temporary directory, so that the cache of the GitHub and GitLab items is empty.
+- They set `XDG_CACHE_HOME` to a temporary directory, so that the cache of the items is empty.
+- They clear the tea logins that the Gitea source read.
 - They restore the cwd, the buffers, and the values that `helpers.stub` replaced.
 - They delete the directories from `helpers.tempdir` and `helpers.git_repo`.
 
-Do not use the network in tests. Use fake runners and fake adapters in place of `gh`, `glab`, and `curl`.
+Do not use the network in tests. Use fake runners and fake adapters in place of `gh`, `glab`, `tea`, and `curl`.
+`helpers.fake_commands` puts fake commands on `PATH` for one case. `tests/sources/fake_gitea_api.lua` has a fake curl
+and a fake tea for the Gitea and Forgejo sources.
 
 To run one test file:
 
@@ -103,6 +114,30 @@ rev=$(scripts/nightly-cache.sh latest)
 nix develop .#nightly --no-write-lock-file \
   --override-input neovim-nightly-overlay "github:nix-community/neovim-nightly-overlay/$rev" -c make test
 ```
+
+### Integration tests
+
+The tests in `tests/integration/` run the real CLIs. They do not use the network either:
+
+- `gh` and `glab` send their requests to a fake HTTP server in the Neovim of the tests. `integration.http_server` starts
+  it, and `integration.use_gh` and `integration.use_glab` give the CLIs an isolated config for it. The canned GraphQL
+  answers for `gh` must match the queries of the locked `gh` version.
+- tea, the `fj` token, and curl send their requests to real `gitea` and `forgejo` servers on `127.0.0.1`.
+  `integration.forge("gitea")` gives a server for the test file. The first case that calls `start` starts it, and
+  `stop` in `post_once` ends it. `integration.use_tea` and `integration.use_fj` give the CLIs a login for the server.
+
+Each server starts in a temporary directory, with a free port, SQLite, and seed data: the admin `root`, the
+repositories `root/public` and the private `root/private`, and the collaborator `ada`. The start time of each server
+goes to the notes of the case. The log of the server goes to the notes of a case that fails.
+
+To run the integration tests:
+
+```sh
+nix develop .#integration -c make test-integration
+```
+
+A case skips when a binary that it needs is not on `PATH`. With `CMP_GIT_INTEGRATION_REQUIRE=1`, as in CI, a missing
+binary fails the case. The Forgejo server cases always skip on `aarch64-darwin`.
 
 ## Benchmarks
 
@@ -170,6 +205,7 @@ has these jobs:
 | `Neovim 0.12.0`  | `make test` in the `nvim-0_12_0` shell                                                                     | Yes    |
 | `Nightly cache`  | `scripts/nightly-cache.sh check` (the locked nightly Neovim is in the cache for each system)               | Yes    |
 | `Neovim nightly` | `make test` with the newest `neovim-nightly-overlay` commit that is in the cache, not the locked revision  | No     |
+| `Integration`    | `make test-integration` in the `integration` shell, with `CMP_GIT_INTEGRATION_REQUIRE=1`                   | Yes    |
 | `Benchmarks`     | Pull requests only. `scripts/bench-compare.sh` against the base branch, with the report in the job summary | No     |
 
 A weekly schedule (Monday 06:00 UTC) runs only the nightly job. GitHub disables scheduled workflows after 60 days
@@ -200,6 +236,10 @@ changes that you pushed to the branch.
 3. If you pushed changes to the branch before step 2, push them again.
 
 To check the locked nightly Neovim on your computer, run `scripts/nightly-cache.sh check`.
+
+A nixpkgs update can also change the versions of `gh`, `glab`, `tea`, `fj`, `gitea`, and `forgejo`. If the
+`Integration` job then fails, run `nix develop .#integration -c make test-integration` on the Dependabot branch. Then
+fix the code or the canned answers of the fake server.
 
 Dependabot does not change the Neovim 0.12.0 pin in `flake.nix`.
 

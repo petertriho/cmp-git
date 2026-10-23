@@ -34,9 +34,16 @@ commits.
 
 ### Built-in actions
 
-The built-in actions are `git_commits`, `git_trailer_keys`, `git_trailer_identities`, `git_trailer_values`,
-`gitlab_issues`, `gitlab_mentions`, `gitlab_change_requests`, `github_issues`, `github_change_requests`,
-`github_issues_and_change_requests`, and `github_mentions`. The `git_trailer_*` actions need a `pattern` entry.
+The built-in actions are:
+
+- `git_commits`, `git_trailer_keys`, `git_trailer_identities`, and `git_trailer_values`. These actions need a
+  `pattern` entry, except `git_commits`.
+- `gitlab_issues`, `gitlab_mentions`, and `gitlab_change_requests`.
+- `github_issues`, `github_change_requests`, `github_issues_and_change_requests`, and `github_mentions`.
+- `gitea_issues`, `gitea_change_requests`, `gitea_issues_and_change_requests`, and `gitea_mentions`.
+- `forgejo_issues`, `forgejo_change_requests`, `forgejo_issues_and_change_requests`, and `forgejo_mentions`.
+
+Each provider action handles the request only when the host of the remote is in the `hosts` of its provider.
 
 Two compatibility aliases are also available:
 
@@ -48,11 +55,12 @@ Two compatibility aliases are also available:
 For compatibility, cmp-git also supports legacy callback actions. A callback entry has `trigger_character` and
 `action`. The `action` function receives these arguments, in this order:
 
-1. The sources (currently `git`, `gitlab`, and `github`).
+1. The sources: `git`, `gitlab`, `github`, `gitea`, and `forgejo`.
 2. The trigger character.
 3. The completion callback.
 4. The parameters that `nvim-cmp` passes to `complete`.
-5. The current git info.
+5. The current git info. It has `host`, `owner`, and `repo`. For an `http://` or `https://` remote, it also has
+   `scheme`, which is `"http"` or `"https"`.
 
 We recommend named `actions` for new configuration.
 
@@ -143,12 +151,17 @@ For compatibility, cmp-git also supports `filter_fn` on a provider, as an alias 
 | `github.mentions`                        | `login`                                                                                 |
 | `gitlab.issues`, `gitlab.merge_requests` | The GitLab API fields, such as `iid`, `title`, `description`, and `updated_at`          |
 | `gitlab.mentions`                        | `username`, `name`                                                                      |
+| `gitea.issues`, `gitea.pull_requests`    | The Gitea API fields, such as `number`, `title`, `body`, `state`, and `updated_at`      |
+| `gitea.mentions`                         | The Gitea API fields, such as `login` and `full_name`                                   |
+| `forgejo.*`                              | The same fields as `gitea.*`                                                            |
 
 - `sha` has `git.commits.sha_length` characters (default 7). The default `insertText` inserts `sha`. The default
   `label` shows the first 7 characters.
 - `author_name` and `author_mail` are the name and the email of the author, with the `.mailmap` applied.
   `commit_timestamp` is the commit date.
 - GitHub issues and pull requests always have `body` and `updatedAt`.
+- A Gitea or Forgejo pull request also has `pull_request`. Under `#`, the default format shows it as `#N`, and under
+  `!` as `!N`. A `null` title, body, or full name is an empty string.
 - `diff` is the number of seconds since the commit, or since the most recent use of the identity or the value.
 - `count` is the number of uses in the scanned commits.
 - `builtin_index` is the position of the key in `git.trailers.keys.builtin`. It is `nil` for a key from history.
@@ -166,7 +179,7 @@ field name, such as `"title"`. For a field name, cmp-git uses the value of that 
 | `git.trailers.identities`                 | Most recent first. Your git identity comes first if it is not in history.  |
 | `git.trailers.values`                     | Most used first, then most recent                                          |
 | Issues, pull requests, and merge requests | Last updated first                                                         |
-| `github.mentions`, `gitlab.mentions`      | No `sort_by`, so the items have no `sortText`                              |
+| Mentions                                  | No `sort_by`, so the items have no `sortText`                              |
 
 ### Sorting in nvim-cmp
 
@@ -237,10 +250,13 @@ cmp-git does not use the default repository in an `octo` buffer.
 In an `octo` buffer, cmp-git gets the owner and the repository from the buffer name. It gets the host from
 `github_hostname` in the Octo config. The default host is `github.com`.
 
-## GitHub CLI, GitLab CLI, and curl
+## CLIs, tokens, and curl
 
 For GitHub, cmp-git uses the GitHub CLI (`gh`). For GitLab, it uses the GitLab CLI (`glab`). If the CLI is not
-installed, or if the CLI command fails, cmp-git uses curl.
+installed, or if the CLI command fails, cmp-git uses curl. For Gitea and Forgejo, see
+[Gitea and Forgejo](#gitea-and-forgejo).
+
+### GitHub and GitLab
 
 The results are different in these cases:
 
@@ -261,9 +277,56 @@ GitHub mentions come from the collaborators of the repository when your token ca
 the contributors. cmp-git gets more pages until it has `github.mentions.limit` mentions. To get all mentions, set
 `github.mentions.limit = math.huge`.
 
-## Hosted GitHub and GitLab instances
+### Gitea and Forgejo
 
-To use a hosted instance of GitHub Enterprise or GitLab, add its host to the `hosts` list of the provider:
+cmp-git sends the Gitea and Forgejo requests to `/api/v1` of the server. Each request runs these commands in order,
+and stops at the first command that gives the items.
+
+For Gitea:
+
+1. `tea api -l <login>`, if tea has a login for the host.
+2. curl with the token in `GITEA_TOKEN`, if the variable is set.
+3. curl without a token.
+
+For Forgejo:
+
+1. curl with the token that `fj` keeps for the host, if there is one.
+2. curl with the token in `FORGEJO_TOKEN`, if the variable is set.
+3. curl without a token.
+
+A token of one host gives an error on another host, also for a public repository. Thus the last command, curl without
+a token, still gets the public items. curl reads the token from its standard input, so the token is not in the list of
+processes.
+
+A tea login matches when its URL, without the scheme and the trailing `/`, is the host of the remote. If more than one
+login matches, cmp-git uses the default login, and else the first login. Without a matching login, or without tea,
+cmp-git starts no `tea api` process. cmp-git reads the tea logins once in a session, without blocking.
+`:CmpGitClearCache` and `:CmpGitClearCache!` make cmp-git read them again.
+
+cmp-git reads the token of `fj` from the `keys.json` file of `fj`. It reads the file for each request that is not a
+cache hit, so a new `fj` login applies to the next request. The file is in these directories:
+
+- Linux: `$XDG_DATA_HOME/forgejo-cli`, or `~/.local/share/forgejo-cli` if `XDG_DATA_HOME` is not set.
+- macOS: `~/Library/Application Support/forgejo-cli.forgejo-cli`.
+- Windows: `%APPDATA%\forgejo-cli\forgejo-cli\data`.
+
+`fj` refreshes an expired OAuth token of `fj auth login` only when `fj` runs. cmp-git does not refresh the token. If
+the token expires, run an `fj` command that uses the server, such as `fj whoami`, to refresh it. Until then, the request
+fails with this token and continues with the next command.
+
+The results have these limits:
+
+- `issues` and `pull_requests` get one page of at most `limit` items. The servers give at most 50 items for each page.
+  A self-hosted server can set a lower maximum with `MAX_RESPONSE_ITEMS`. The servers sort the page by creation time.
+  Thus, if a repository has more open items than the limit, cmp-git shows the newest items.
+- The mentions come from the assignees of the repository: the users that can get an issue assigned. The assignees API
+  needs a token, so without credentials, `@` shows no items, also in a public repository. cmp-git then starts no
+  request for the mentions.
+
+## Hosted instances
+
+To use a hosted instance of GitHub Enterprise, GitLab, Gitea, or Forgejo, add its host to the `hosts` list of the
+provider:
 
 ```lua
 require("cmp_git").setup({
@@ -272,16 +335,23 @@ require("cmp_git").setup({
     },
     gitlab = {
         hosts = { "gitlab.mycompany.com", }
-    }
+    },
+    gitea = {
+        hosts = { "gitea.mycompany.com", }
+    },
+    forgejo = {
+        hosts = { "forgejo.mycompany.com:3000", }
+    },
 })
 ```
 
-Each entry must be the same as the host in the URL of the remote. A GitLab entry can also have a path prefix.
-cmp-git always adds `github.com` and `gitlab.com`. With curl, cmp-git uses `https://<host>/api/v3` for GitHub
-Enterprise and `https://<host>/api/v4` for GitLab.
+Each entry must be the same as the host in the URL of the remote, with the port if the URL has one. A GitLab, Gitea,
+or Forgejo entry can also have a path prefix. cmp-git always adds `github.com`, `gitlab.com`, `gitea.com`, and
+`codeberg.org`, which runs Forgejo. With curl, cmp-git uses `https://<host>/api/v3` for GitHub Enterprise,
+`https://<host>/api/v4` for GitLab, and `https://<host>/api/v1` for Gitea and Forgejo.
 
-A GitLab instance can have a path prefix in its URL, for example `https://example.com/gitlab`. For this instance, add
-the host and the path prefix to `gitlab.hosts`:
+An instance can have a path prefix in its URL, for example `https://example.com/gitlab`. For this instance, add the
+host and the path prefix to the `hosts` list of the provider, here `gitlab.hosts`:
 
 ```lua
 require("cmp_git").setup({
@@ -291,25 +361,34 @@ require("cmp_git").setup({
 })
 ```
 
-With this setup, cmp-git reads the remote `https://example.com/gitlab/group/repo.git` as the project `group/repo` on
-the instance `example.com/gitlab`. With curl, cmp-git uses `https://example.com/gitlab/api/v4`. A path prefix can
-have more than one segment. If more than one entry matches the URL, cmp-git uses the entry with the longest path
-prefix.
+With this setup, cmp-git reads the remote `https://example.com/gitlab/group/repo.git` as the project `group/repo` on the
+instance `example.com/gitlab`. With curl, cmp-git uses `https://example.com/gitlab/api/v4`. For Gitea and Forgejo, the
+API is at `https://<host>/<prefix>/api/v1`. A path prefix can have more than one segment. If more than one entry matches
+the URL, cmp-git uses the entry with the longest path prefix.
 
 The path of an SSH remote, such as `git@example.com:group/repo.git`, has no path prefix. cmp-git uses the entry with
 the path prefix for this remote when these conditions are true:
 
-- `github.hosts` and `gitlab.hosts` have only one entry with a path prefix for `example.com`.
-- `github.hosts` and `gitlab.hosts` do not have `example.com` without a path prefix.
+- The `hosts` lists of all providers have only one entry with a path prefix for `example.com`.
+- The `hosts` lists of all providers do not have `example.com` without a path prefix.
 
-Path prefixes are only for GitLab. GitHub Enterprise does not use a path prefix.
+GitHub Enterprise does not use a path prefix.
+
+### Plain HTTP remotes
+
+Warning: With an `http://` remote, the Gitea and Forgejo requests and their tokens go over the network without
+encryption.
+
+For a remote with an `http://` URL, cmp-git sends the Gitea and Forgejo requests to `http://<host>/api/v1`, the same
+way as git sends the credentials of that remote. For all other remotes, cmp-git uses HTTPS. The GitHub and GitLab
+requests always use HTTPS.
 
 ## Cache
 
-cmp-git keeps the GitHub and GitLab items in a cache on disk: the issues, the pull requests, the merge requests, and
-the mentions. The cache is in `stdpath("cache")/cmp-git`, usually `~/.cache/nvim/cmp-git`, with a directory for each
-remote, such as `github.com/owner/repo`. All buffers of a remote use the same items, also in a new Neovim. So the first
-`#`, `!`, or `@` in a new commit message shows the items without a wait for the network.
+cmp-git keeps the GitHub, GitLab, Gitea, and Forgejo items in a cache on disk: the issues, the pull requests, the merge
+requests, and the mentions. The cache is in `stdpath("cache")/cmp-git`, usually `~/.cache/nvim/cmp-git`, with a
+directory for each remote, such as `github.com/owner/repo`. All buffers of a remote use the same items, also in a new
+Neovim. So the first `#`, `!`, or `@` in a new commit message shows the items without a wait for the network.
 
 The remote is the first remote in `remotes` that has a supported URL. For GitHub, the items come from the repository
 that `gh repo set-default` chose, if any. A change of the default repository shows after the next refresh.
@@ -340,6 +419,8 @@ To clear the cache, use these commands:
   trailers of the buffer.
 - `:CmpGitClearCache!` clears the items of all remotes, and the commits and the trailers of all buffers.
 
+Both commands also make cmp-git read the tea logins again for the next Gitea request.
+
 The commits and the trailers come from the local repository. cmp-git keeps them in memory for each buffer and does not
 refresh them. To get new commits and trailers, run `:CmpGitClearCache`, or wipe the buffer with `:bwipeout` and open
 the file again.
@@ -350,8 +431,11 @@ If no items show, make sure that these conditions are true:
 
 - The filetype of the buffer is in `filetypes`.
 - The file is in a git repository.
-- For GitHub and GitLab items, the host of the remote is in `github.hosts` or `gitlab.hosts`.
-- For GitHub and GitLab items, `gh`, `glab`, or `curl` is installed.
+- For GitHub, GitLab, Gitea, and Forgejo items, the host of the remote is in the `hosts` list of the provider.
+- For GitHub and GitLab items, `gh`, `glab`, or `curl` is installed. For Gitea and Forgejo items, `curl` is
+  installed.
+- For a Gitea or Forgejo private repository, and for Gitea and Forgejo mentions, tea, `fj`, `GITEA_TOKEN`, or
+  `FORGEJO_TOKEN` gives a token for the host. See [Gitea and Forgejo](#gitea-and-forgejo).
 
 To log missing executables, and the exit code and stderr of failed commands, set `vim.g.cmp_git_debug = true`. cmp-git
 sends the messages with `vim.notify`.
