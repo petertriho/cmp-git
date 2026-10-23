@@ -34,22 +34,6 @@ end
 
 local git_info = { host = "github.com", owner = "owner", repo = "repo" }
 
----Make PATH a directory with only these commands until the end of the case.
----@param scripts table<string, string> The shell script body of each command, by name.
----@return string bin The directory.
-local function fake_commands(scripts)
-    local bin = helpers.tempdir()
-    for name, body in pairs(scripts) do
-        local path = bin .. "/" .. name
-        local file = assert(io.open(path, "w"))
-        file:write("#!/bin/sh\n" .. body .. "\n")
-        file:close()
-        vim.uv.fs_chmod(path, tonumber("755", 8))
-    end
-    helpers.stub(vim.env, "PATH", bin)
-    return bin
-end
-
 local records = {
     issue = { number = 1, title = "an issue", body = "", updatedAt = "2024-01-01T00:00:00Z" },
     pr = { number = 2, title = "a pull request", body = "", updatedAt = "2024-01-01T00:00:00Z" },
@@ -63,7 +47,7 @@ local function fake_github()
     local requests = { issue = 0, pr = 0 }
 
     -- No gh on PATH, so that the default repository lookup does not run
-    fake_commands({})
+    helpers.fake_commands({})
     helpers.stub(command, "build_fallback_list", function(commands, callback, handle_item)
         local kind = commands[1].args[1]
         return {
@@ -147,7 +131,7 @@ local function manual_github()
     local jobs = {}
 
     -- No gh on PATH, so that the default repository lookup does not run
-    fake_commands({})
+    helpers.fake_commands({})
     helpers.stub(command, "build_fallback_list", function(commands, callback, handle_item)
         local kind = commands[1].args[1]
         local job = { command = "fake", started = false, cancelled = false }
@@ -232,7 +216,7 @@ local function recording_github(default_repo)
             string.format("printf '%%s\\n' '%s'", default_repo),
         }, "\n")
     end
-    fake_commands(scripts)
+    helpers.fake_commands(scripts)
 
     local repos = {}
     ---@param args string[]

@@ -33,20 +33,6 @@ end
 local git_info = { host = "gitlab.com", owner = "owner", repo = "repo" }
 local EMPTY = { items = {}, isIncomplete = false }
 
----Make PATH a directory with only these commands until the end of the case.
----@param scripts table<string, string> The shell script body of each command, by name.
-local function fake_commands(scripts)
-    local bin = helpers.tempdir()
-    for name, body in pairs(scripts) do
-        local path = bin .. "/" .. name
-        local file = assert(io.open(path, "w"))
-        file:write("#!/bin/sh\n" .. body .. "\n")
-        file:close()
-        vim.uv.fs_chmod(path, tonumber("755", 8))
-    end
-    helpers.stub(vim.env, "PATH", bin)
-end
-
 ---Run a request of the source and return the lists that it gave.
 ---@param source cmp_git.Source.Gitlab
 ---@param method string
@@ -64,7 +50,7 @@ local function answers(source, method, trigger_char)
 end
 
 T["failed_commands_give_an_empty_list"] = function()
-    fake_commands({ glab = "exit 1", curl = "exit 22" })
+    helpers.fake_commands({ glab = "exit 1", curl = "exit 22" })
     local source = GitLab.new(config.normalize({}).gitlab)
 
     eq(answers(source, "complete_issues", "#"), { EMPTY }, "issues")
@@ -76,7 +62,7 @@ T["failed_commands_give_an_empty_list"] = function()
 end
 
 T["missing_commands_give_an_empty_list"] = function()
-    fake_commands({})
+    helpers.fake_commands({})
     local source = GitLab.new(config.normalize({}).gitlab)
 
     eq(answers(source, "complete_issues", "#"), { EMPTY }, "issues")
@@ -93,14 +79,14 @@ local function labels(list)
 end
 
 T["glab_items_are_cached_for_the_next_session"] = function()
-    fake_commands({
+    helpers.fake_commands({
         glab = [[printf '%s' '[{"iid":1,"title":"an issue","description":null,"updated_at":"2024-01-01T00:00:00Z"}]']],
     })
     local source = GitLab.new(config.normalize({}).gitlab)
     eq(labels(answers(source, "complete_issues", "#")[1]), { "#1: an issue" }, "the issues of glab")
 
     cache.forget()
-    fake_commands({ glab = "exit 1" })
+    helpers.fake_commands({ glab = "exit 1" })
     local callback, lists = helpers.recorder()
     GitLab.new(config.normalize({}).gitlab):complete_issues(callback, git_info, "#")
 
@@ -110,7 +96,7 @@ T["glab_items_are_cached_for_the_next_session"] = function()
 end
 
 T["stale_items_refresh_in_the_background"] = function()
-    fake_commands({
+    helpers.fake_commands({
         glab = [[printf '%s' '[{"iid":2,"title":"a new issue","description":"","updated_at":"2024-01-01T00:00:00Z"}]']],
     })
     local source = GitLab.new(config.normalize({}).gitlab, { ttl = 60 })
