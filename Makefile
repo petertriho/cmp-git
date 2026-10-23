@@ -1,4 +1,5 @@
-NVIM ?= nvim
+# Not `?=`: Neovim sets $NVIM to its server address in :terminal and in jobs. The flake sets $CMP_GIT_NVIM.
+NVIM := $(or $(CMP_GIT_NVIM),nvim)
 STYLUA ?= stylua
 SELENE ?= selene
 LUA_LANGUAGE_SERVER ?= lua-language-server
@@ -40,7 +41,7 @@ bench:
 
 # Compares the benchmarks of REF with the working tree
 bench-compare:
-	NVIM="$(NVIM)" scripts/bench-compare.sh "$(REF)"
+	CMP_GIT_NVIM="$(NVIM)" scripts/bench-compare.sh "$(REF)"
 
 format:
 	$(STYLUA) $(LUA_PATHS)
