@@ -18,7 +18,7 @@ function M.keys_path()
     end
 
     -- As in the XDG spec, a relative path is not valid
-    local data = vim.env.XDG_DATA_HOME
+    local data = vim.env.XDG_DATA_HOME ---@type string?
     if not data or data:sub(1, 1) ~= "/" then
         data = home and home .. "/.local/share"
     end
