@@ -140,7 +140,7 @@ T["get_cwd_buffer_in_missing_directory"] = function()
 
     eq(repository.get_cwd(), repo.dir, "a directory that does not exist falls back to the cwd")
     eq(is_git_repo(), true, "the cwd repository")
-    eq(discover(), { host = "github.com", owner = "owner", repo = "repo" }, "the cwd repository")
+    eq(discover(), { host = "github.com", owner = "owner", repo = "repo", scheme = "https" }, "the cwd repository")
 end
 
 ---Run `git rev-parse --show-toplevel` as the completion commands run.
@@ -194,7 +194,11 @@ T["discover_first_remote_matches"] = function()
     new_buffer()
     vim.fn.chdir(repo.dir)
 
-    eq(discover(), { host = "github.com", owner = "owner", repo = "repo" }, "the first configured remote wins")
+    eq(
+        discover(),
+        { host = "github.com", owner = "owner", repo = "repo", scheme = "https" },
+        "the first configured remote wins"
+    )
 end
 
 T["discover_falls_back_to_next_remote"] = function()
@@ -217,7 +221,11 @@ T["discover_skips_unparsable_remote"] = function()
     new_buffer()
     vim.fn.chdir(repo.dir)
 
-    eq(discover(), { host = "github.com", owner = "owner", repo = "repo" }, "a local path remote falls back")
+    eq(
+        discover(),
+        { host = "github.com", owner = "owner", repo = "repo", scheme = "https" },
+        "a local path remote falls back"
+    )
 end
 
 T["discover_without_matching_remote"] = function()
@@ -239,7 +247,7 @@ T["discover_with_remote_url_rewrites"] = function()
     eq(discover().host, "work", "the configured URL without rewrites")
     eq(
         discover({ enableRemoteUrlRewrites = true }),
-        { host = "github.example.com", owner = "owner", repo = "repo" },
+        { host = "github.example.com", owner = "owner", repo = "repo", scheme = "https" },
         "the rewritten URL"
     )
 end
@@ -282,10 +290,14 @@ T["discover_with_host_prefix"] = function()
     with_origin("https://example.com/gitlab/group/repo.git")
     local hosts = { "github.com", "gitlab.com", "example.com/gitlab" }
 
-    eq(discover(), { host = "example.com", owner = "gitlab/group", repo = "repo" }, "the URL without hosts")
+    eq(
+        discover(),
+        { host = "example.com", owner = "gitlab/group", repo = "repo", scheme = "https" },
+        "the URL without hosts"
+    )
     eq(
         discover({ hosts = hosts }),
-        { host = "example.com/gitlab", owner = "group", repo = "repo" },
+        { host = "example.com/gitlab", owner = "group", repo = "repo", scheme = "https" },
         "the prefix moves from the owner to the host"
     )
     eq(discover().owner, "gitlab/group", "the prefix does not change the cache")
@@ -296,14 +308,14 @@ T["discover_with_host_prefix_of_several_segments"] = function()
 
     eq(
         discover({ hosts = { "example.com/tools/gitlab" } }),
-        { host = "example.com/tools/gitlab", owner = "group", repo = "repo" },
+        { host = "example.com/tools/gitlab", owner = "group", repo = "repo", scheme = "https" },
         "a prefix with two segments"
     )
 end
 
 T["discover_with_longest_host_prefix"] = function()
     with_origin("https://example.com/gitlab/internal/group/repo.git")
-    local expected = { host = "example.com/gitlab/internal", owner = "group", repo = "repo" }
+    local expected = { host = "example.com/gitlab/internal", owner = "group", repo = "repo", scheme = "https" }
 
     eq(
         discover({ hosts = { "example.com/gitlab", "example.com/gitlab/internal" } }),
@@ -322,7 +334,7 @@ T["discover_with_host_prefix_and_subgroups"] = function()
 
     eq(
         discover({ hosts = { "example.com/gitlab" } }),
-        { host = "example.com/gitlab", owner = "group/sub", repo = "repo" },
+        { host = "example.com/gitlab", owner = "group/sub", repo = "repo", scheme = "https" },
         "the subgroups stay in the owner"
     )
 end
@@ -332,12 +344,12 @@ T["discover_with_host_prefix_and_port"] = function()
 
     eq(
         discover({ hosts = { "example.com/gitlab", "example.com:8443/gitlab" } }),
-        { host = "example.com:8443/gitlab", owner = "group", repo = "repo" },
+        { host = "example.com:8443/gitlab", owner = "group", repo = "repo", scheme = "https" },
         "the entry with the port"
     )
     eq(
         discover({ hosts = { "example.com/gitlab" } }),
-        { host = "example.com:8443", owner = "gitlab/group", repo = "repo" },
+        { host = "example.com:8443", owner = "gitlab/group", repo = "repo", scheme = "https" },
         "an entry without the port does not apply"
     )
 end
@@ -347,8 +359,18 @@ T["discover_with_host_prefix_and_ipv6_address"] = function()
 
     eq(
         discover({ hosts = { "[::1]:8443/gitlab" } }),
-        { host = "[::1]:8443/gitlab", owner = "group", repo = "repo" },
+        { host = "[::1]:8443/gitlab", owner = "group", repo = "repo", scheme = "https" },
         "an IPv6 address is not a pattern"
+    )
+end
+
+T["discover_keeps_the_scheme_of_an_http_remote"] = function()
+    with_origin("http://127.0.0.1:3000/gitea/owner/repo.git")
+
+    eq(
+        discover({ hosts = { "127.0.0.1:3000/gitea" } }),
+        { host = "127.0.0.1:3000/gitea", owner = "owner", repo = "repo", scheme = "http" },
+        "the scheme stays with a host prefix"
     )
 end
 
@@ -390,12 +412,12 @@ T["discover_with_owner_equal_to_host_prefix"] = function()
 
     eq(
         discover({ hosts = { "example.com", "example.com/gitlab" } }),
-        { host = "example.com", owner = "gitlab", repo = "repo" },
+        { host = "example.com", owner = "gitlab", repo = "repo", scheme = "https" },
         "no owner is left after the prefix"
     )
     eq(
         discover({ hosts = { "example.com/gitlab" } }),
-        { host = "example.com/gitlab", owner = "gitlab", repo = "repo" },
+        { host = "example.com/gitlab", owner = "gitlab", repo = "repo", scheme = "https" },
         "the only prefixed entry keeps the owner"
     )
 end
@@ -405,7 +427,7 @@ T["discover_with_host_prefix_of_other_host"] = function()
 
     eq(
         discover({ hosts = { "github.com", "gitlab.com", "example.com/gitlab", "gitlab.co/gitlab" } }),
-        { host = "gitlab.com", owner = "gitlab/group", repo = "repo" },
+        { host = "gitlab.com", owner = "gitlab/group", repo = "repo", scheme = "https" },
         "the entries of other hosts do not apply"
     )
     eq(discover({ hosts = { "gitlabXcom/gitlab" } }).host, "gitlab.com", "a . in a host is not a pattern")
@@ -429,7 +451,7 @@ T["discover_falls_back_to_cwd"] = function()
     edit(helpers.tempdir() .. "/notes.md", "markdown")
     vim.fn.chdir(repo.dir)
 
-    eq(discover(), { host = "github.com", owner = "owner", repo = "repo" }, "the cwd repository")
+    eq(discover(), { host = "github.com", owner = "owner", repo = "repo", scheme = "https" }, "the cwd repository")
 end
 
 T["discover_uses_buffer_directory"] = function()
@@ -448,7 +470,11 @@ T["discover_inside_git_dir"] = function()
     vim.fn.chdir(helpers.tempdir())
     edit(repo.dir .. "/.git/COMMIT_EDITMSG", "gitcommit")
 
-    eq(discover(), { host = "github.com", owner = "owner", repo = "repo" }, "a commit message in .git")
+    eq(
+        discover(),
+        { host = "github.com", owner = "owner", repo = "repo", scheme = "https" },
+        "a commit message in .git"
+    )
 end
 
 ---What core does for each completion request.
@@ -485,7 +511,7 @@ T["discovery_starts_two_processes"] = function()
 
     edit(repo.dir .. "/notes.md", "markdown")
     local commands = record_processes()
-    eq(request(), { host = "github.com", owner = "owner", repo = "repo" }, "the second remote")
+    eq(request(), { host = "github.com", owner = "owner", repo = "repo", scheme = "https" }, "the second remote")
     eq(#commands, 2, "a request in a new buffer: " .. vim.inspect(command_lines(commands)))
 
     edit(bare.dir .. "/notes.md", "markdown")
@@ -556,7 +582,11 @@ T["discovery_concurrent_requests_share_processes"] = function()
     end, "each discover calls back")
 
     for _, metadata in ipairs(results) do
-        eq(metadata, { host = "github.com", owner = "owner", repo = "repo" }, "each request gets the repository")
+        eq(
+            metadata,
+            { host = "github.com", owner = "owner", repo = "repo", scheme = "https" },
+            "each request gets the repository"
+        )
     end
     helpers.ok(results[1] ~= results[2], "each request gets its own table, because callers change it")
     eq(#commands, 2, "concurrent requests: " .. vim.inspect(command_lines(commands)))
