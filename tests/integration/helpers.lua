@@ -283,6 +283,33 @@ local function write_file(path, lines)
     assert(uv.fs_chmod(path, tonumber("600", 8)))
 end
 
+---Put commands that exit with a code first on PATH until the end of the case. The other commands stay.
+---@param codes table<string, integer> The exit code of each command, by name.
+function M.failing_commands(codes)
+    local bin = helpers.tempdir()
+    for name, code in pairs(codes) do
+        local path = bin .. "/" .. name
+        assert(vim.fn.writefile({ "#!/bin/sh", "exit " .. code }, path) == 0, "cannot write " .. path)
+        assert(uv.fs_chmod(path, tonumber("755", 8)))
+    end
+    helpers.stub(vim.env, "PATH", bin .. ":" .. vim.env.PATH)
+end
+
+---The curl fallback of GitHub and GitLab uses the real hosts. A curl that fails at once, as without a connection,
+---keeps the cases off the network when a CLI fails.
+function M.offline_curl()
+    -- 7 is the exit code of curl for a failed connection
+    M.failing_commands({ curl = 7 })
+end
+
+---Open a buffer in a new directory outside a repository. The commands of its requests run there, so that the git
+---config of the cmp-git checkout, such as the default repository of gh, does not reach them.
+---@return integer bufnr
+function M.edit_outside_repository()
+    vim.cmd.edit(vim.fn.fnameescape(helpers.tempdir() .. "/COMMIT_EDITMSG"))
+    return vim.api.nvim_get_current_buf()
+end
+
 ---Make gh send all its requests to the server until the end of the case. gh then uses plain HTTP over the socket for
 ---each host.
 ---@param server tests.integration.HttpServer A Unix socket server.
