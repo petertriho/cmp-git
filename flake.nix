@@ -29,23 +29,39 @@
         system: pkgs:
         let
           mv = multiverse.multiverse.${system};
+          packages = neovim: [
+            neovim
+            pkgs.stylua
+            pkgs.selene
+            pkgs.lua-language-server
+            pkgs.gnumake
+            pkgs.git
+          ];
           shell =
             neovim:
             pkgs.mkShell {
-              packages = [
-                neovim
-                pkgs.stylua
-                pkgs.selene
-                pkgs.lua-language-server
-                pkgs.gnumake
-                pkgs.git
-              ];
+              packages = packages neovim;
               # scripts/nightly-cache.sh reads the store path of Neovim from here
               passthru = { inherit neovim; };
             };
         in
         {
           default = shell pkgs.neovim-unwrapped;
+          # The CLIs and the servers of `make test-integration`. Forgejo is broken on aarch64-darwin, so its server
+          # cases skip there.
+          integration = pkgs.mkShell {
+            packages =
+              packages pkgs.neovim-unwrapped
+              ++ [
+                pkgs.curl
+                pkgs.gh
+                pkgs.glab
+                pkgs.tea
+                pkgs.forgejo-cli
+                pkgs.gitea
+              ]
+              ++ pkgs.lib.optional (!pkgs.forgejo.meta.broken) pkgs.forgejo;
+          };
           # The minimum supported version
           nvim-0_12_0 = shell (mv.fast.version "neovim-unwrapped" "0.12.0");
           # The overlay CI pushes only this output to nix-community.cachix.org. It uses the nixpkgs of the
