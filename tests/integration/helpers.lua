@@ -1,5 +1,6 @@
 -- Helpers for the tests that run the real CLIs. The cases must not use the network: gh and glab talk to a fake HTTP
 -- server in this process, and tea, the fj token, and curl talk to Gitea and Forgejo servers on 127.0.0.1.
+local MiniTest = require("mini.test")
 local helpers = require("tests.helpers")
 
 local uv = vim.uv
@@ -272,6 +273,330 @@ function M.http_server(opts)
         self:serve(client)
     end))
     return self
+end
+
+---@return integer port A port of 127.0.0.1 that no server uses now.
+local function free_port()
+    local tcp = assert(uv.new_tcp())
+    assert(tcp:bind("127.0.0.1", 0))
+    local port = tcp:getsockname().port
+    tcp:close()
+    return port
+end
+
+local PASSWORD = "Password1!"
+
+---The settings of a server that starts fast, in its own directory, and does not use the network.
+---@param dir string
+---@param port integer
+---@param root_url string
+---@return string[]
+local function app_ini(dir, port, root_url)
+    return {
+        "APP_NAME = cmp-git test",
+        "RUN_MODE = prod",
+        "WORK_PATH = " .. dir,
+        "[database]",
+        "DB_TYPE = sqlite3",
+        "PATH = " .. dir .. "/data/forge.db",
+        "[repository]",
+        "ROOT = " .. dir .. "/repos",
+        "[server]",
+        "HTTP_ADDR = 127.0.0.1",
+        "HTTP_PORT = " .. port,
+        "ROOT_URL = " .. root_url,
+        "DISABLE_SSH = true",
+        "OFFLINE_MODE = true",
+        "APP_DATA_PATH = " .. dir .. "/data",
+        "LFS_START_SERVER = false",
+        "[security]",
+        "INSTALL_LOCK = true",
+        "SECRET_KEY = cmp-git-test-secret",
+        "INTERNAL_TOKEN = cmp-git-test-internal-token",
+        "[oauth2]",
+        "ENABLED = false",
+        "[service]",
+        "DISABLE_REGISTRATION = true",
+        "[actions]",
+        "ENABLED = false",
+        "[packages]",
+        "ENABLED = false",
+        "[log]",
+        "MODE = console",
+        "LEVEL = Info",
+        "[cron]",
+        "ENABLED = false",
+        "[indexer]",
+        "ISSUE_INDEXER_TYPE = db",
+        "REPO_INDEXER_ENABLED = false",
+        "[mailer]",
+        "ENABLED = false",
+    }
+end
+
+---A real Gitea or Forgejo server for the cases of one file, on 127.0.0.1 in its own temporary directory. The first
+---case that calls `start` starts it, and `stop` in `post_once` ends it.
+---@class tests.integration.Forge
+---@field bin "gitea" | "forgejo"
+---@field prefix? string
+---@field url? string The URL for cmp-git and the CLIs, with the path prefix, such as `http://127.0.0.1:3000`.
+---@field host? string The host for cmp-git, with the port and the path prefix, such as `127.0.0.1:3000`.
+---@field token? string An access token of the admin user `root`.
+---@field port? integer The port of the server.
+---@field dir? string
+---@field proxy? tests.integration.HttpServer The proxy that removes the path prefix.
+---@field process? vim.SystemObj
+---@field exit_code? integer
+---@field output string[] The output of the server so far.
+---@field failure? string The error of a start that failed. The next cases fail with it at once.
+---@field exe? string
+---@field curl? string
+---@field env? table<string, string>
+local Forge = {}
+Forge.__index = Forge
+
+---@param bin "gitea" | "forgejo"
+---@param opts? { prefix?: string } A path prefix in ROOT_URL. A proxy in front of the server removes it, because
+---the server does not serve its routes under the prefix.
+---@return tests.integration.Forge
+function M.forge(bin, opts)
+    opts = opts or {}
+    return setmetatable({ bin = bin, prefix = opts.prefix, output = {} }, Forge)
+end
+
+---Run a command of the server binary, and fail with its output when it fails.
+---@param args string[]
+---@return string stdout
+function Forge:run(args)
+    local dir = assert(self.dir, "the server has no directory")
+    local command = vim.list_extend({ self.exe }, args)
+    vim.list_extend(command, { "--config", dir .. "/app.ini", "--work-path", dir })
+    local result = vim.system(command, { env = self.env, clear_env = true, text = true }):wait(120000)
+    if result.code ~= 0 then
+        error(string.format("`%s %s` failed:\n%s%s", self.bin, args[1], result.stdout, result.stderr), 0)
+    end
+    return result.stdout
+end
+
+---Send a request to the API of the server as `root`.
+---@param method string
+---@param path string The path after `/api/v1`.
+---@param body? table Sent as JSON.
+---@return any response The decoded JSON, or nil for an empty response.
+function Forge:api(method, path, body)
+    local command = { self.curl, "-sS", "--fail-with-body", "-X", method }
+    vim.list_extend(command, { "-H", "Authorization: token " .. self.token, "-H", "Content-Type: application/json" })
+    if body then
+        vim.list_extend(command, { "--data-binary", vim.json.encode(body) })
+    end
+    table.insert(command, string.format("http://127.0.0.1:%d/api/v1%s", self.port, path))
+
+    local result = vim.system(command, { text = true }):wait(30000)
+    if result.code ~= 0 then
+        error(string.format("%s %s failed: %s%s", method, path, result.stdout, result.stderr), 2)
+    end
+    return result.stdout ~= "" and vim.json.decode(result.stdout) or nil
+end
+
+---Wait until the API answers, or fail with the output of the server.
+function Forge:wait_until_ready()
+    local version = string.format("http://127.0.0.1:%d/api/v1/version", self.port)
+    local deadline = uv.hrtime() + 120e9
+    while vim.system({ self.curl, "-sf", version }):wait(5000).code ~= 0 do
+        if self.exit_code ~= nil then
+            error(string.format("%s exited with %d:\n%s", self.bin, self.exit_code, self:log()), 0)
+        end
+        if uv.hrtime() > deadline then
+            error(string.format("%s did not answer within 120 s:\n%s", self.bin, self:log()), 0)
+        end
+        vim.wait(100)
+    end
+end
+
+---The repositories of `root`: `root/public` and the private `root/private`. Each has the issue #1, the pull request
+---#2 from the branch `feature`, and the collaborator `ada`, so that the assignees are `ada` and `root`.
+function Forge:seed()
+    self:api("POST", "/admin/users", {
+        username = "ada",
+        full_name = "Ada Lovelace",
+        email = "ada@example.com",
+        password = PASSWORD,
+        must_change_password = false,
+    })
+    for _, name in ipairs({ "public", "private" }) do
+        local repo = "/repos/root/" .. name
+        self:api("POST", "/user/repos", { name = name, private = name == "private", auto_init = true })
+        self:api("POST", repo .. "/issues", { title = "A " .. name .. " issue", body = "The body of the issue" })
+        self:api("POST", repo .. "/contents/feature.txt", {
+            content = vim.base64.encode("feature\n"),
+            message = "Add a feature",
+            new_branch = "feature",
+        })
+        self:api("POST", repo .. "/pulls", {
+            head = "feature",
+            base = "main",
+            title = "A " .. name .. " pull request",
+            body = "Fixes #1",
+        })
+        self:api("PUT", repo .. "/collaborators/ada", { permission = "write" })
+    end
+end
+
+function Forge:launch()
+    local started = uv.hrtime()
+    self.exe = vim.fn.exepath(self.bin)
+    self.curl = vim.fn.exepath("curl")
+    -- Outside the temporary directory of the case, which the case hooks delete
+    self.dir = vim.fn.tempname()
+    vim.fn.mkdir(self.dir, "p")
+    self.port = free_port()
+
+    local root_url = string.format("http://127.0.0.1:%d/", self.port)
+    if self.prefix then
+        self.proxy = M.http_server({ upstream = { port = self.port, prefix = "/" .. self.prefix } })
+        root_url = string.format("%s/%s/", self.proxy.url, self.prefix)
+    end
+    self.url = string.gsub(root_url, "/$", "")
+    self.host = string.gsub(self.url, "^http://", "")
+    assert(
+        vim.fn.writefile(app_ini(self.dir, self.port, root_url), self.dir .. "/app.ini") == 0,
+        "cannot write app.ini"
+    )
+
+    -- Only these variables, so that the GITEA__* and FORGEJO__* variables of the developer do not change the settings.
+    -- The server runs git from PATH.
+    self.env = { HOME = self.dir, PATH = vim.env.PATH, USER = vim.env.USER or "cmp-git" }
+    self:run({ "migrate" })
+    local created = self:run({
+        "admin",
+        "user",
+        "create",
+        "--admin",
+        "--username",
+        "root",
+        "--password",
+        PASSWORD,
+        "--email",
+        "root@example.com",
+        "--access-token",
+        "--must-change-password=false",
+    })
+    self.token = string.match(created, "Access token was successfully created%.%.%. (%x+)")
+    assert(self.token, "no access token in the output: " .. created)
+
+    local function collect(_, data)
+        if data then
+            table.insert(self.output, data)
+        end
+    end
+    local web = vim.list_extend({ self.exe, "web" }, { "--config", self.dir .. "/app.ini", "--work-path", self.dir })
+    self.process = vim.system(web, {
+        env = self.env,
+        clear_env = true,
+        text = true,
+        stdout = collect,
+        stderr = collect,
+    }, function(result)
+        self.exit_code = result.code
+    end)
+    self:wait_until_ready()
+    self:seed()
+
+    MiniTest.add_note(string.format("%s started and seeded in %.1f s", self.bin, (uv.hrtime() - started) / 1e9))
+end
+
+---Start the server once for the file, and give it to the case. Call it before the case changes PATH. Forgejo always
+---skips on aarch64-darwin, where nixpkgs marks it as broken. When the case fails, the server log goes to its notes.
+---@return tests.integration.Forge
+function Forge:start()
+    local uname = uv.os_uname()
+    if self.bin == "forgejo" and uname.sysname == "Darwin" and uname.machine == "arm64" then
+        helpers.skip("nixpkgs has no forgejo for aarch64-darwin")
+    end
+    M.require_binaries({ self.bin, "curl", "git" })
+    if self.failure then
+        error(self.failure, 0)
+    end
+    if not self.process then
+        local ok, err = pcall(self.launch, self)
+        if not ok then
+            self.failure = tostring(err)
+            error(self.failure, 0)
+        end
+    end
+
+    helpers.defer(function()
+        local case = MiniTest.current.case
+        if case and #case.exec.fails > 0 then
+            MiniTest.add_note(string.format("The log of %s:\n%s", self.bin, self:log()))
+        end
+    end)
+    return self
+end
+
+---@return string lines The last lines of the server output.
+function Forge:log()
+    local lines = vim.split(table.concat(self.output), "\n", { trimempty = true })
+    return table.concat(vim.list_slice(lines, math.max(1, #lines - 40)), "\n")
+end
+
+function Forge:stop()
+    if self.process and self.exit_code == nil then
+        self.process:kill(15)
+        if not vim.wait(10000, function()
+            return self.exit_code ~= nil
+        end, 50) then
+            self.process:kill(9)
+            vim.wait(5000, function()
+                return self.exit_code ~= nil
+            end, 50)
+        end
+    end
+    if self.proxy then
+        self.proxy:close()
+    end
+    if self.dir then
+        vim.fn.delete(self.dir, "rf")
+    end
+end
+
+---Run a CLI with the arguments, and fail with its output when it fails.
+---@param command string[]
+local function run_cli(command)
+    local result = vim.system(command, { text = true, stdin = "" }):wait(30000)
+    if result.code ~= 0 then
+        error(string.format("`%s` failed:\n%s%s", table.concat(command, " ", 1, 3), result.stdout, result.stderr), 2)
+    end
+end
+
+---Give tea one login for the server, in a new config directory, until the end of the case.
+---@param server tests.integration.Forge
+---@param name string
+function M.use_tea(server, name)
+    helpers.stub(vim.env, "XDG_CONFIG_HOME", helpers.tempdir())
+    run_cli({
+        "tea",
+        "login",
+        "add",
+        "--name",
+        name,
+        "--url",
+        assert(server.url, "start the server first"),
+        "--token",
+        server.token,
+    })
+end
+
+---Give tea a new config directory without logins until the end of the case.
+function M.without_tea_logins()
+    helpers.stub(vim.env, "XDG_CONFIG_HOME", helpers.tempdir())
+end
+
+---Give fj the token of the server with `fj auth add-token`, in a new data directory, until the end of the case.
+---@param server tests.integration.Forge
+function M.use_fj(server)
+    helpers.stub(vim.env, "XDG_DATA_HOME", helpers.tempdir())
+    run_cli({ "fj", "--host", assert(server.url, "start the server first"), "auth", "add-token", server.token })
 end
 
 ---@param path string
