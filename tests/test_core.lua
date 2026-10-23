@@ -499,8 +499,8 @@ T["complete_answers_when_no_action_handles_the_request"] = function()
     core:complete(trigger_context("#"), callback)
     expect_one_empty_list(lists, "outside a git repository")
 
-    -- Neither GitHub nor GitLab handles these hosts, so the sources decline without a process
-    for _, git_info in ipairs({ { host = "gitea.com", owner = "owner", repo = "repo" }, {} }) do
+    -- No provider handles these hosts, so the sources decline without a process
+    for _, git_info in ipairs({ { host = "git.example.org", owner = "owner", repo = "repo" }, {} }) do
         stub_repository(git_info)
         for _, trigger in ipairs({ "#", "@", "!" }) do
             callback, lists = helpers.recorder()
@@ -721,7 +721,7 @@ end
 
 T["sources_load_on_first_use"] = function()
     local core = Core.new({})
-    for _, name in ipairs({ "git", "github", "gitlab" }) do
+    for _, name in ipairs({ "git", "github", "gitlab", "gitea", "forgejo" }) do
         eq(rawget(core.sources, name), nil, name .. " does not load with core")
     end
 
@@ -732,6 +732,84 @@ T["sources_load_on_first_use"] = function()
     )
     eq(core.sources.github, github, "the source loads once")
     eq(rawget(core.sources, "gitlab"), nil, "the other sources stay unloaded")
+
+    ok(core.sources.gitea:is_valid_host({ host = "gitea.com", owner = "o", repo = "r" }), "the gitea config")
+    ok(core.sources.forgejo:is_valid_host({ host = "codeberg.org", owner = "o", repo = "r" }), "the forgejo config")
+    ok(not core.sources.forgejo:is_valid_host({ host = "gitea.com", owner = "o", repo = "r" }), "each own hosts")
+end
+
+---Run the default actions of a trigger for a remote, with sources that record the methods that run. Each source
+---handles the request when the host is its own.
+---@param trigger string
+---@param git_info cmp_git.GitInfo
+---@return string[] calls `<source>.<method>` of each call.
+---@return table core
+local function route_trigger(trigger, git_info)
+    local core = Core.new({})
+    local calls = {}
+    for _, name in ipairs({ "github", "gitlab", "gitea", "forgejo" }) do
+        local methods = {}
+        for _, method in ipairs({
+            "complete_issues",
+            "complete_change_requests",
+            "complete_issues_and_change_requests",
+            "complete_mentions",
+        }) do
+            methods[method] = function(_, callback)
+                table.insert(calls, name .. "." .. method)
+                callback({ items = {}, isIncomplete = false })
+                return true
+            end
+        end
+        rawset(core.sources, name, methods)
+    end
+
+    local callback, lists = helpers.recorder()
+    core:_run_trigger_actions(trigger, callback, trigger_context(trigger), git_info)
+    eq(#lists, 1, trigger .. " answers once")
+    return calls, core
+end
+
+T["gitea_and_forgejo_hosts_route_to_their_sources"] = function()
+    local gitea = { host = "gitea.com", owner = "owner", repo = "repo" }
+    local codeberg = { host = "codeberg.org", owner = "owner", repo = "repo" }
+
+    eq(route_trigger("#", gitea), { "gitea.complete_issues_and_change_requests" }, "# on gitea.com")
+    eq(route_trigger("!", gitea), { "gitea.complete_change_requests" }, "! on gitea.com")
+    eq(route_trigger("@", gitea), { "gitea.complete_mentions" }, "@ on gitea.com")
+    eq(route_trigger("#", codeberg), { "forgejo.complete_issues_and_change_requests" }, "# on codeberg.org")
+    eq(route_trigger("!", codeberg), { "forgejo.complete_change_requests" }, "! on codeberg.org")
+    eq(route_trigger("@", codeberg), { "forgejo.complete_mentions" }, "@ on codeberg.org")
+end
+
+T["github_and_gitlab_hosts_keep_their_routes"] = function()
+    local github = { host = "github.com", owner = "owner", repo = "repo" }
+    local gitlab = { host = "gitlab.com", owner = "group", repo = "project" }
+
+    eq(route_trigger("#", github), { "github.complete_issues_and_change_requests" }, "# on github.com")
+    eq(route_trigger("@", github), { "github.complete_mentions" }, "@ on github.com")
+    eq(route_trigger("!", github), {}, "! on github.com")
+    eq(route_trigger("#", gitlab), { "gitlab.complete_issues" }, "# on gitlab.com")
+    eq(route_trigger("@", gitlab), { "gitlab.complete_mentions" }, "@ on gitlab.com")
+    eq(route_trigger("!", gitlab), { "gitlab.complete_change_requests" }, "! on gitlab.com")
+end
+
+T["a_github_remote_does_not_load_the_gitea_and_forgejo_sources"] = function()
+    local core = Core.new({})
+    rawset(core.sources, "github", {
+        complete_issues_and_change_requests = function(_, callback)
+            callback({ items = { { label = "#1: an issue" } }, isIncomplete = false })
+            return true
+        end,
+    })
+    local callback, lists = helpers.recorder()
+
+    core:_run_trigger_actions("#", callback, trigger_context("#"), { host = "github.com", owner = "o", repo = "r" })
+
+    eq(lists[1].items[1].label, "#1: an issue", "the GitHub items")
+    for _, name in ipairs({ "gitlab", "gitea", "forgejo" }) do
+        eq(rawget(core.sources, name), nil, name .. " does not load")
+    end
 end
 
 T["setup_and_a_declined_request_load_only_the_core_modules"] = function()
@@ -774,10 +852,12 @@ T["setup_and_a_declined_request_load_only_the_core_modules"] = function()
     }, "the request answers without the sources, the repository, or the trailer parsers")
 end
 
-T["complete_passes_the_github_and_gitlab_hosts_to_discovery"] = function()
+T["complete_passes_the_hosts_of_all_providers_to_discovery"] = function()
     local core = Core.new({
         github = { hosts = { "github.example.com" } },
         gitlab = { hosts = { "example.com/gitlab" } },
+        gitea = { hosts = { "example.com/gitea" } },
+        forgejo = { hosts = { "forgejo.example.com:3000" } },
     })
     local hosts
     helpers.stub(repository, "is_git_repo", function(on_result)
@@ -791,11 +871,16 @@ T["complete_passes_the_github_and_gitlab_hosts_to_discovery"] = function()
     local callback, lists = helpers.recorder()
     core:complete(trigger_context("#"), callback)
 
-    eq(
-        hosts,
-        { "github.example.com", "github.com", "example.com/gitlab", "gitlab.com" },
-        "the GitHub hosts, then the GitLab hosts"
-    )
+    eq(hosts, {
+        "github.example.com",
+        "github.com",
+        "example.com/gitlab",
+        "gitlab.com",
+        "example.com/gitea",
+        "gitea.com",
+        "forgejo.example.com:3000",
+        "codeberg.org",
+    }, "the GitHub, GitLab, Gitea, and Forgejo hosts")
     eq(core.config.github.hosts, { "github.example.com", "github.com" }, "the GitHub hosts do not change")
     expect_one_empty_list(lists, "no source handles a request without a repository")
 end

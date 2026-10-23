@@ -1,5 +1,12 @@
 local utils = require("cmp_git.utils")
 
+---The Gitea and Forgejo issues and pull requests sort the last updated first.
+---@param item cmp_git.Gitea.Issue
+---@return string
+local function gitea_updated_at(item)
+    return string.format("%010d", os.difftime(os.time(), utils.parse_gitea_date(item.updated_at)))
+end
+
 local M = {
     git = {
         ---@param commit cmp_git.Commit
@@ -49,6 +56,16 @@ local M = {
         merge_requests = function(mr) -- nil, "iid", "title", "description", or custom function
             return string.format("%010d", os.difftime(os.time(), utils.parse_gitlab_date(mr.updated_at)))
         end,
+    },
+    gitea = {
+        issues = gitea_updated_at, -- nil, "number", "title", "body", or custom function
+        mentions = nil, -- nil, "login", "full_name", or custom function
+        pull_requests = gitea_updated_at, -- nil, "number", "title", "body", or custom function
+    },
+    forgejo = {
+        issues = gitea_updated_at, -- nil, "number", "title", "body", or custom function
+        mentions = nil, -- nil, "login", "full_name", or custom function
+        pull_requests = gitea_updated_at, -- nil, "number", "title", "body", or custom function
     },
 }
 

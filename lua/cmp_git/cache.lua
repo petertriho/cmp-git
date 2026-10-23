@@ -1,6 +1,6 @@
--- The cache of the GitHub and GitLab items. An entry holds the raw items of one list of one remote, and a file under
--- `stdpath("cache")/cmp-git` keeps them for the next sessions. The items are raw and not completion items, because the
--- formats are user functions, and the sort text depends on the time of the request.
+-- The cache of the GitHub, GitLab, Gitea, and Forgejo items. An entry holds the raw items of one list of one remote,
+-- and a file under `stdpath("cache")/cmp-git` keeps them for the next sessions. The items are raw and not completion
+-- items, because the formats are user functions, and the sort text depends on the time of the request.
 local log = require("cmp_git.log")
 
 local M = {}

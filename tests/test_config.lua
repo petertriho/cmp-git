@@ -25,6 +25,52 @@ T["config_normalize_fills_defaults_and_hosts"] = function()
     ok(vim.tbl_contains(normalized.gitlab.hosts, "gitlab.com"), "normalized config adds gitlab host")
 end
 
+T["config_gitea_and_forgejo_defaults"] = function()
+    local normalized = config.normalize({})
+
+    for _, provider in ipairs({ "gitea", "forgejo" }) do
+        local defaults = normalized[provider]
+        eq(
+            { defaults.issues.limit, defaults.issues.state },
+            { 50, "open" },
+            provider .. " issues: one page of the servers"
+        )
+        eq({ defaults.pull_requests.limit, defaults.pull_requests.state }, { 50, "open" }, provider .. " pull requests")
+        eq(defaults.mentions.limit, 100, provider .. " mentions")
+        eq(type(defaults.pull_requests.format.label), "function", provider .. " formats")
+    end
+    eq(normalized.gitea.hosts, { "gitea.com" }, "the default Gitea host")
+    eq(normalized.forgejo.hosts, { "codeberg.org" }, "the default Forgejo host")
+    eq(
+        config.normalize({ gitea = { hosts = { "example.com/gitea" } } }).gitea.hosts,
+        { "example.com/gitea", "gitea.com" },
+        "a Gitea host with a path prefix"
+    )
+    neq(normalized.gitea.issues.format, normalized.forgejo.issues.format, "each provider has its own formats")
+end
+
+T["config_default_trigger_actions_of_the_hosted_providers"] = function()
+    local actions = {}
+    for _, entry in ipairs(config.normalize({}).trigger_actions) do
+        if entry.trigger_character then
+            actions[entry.trigger_character] = entry.actions
+        end
+    end
+
+    eq(actions["#"], {
+        "gitlab_issues",
+        "github_issues_and_change_requests",
+        "gitea_issues_and_change_requests",
+        "forgejo_issues_and_change_requests",
+    }, "# completes issues and pull requests")
+    eq(actions["@"], { "gitlab_mentions", "github_mentions", "gitea_mentions", "forgejo_mentions" }, "@ mentions")
+    eq(
+        actions["!"],
+        { "gitlab_change_requests", "gitea_change_requests", "forgejo_change_requests" },
+        "! completes merge requests and pull requests"
+    )
+end
+
 T["config_normalize_fills_the_cache_ttl"] = function()
     eq(config.normalize({}).cache.ttl, 300, "the default TTL is five minutes")
     eq(config.normalize({ cache = { ttl = 0 } }).cache.ttl, 0, "a user TTL")
@@ -65,6 +111,10 @@ T["config_normalize_provider_filter_alias"] = function()
         return "gitlab"
     end
 
+    local gitea_filter = function()
+        return "gitea"
+    end
+
     local normalized = config.normalize({
         git = {
             filter_fn = git_filter,
@@ -74,6 +124,12 @@ T["config_normalize_provider_filter_alias"] = function()
         },
         gitlab = {
             filter_fn = gitlab_filter,
+        },
+        gitea = {
+            filter_fn = gitea_filter,
+        },
+        forgejo = {
+            filter_fn = gitea_filter,
         },
     })
 
@@ -88,6 +144,16 @@ T["config_normalize_provider_filter_alias"] = function()
         gitlab_filter,
         "gitlab filter alias applies to merge requests"
     )
+    for _, provider in ipairs({ "gitea", "forgejo" }) do
+        for _, capability in ipairs({ "issues", "mentions", "pull_requests" }) do
+            eq(
+                normalized[provider][capability].format.filterText,
+                gitea_filter,
+                provider .. " filter alias applies to " .. capability
+            )
+        end
+    end
+    neq(format.gitea.issues.filterText, gitea_filter, "filter alias does not change the Gitea formats")
 end
 
 T["config_normalize_provider_filter_alias_overrides_nested_filter"] = function()

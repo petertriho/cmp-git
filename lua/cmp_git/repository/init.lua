@@ -351,7 +351,7 @@ local function apply_host_prefixes(metadata, hosts)
         if entry == host then
             has_plain_host = true
         elseif #entry > #host_slash and entry:sub(1, #host_slash) == host_slash then
-            -- The GitHub and GitLab lists can both have the same entry
+            -- The lists of two providers can have the same entry
             if prefixed_entry == nil then
                 prefixed_entry = entry
             elseif entry ~= prefixed_entry then
@@ -400,7 +400,7 @@ end
 ---@class cmp_git.DiscoverOptions
 ---@field enableRemoteUrlRewrites boolean
 ---@field ssh_aliases {[string]: string}
----@field hosts? string[] The configured GitHub and GitLab hosts. An entry can have a path prefix.
+---@field hosts? string[] The configured GitHub, GitLab, Gitea, and Forgejo hosts. An entry can have a path prefix.
 ---@field on_complete fun(metadata: cmp_git.RepositoryMetadata): nil
 ---@field bufnr? integer The buffer, by default the current one.
 
