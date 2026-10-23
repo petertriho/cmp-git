@@ -130,4 +130,56 @@ T["gitlab_merge_requests"] = function()
     })
 end
 
+local GITEA_ISSUE = {
+    number = 3,
+    title = "Crash on start",
+    body = "Steps",
+    updated_at = "2024-01-01T00:00:00+02:00",
+}
+
+T["gitea_and_forgejo_issues"] = function()
+    for _, provider in ipairs({ "gitea", "forgejo" }) do
+        eq(fields(format.item(defaults[provider].issues, "#", GITEA_ISSUE)), {
+            label = "#3: Crash on start",
+            insertText = "#3",
+            filterText = "# 3 Crash on start",
+            documentation = "# Crash on start\n\nSteps",
+        }, provider .. " issue")
+    end
+end
+
+T["gitea_and_forgejo_pull_requests"] = function()
+    local pr = { number = 4, title = "Fix crash", body = "Fixes #3", updated_at = "2024-01-01T00:00:00Z" }
+
+    for _, provider in ipairs({ "gitea", "forgejo" }) do
+        eq(fields(format.item(defaults[provider].pull_requests, "#", pr)), {
+            label = "#4: Fix crash",
+            insertText = "#4",
+            filterText = "# 4 Fix crash",
+            documentation = "# Fix crash\n\nFixes #3",
+        }, provider .. " pull request under #")
+        eq(fields(format.item(defaults[provider].pull_requests, "!", pr)), {
+            label = "!4: Fix crash",
+            insertText = "!4",
+            filterText = "! 4 Fix crash",
+            documentation = "# Fix crash\n\nFixes #3",
+        }, provider .. " pull request under !")
+        eq(format.item(defaults[provider].pull_requests, nil, pr).insertText, "#4", provider .. " without a trigger")
+    end
+end
+
+T["gitea_and_forgejo_mentions"] = function()
+    for _, provider in ipairs({ "gitea", "forgejo" }) do
+        local item = format.item(defaults[provider].mentions, "@", { login = "ada", full_name = "Ada Lovelace" })
+
+        eq(fields(item), {
+            label = "@ada",
+            insertText = "@ada",
+            filterText = "@ ada",
+            documentation = "# ada\n\nAda Lovelace",
+        }, provider .. " mention")
+        eq(item.sortText, nil, provider .. " mentions have no sort text")
+    end
+end
+
 return T

@@ -135,6 +135,13 @@ function M.parse_github_date(d)
     return parse_date(d)
 end
 
+---For Gitea and Forgejo, which give dates with a UTC offset, such as `2024-01-02T03:04:05+02:00`.
+---@param d string|vim.NIL|nil A JSON null is `vim.NIL`.
+---@return integer timestamp 0 when the value is not a date.
+function M.parse_gitea_date(d)
+    return parse_date(d)
+end
+
 ---Replace the missing and null text fields that the formats read. JSON null is `vim.NIL`, which a format would show as
 ---the text "vim.NIL".
 ---@generic T: table

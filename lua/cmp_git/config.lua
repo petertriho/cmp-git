@@ -52,7 +52,7 @@ local defaults = {
     enableRemoteUrlRewrites = false, -- enable git url rewrites, see https://git-scm.com/docs/git-config#Documentation/git-config.txt-urlltbasegtinsteadOf
     ---@type table<string, string>
     ssh_aliases = {},
-    ---The disk cache of the GitHub and GitLab items
+    ---The disk cache of the GitHub, GitLab, Gitea, and Forgejo items
     ---@class cmp_git.Config.Cache
     cache = {
         ---Seconds after which a request also refreshes the items in the background. 0 refreshes after each request,
@@ -159,6 +159,60 @@ local defaults = {
             format = format.gitlab.merge_requests,
         },
     },
+    ---@class cmp_git.Config.Gitea
+    ---@field filter_fn? fun(trigger_char: string, item: cmp_git.Gitea.Issue | cmp_git.Gitea.Mention): string Compatibility alias for all Gitea capability format.filterText functions.
+    gitea = {
+        ---@type string[]
+        hosts = {},
+        ---@class cmp_git.Config.Gitea.List
+        issues = {
+            -- The servers give at most 50 items (`MAX_RESPONSE_ITEMS`)
+            limit = 50,
+            ---@type 'open' | 'closed' | 'all'
+            state = "open",
+            sort_by = sort.gitea.issues,
+            format = format.gitea.issues,
+        },
+        mentions = {
+            limit = 100,
+            sort_by = sort.gitea.mentions,
+            format = format.gitea.mentions,
+        },
+        ---@type cmp_git.Config.Gitea.List
+        pull_requests = {
+            limit = 50,
+            ---@type 'open' | 'closed' | 'all'
+            state = "open",
+            sort_by = sort.gitea.pull_requests,
+            format = format.gitea.pull_requests,
+        },
+    },
+    ---@class cmp_git.Config.Forgejo: cmp_git.Config.Gitea
+    forgejo = {
+        ---@type string[]
+        hosts = {},
+        ---@type cmp_git.Config.Gitea.List
+        issues = {
+            limit = 50,
+            ---@type 'open' | 'closed' | 'all'
+            state = "open",
+            sort_by = sort.forgejo.issues,
+            format = format.forgejo.issues,
+        },
+        mentions = {
+            limit = 100,
+            sort_by = sort.forgejo.mentions,
+            format = format.forgejo.mentions,
+        },
+        ---@type cmp_git.Config.Gitea.List
+        pull_requests = {
+            limit = 50,
+            ---@type 'open' | 'closed' | 'all'
+            state = "open",
+            sort_by = sort.forgejo.pull_requests,
+            format = format.forgejo.pull_requests,
+        },
+    },
     ---@type (cmp_git.Config.NamedTriggerActions|cmp_git.Config.PatternTriggerActions|cmp_git.Config.TriggerAction)[]
     trigger_actions = {
         {
@@ -176,15 +230,20 @@ local defaults = {
         },
         {
             trigger_character = "#",
-            actions = { "gitlab_issues", "github_issues_and_change_requests" },
+            actions = {
+                "gitlab_issues",
+                "github_issues_and_change_requests",
+                "gitea_issues_and_change_requests",
+                "forgejo_issues_and_change_requests",
+            },
         },
         {
             trigger_character = "@",
-            actions = { "gitlab_mentions", "github_mentions" },
+            actions = { "gitlab_mentions", "github_mentions", "gitea_mentions", "forgejo_mentions" },
         },
         {
             trigger_character = "!",
-            actions = { "gitlab_change_requests" },
+            actions = { "gitlab_change_requests", "gitea_change_requests", "forgejo_change_requests" },
         },
     },
 }
@@ -233,10 +292,14 @@ function M.normalize(overrides)
 
     ensure_contains(normalized.github.hosts, "github.com")
     ensure_contains(normalized.gitlab.hosts, "gitlab.com")
+    ensure_contains(normalized.gitea.hosts, "gitea.com")
+    ensure_contains(normalized.forgejo.hosts, "codeberg.org")
 
     apply_filter_fn(normalized.git, { "commits" })
     apply_filter_fn(normalized.github, { "issues", "mentions", "pull_requests" })
     apply_filter_fn(normalized.gitlab, { "issues", "mentions", "merge_requests" })
+    apply_filter_fn(normalized.gitea, { "issues", "mentions", "pull_requests" })
+    apply_filter_fn(normalized.forgejo, { "issues", "mentions", "pull_requests" })
 
     normalized.trigger_actions = vim.tbl_map(upgrade_trigger_action, normalized.trigger_actions)
 

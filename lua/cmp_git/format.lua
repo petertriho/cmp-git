@@ -8,6 +8,74 @@ local sort = require("cmp_git.sort")
 ---documentation: fun(trigger_char: string?, item: TItem): lsp.MarkupContent;
 ---}
 
+---Gitea and Forgejo read `#N` and `!N` as the same pull request. A pull request under `!` uses `!N`, as in GitLab.
+---@param trigger_char string?
+---@return string
+local function pull_request_prefix(trigger_char)
+    return trigger_char == "!" and "!" or "#"
+end
+
+---The formats of Gitea and Forgejo, which have the same API. Each call gives new tables, so that a change to the
+---formats of one provider does not change the other.
+local function gitea_formats()
+    return {
+        ---@type cmp_git.FormatConfig<cmp_git.Gitea.Issue>
+        issues = {
+            label = function(_trigger_char, issue)
+                return string.format("#%s: %s", issue.number, issue.title)
+            end,
+            insertText = function(_trigger_char, issue)
+                return string.format("#%s", issue.number)
+            end,
+            filterText = function(trigger_char, issue)
+                return string.format("%s %s %s", trigger_char, issue.number, issue.title)
+            end,
+            documentation = function(_trigger_char, issue)
+                return {
+                    kind = "markdown",
+                    value = string.format("# %s\n\n%s", issue.title, issue.body),
+                }
+            end,
+        },
+        ---@type cmp_git.FormatConfig<cmp_git.Gitea.Mention>
+        mentions = {
+            label = function(_trigger_char, mention)
+                return string.format("@%s", mention.login)
+            end,
+            insertText = function(_trigger_char, mention)
+                return string.format("@%s", mention.login)
+            end,
+            filterText = function(trigger_char, mention)
+                return string.format("%s %s", trigger_char, mention.login)
+            end,
+            documentation = function(_trigger_char, mention)
+                return {
+                    kind = "markdown",
+                    value = string.format("# %s\n\n%s", mention.login, mention.full_name),
+                }
+            end,
+        },
+        ---@type cmp_git.FormatConfig<cmp_git.Gitea.Issue>
+        pull_requests = {
+            label = function(trigger_char, pr)
+                return string.format("%s%s: %s", pull_request_prefix(trigger_char), pr.number, pr.title)
+            end,
+            insertText = function(trigger_char, pr)
+                return string.format("%s%s", pull_request_prefix(trigger_char), pr.number)
+            end,
+            filterText = function(trigger_char, pr)
+                return string.format("%s %s %s", trigger_char, pr.number, pr.title)
+            end,
+            documentation = function(_trigger_char, pr)
+                return {
+                    kind = "markdown",
+                    value = string.format("# %s\n\n%s", pr.title, pr.body),
+                }
+            end,
+        },
+    }
+end
+
 local M = {
     git = {
         ---@type cmp_git.FormatConfig<cmp_git.Commit>
@@ -231,6 +299,8 @@ local M = {
             end,
         },
     },
+    gitea = gitea_formats(),
+    forgejo = gitea_formats(),
 }
 
 ---@class cmp_git.CompletionItem : lsp.CompletionItem

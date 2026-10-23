@@ -35,7 +35,7 @@ end
 
 ---A built-in action of a hosted provider. It checks the host before it gets the source, so that a request loads only
 ---the provider of the remote.
----@param provider "github" | "gitlab"
+---@param provider "github" | "gitlab" | "gitea" | "forgejo"
 ---@param method string The method of the source that completes.
 ---@return fun(core: table, callback: fun(list: cmp_git.CompletionList), context: table, git_info: cmp_git.GitInfo, trigger_char: string?): string, table?
 local function hosted_action(provider, method)
@@ -71,6 +71,14 @@ local builtin_trigger_actions = {
     gitlab_change_requests = hosted_action("gitlab", "complete_change_requests"),
     gitlab_mrs = hosted_action("gitlab", "complete_change_requests"),
     github_issues_and_prs = hosted_action("github", "complete_issues_and_change_requests"),
+    gitea_issues = hosted_action("gitea", "complete_issues"),
+    gitea_mentions = hosted_action("gitea", "complete_mentions"),
+    gitea_change_requests = hosted_action("gitea", "complete_change_requests"),
+    gitea_issues_and_change_requests = hosted_action("gitea", "complete_issues_and_change_requests"),
+    forgejo_issues = hosted_action("forgejo", "complete_issues"),
+    forgejo_mentions = hosted_action("forgejo", "complete_mentions"),
+    forgejo_change_requests = hosted_action("forgejo", "complete_change_requests"),
+    forgejo_issues_and_change_requests = hosted_action("forgejo", "complete_issues_and_change_requests"),
 }
 
 -- Built-in actions that read only the local repository. They need no remote, and they always handle the request.
@@ -196,11 +204,15 @@ end
 ---@field git cmp_git.Source.Git
 ---@field github cmp_git.Source.GitHub
 ---@field gitlab cmp_git.Source.Gitlab
+---@field gitea cmp_git.Source.GiteaApi
+---@field forgejo cmp_git.Source.GiteaApi
 
 local SOURCE_MODULES = {
     git = "cmp_git.sources.git",
     github = "cmp_git.sources.github",
     gitlab = "cmp_git.sources.gitlab",
+    gitea = "cmp_git.sources.gitea",
+    forgejo = "cmp_git.sources.forgejo",
 }
 
 ---The sources, each made on first use. A legacy callback action gets this table, so a source must also load when an
@@ -234,7 +246,11 @@ function Core.new(overrides)
     instances[self] = true
 
     self.config = config.normalize(overrides)
-    self.hosts = vim.list_extend(vim.list_extend({}, self.config.github.hosts), self.config.gitlab.hosts)
+    -- Discovery reads the host prefixes from these hosts
+    self.hosts = {}
+    for _, provider in ipairs({ "github", "gitlab", "gitea", "forgejo" }) do
+        vim.list_extend(self.hosts, self.config[provider].hosts)
+    end
     self.filetypes = {}
     self.sources = lazy_sources(self.config)
     self.trigger_actions = {}

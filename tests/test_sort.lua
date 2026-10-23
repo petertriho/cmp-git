@@ -63,4 +63,26 @@ T["default_provider_sorts"] = function()
     eq(sort.gitlab.mentions, nil, "GitLab mentions keep the API order")
 end
 
+-- The sorts read only the date of an item
+---@diagnostic disable: missing-fields
+T["gitea_and_forgejo_sorts"] = function()
+    local sorts = {
+        ["gitea issues"] = sort.gitea.issues,
+        ["gitea pull requests"] = sort.gitea.pull_requests,
+        ["forgejo issues"] = sort.forgejo.issues,
+        ["forgejo pull requests"] = sort.forgejo.pull_requests,
+    }
+
+    for name, sort_fn in pairs(sorts) do
+        -- The servers give the time with the offset of the server
+        local older = sort_fn({ updated_at = "2024-01-01T12:00:00+02:00" })
+        local newer = sort_fn({ updated_at = "2024-01-01T11:00:00Z" })
+        eq(#older, 10, name .. " sort text width")
+        ok(newer < older, name .. " sort the last updated first")
+        ok(sort_fn({}) > older, name .. " without a date sort last")
+    end
+    eq(sort.gitea.mentions, nil, "Gitea mentions keep the API order")
+    eq(sort.forgejo.mentions, nil, "Forgejo mentions keep the API order")
+end
+
 return T
