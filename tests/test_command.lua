@@ -178,6 +178,30 @@ T["build_list_reports_an_error_object"] = function()
     eq(calls, { { list = { items = {}, isIncomplete = false }, success = false } }, "an error object is a failure")
 end
 
+T["fallback_list_runs_the_next_command_after_an_error_object"] = function()
+    local calls = {}
+    local job = helpers.not_nil(command.build_fallback_list({
+        { exec = "sh", args = { "-c", 'printf \'{"message":"Bad credentials"}\'' } },
+        { exec = "sh", args = { "-c", "printf '[\"item\"]'" } },
+    }, function(list, success)
+        table.insert(calls, {
+            labels = vim.tbl_map(function(item)
+                return item.label
+            end, list.items),
+            success = success,
+        })
+    end, function(item)
+        return { label = item }
+    end))
+    job:start()
+    helpers.wait_for(function()
+        return #calls > 0
+    end, "the fallback completes")
+    helpers.flush()
+
+    eq(calls, { { labels = { "item" }, success = true } }, "the list of the second command, and no empty list")
+end
+
 T["build_list_reports_a_failure"] = function()
     local calls = {}
     local job = helpers.not_nil(command.build_list(exit_with(1), function(list, success)

@@ -19,8 +19,10 @@ local M = {}
 
 ---@param spec cmp_git.CommandSpec
 ---@param callback fun(result: string, success: boolean): nil
+---@param accept? fun(result: string): boolean A result of exit code 0 that `accept` rejects is a failure, so that the
+---next command of a fallback runs.
 ---@return cmp_git.SystemJob?
-function M.build(spec, callback)
+function M.build(spec, callback, accept)
     if vim.fn.executable(spec.exec) ~= 1 or not spec.args then
         log.fmt_debug("Can't work with %s for this call", spec.exec)
         return nil
@@ -48,6 +50,9 @@ function M.build(spec, callback)
                     if result.stderr and result.stderr ~= "" then
                         log.fmt_debug("%s stderr: %s", spec.exec, result.stderr)
                     end
+                elseif accept and not accept(result.stdout or "") then
+                    success = false
+                    log.fmt_debug("%s returned with a result that is not valid", spec.exec)
                 else
                     log.fmt_debug("%s returned with a result", spec.exec)
                 end
@@ -94,15 +99,14 @@ end
 ---@param handle_parsed? fun(parsed: any): TItem[]? A result that is not a list is a failure.
 ---@return cmp_git.SystemJob?
 function M.build_list(spec, callback, handle_item, handle_parsed)
-    return M.build(spec, function(result, success)
-        if not success then
-            callback({ items = {}, isIncomplete = false }, false)
-            return
-        end
-
-        -- An output that is not a list, for example an error object, is a failure
-        local list, ok = response.completion_list(result, handle_item, handle_parsed)
-        callback(list, ok)
+    local list = nil
+    return M.build(spec, function(_, success)
+        callback(success and list or { items = {}, isIncomplete = false }, success)
+    end, function(result)
+        -- An output that is not a list, for example an error object of `tea api`, which exits with 0, is a failure
+        local ok
+        list, ok = response.completion_list(result, handle_item, handle_parsed)
+        return ok
     end)
 end
 
