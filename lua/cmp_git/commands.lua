@@ -16,6 +16,14 @@ local function clear_git_caches(bufnr)
     end
 end
 
+---Drop the tea logins of the Gitea source, so that a login added during the session applies.
+local function clear_tea_logins()
+    local Gitea = package.loaded["cmp_git.sources.gitea"]
+    if Gitea then
+        Gitea.clear_logins()
+    end
+end
+
 ---The remotes of the buffer, without repeats. Discovery runs with the config of each core, because the configs can
 ---give other hosts for one remote URL, for example with `ssh_aliases`. Without a core, it uses the default config.
 ---@param bufnr integer
@@ -49,11 +57,12 @@ local function discover_remotes(bufnr, on_complete)
 end
 
 ---Clear the cache of the remote of the buffer, or of all remotes. Both forms also drop the cached commits and
----trailers, of the buffer or of all buffers.
+---trailers, of the buffer or of all buffers, and the tea logins.
 ---@param all boolean
 ---@param bufnr? integer The buffer, by default the current one.
 function M.clear_cache(all, bufnr)
     local cache = require("cmp_git.cache")
+    clear_tea_logins()
     if all then
         cache.clear_all()
         clear_git_caches(nil)
