@@ -1,5 +1,7 @@
 local helpers = require("tests.helpers")
 local fake_gitea_api = require("tests.sources.fake_gitea_api")
+local cache = require("cmp_git.cache")
+local commands = require("cmp_git.commands")
 local config = require("cmp_git.config")
 local Gitea = require("cmp_git.sources.gitea")
 
@@ -56,7 +58,7 @@ T["gitea_hosts"] = function()
 end
 
 T["issues_and_pull_requests_come_from_curl"] = function()
-    local log = fake_gitea_api.curl()
+    local log = fake_gitea_api.commands()
     local gitea = source()
 
     local list = complete(gitea, "complete_issues_and_change_requests", "#")
@@ -74,7 +76,7 @@ T["issues_and_pull_requests_come_from_curl"] = function()
 end
 
 T["pull_requests_under_the_bang"] = function()
-    fake_gitea_api.curl()
+    fake_gitea_api.commands()
 
     eq(labels(complete(source(), "complete_change_requests", "!")), { "!2: A pull request" }, "the pull requests")
     eq(labels(complete(source(), "complete_issues", "#")), { "#1: An issue" }, "the issues alone")
@@ -82,7 +84,7 @@ end
 
 T["failed_commands_give_an_empty_list_that_is_not_cached"] = function()
     vim.env.GITEA_TOKEN = "secret"
-    local log = fake_gitea_api.curl({ fail = true })
+    local log = fake_gitea_api.commands({ fail = true })
     local gitea = source()
 
     for _, method in ipairs({ "complete_issues", "complete_change_requests", "complete_issues_and_change_requests" }) do
@@ -104,7 +106,7 @@ T["missing_commands_give_an_empty_list"] = function()
 end
 
 T["mentions_need_a_token"] = function()
-    local log = fake_gitea_api.curl()
+    local log = fake_gitea_api.commands()
     local gitea = source()
 
     eq(complete(gitea, "complete_mentions", "@"), EMPTY, "no mentions without a token")
@@ -121,14 +123,14 @@ end
 
 T["an_invalid_token_falls_back_to_curl_without_a_token"] = function()
     vim.env.GITEA_TOKEN = "bad"
-    local log = fake_gitea_api.curl()
+    local log = fake_gitea_api.commands()
 
     eq(labels(complete(source(), "complete_issues", "#")), { "#1: An issue" }, "the public issues")
     eq(log(), { ISSUES_URL .. " Authorization: token bad", ISSUES_URL .. " " }, "with the token, then without")
 end
 
 T["an_http_remote_uses_plain_http"] = function()
-    local log = fake_gitea_api.curl()
+    local log = fake_gitea_api.commands()
     local remote = { host = "127.0.0.1:3000", owner = "owner", repo = "repo", scheme = "http" }
 
     complete(source({ hosts = { "127.0.0.1:3000" } }), "complete_issues", "#", remote)
@@ -141,7 +143,7 @@ T["an_http_remote_uses_plain_http"] = function()
 end
 
 T["stale_items_refresh_in_the_background"] = function()
-    local log = fake_gitea_api.curl()
+    local log = fake_gitea_api.commands()
     local gitea = Gitea.new(config.normalize({}).gitea, { ttl = 60 })
     local entry = gitea:_entry("issues", REMOTE)
     entry:set({ { number = 9, title = "An old issue", body = "", updated_at = "2024-01-01T00:00:00Z" } })
@@ -154,6 +156,128 @@ T["stale_items_refresh_in_the_background"] = function()
 
     eq(log(), { ISSUES_URL .. " " }, "the refresh runs curl")
     eq(labels(complete(gitea, "complete_issues", "#")), { "#1: An issue" }, "the next request gets the new items")
+end
+
+local LOGINS = "tea login list -o json"
+local WORK = fake_gitea_api.login("work", "https://gitea.com/")
+local TEA_ISSUES = "tea api -l work /repos/owner/repo/issues?state=open&type=issues&limit=50&page=1"
+local TEA_PULLS = "tea api -l work /repos/owner/repo/issues?state=open&type=pulls&limit=50&page=1"
+
+T["tea_api_runs_with_the_login_of_the_host"] = function()
+    local log = fake_gitea_api.commands({ logins = { fake_gitea_api.login("other", "https://example.com"), WORK } })
+    local gitea = source()
+
+    eq(labels(complete(gitea, "complete_issues", "#")), { "#1: An issue" }, "the issues")
+    eq(log(), { LOGINS, TEA_ISSUES }, "tea looks up the logins, then asks with the login of the host")
+
+    eq(labels(complete(gitea, "complete_mentions", "@")), { "@ada" }, "the mentions")
+    eq(log()[3], "tea api -l work /repos/owner/repo/assignees", "tea gives the mentions without GITEA_TOKEN")
+end
+
+T["without_a_matching_login_tea_api_does_not_run"] = function()
+    local log = fake_gitea_api.commands({
+        logins = {
+            fake_gitea_api.login("other", "https://example.com"),
+            fake_gitea_api.login("port", "https://gitea.com:3000"),
+            fake_gitea_api.login("prefix", "https://gitea.com/sub"),
+        },
+    })
+
+    eq(labels(complete(source(), "complete_issues", "#")), { "#1: An issue" }, "the issues")
+    eq(log(), { LOGINS, ISSUES_URL .. " " }, "curl without tea api")
+end
+
+T["of_more_than_one_matching_login_the_default_wins"] = function()
+    local log = fake_gitea_api.commands({
+        logins = { WORK, fake_gitea_api.login("home", "http://gitea.com", true) },
+    })
+    complete(source(), "complete_issues", "#")
+    eq(log()[2]:match("^tea api %-l (%S+)"), "home", "the default login")
+
+    cache.clear_all()
+    Gitea.clear_logins()
+    log = fake_gitea_api.commands({ logins = { WORK, fake_gitea_api.login("home", "http://gitea.com") } })
+    complete(source(), "complete_issues", "#")
+    eq(log()[2]:match("^tea api %-l (%S+)"), "work", "without a default login, the first one")
+end
+
+T["a_failed_tea_falls_back_to_curl"] = function()
+    vim.env.GITEA_TOKEN = "secret"
+    local log = fake_gitea_api.commands({ logins = { WORK }, tea_logins_fail = true })
+    eq(labels(complete(source(), "complete_issues", "#")), { "#1: An issue" }, "a failed lookup")
+    eq(log(), { LOGINS, ISSUES_URL .. " Authorization: token secret" }, "curl after the failed lookup")
+
+    cache.clear_all()
+    Gitea.clear_logins()
+    log = fake_gitea_api.commands({ logins = { WORK }, tea_api_fails = true })
+    eq(labels(complete(source(), "complete_issues", "#")), { "#1: An issue" }, "an error object of tea api")
+    eq(log(), { LOGINS, TEA_ISSUES, ISSUES_URL .. " Authorization: token secret" }, "curl after tea api")
+end
+
+T["concurrent_requests_share_one_lookup"] = function()
+    local log = fake_gitea_api.commands({ logins = { WORK } })
+    local gitea = source()
+    local callback, lists = helpers.recorder()
+
+    gitea:complete_issues_and_change_requests(callback, REMOTE, "#")
+    gitea:complete_mentions(callback, REMOTE, "@")
+    eq(#lists, 0, "the requests do not wait for tea")
+    helpers.wait_for(function()
+        return #lists == 2
+    end, "both requests answer")
+
+    local runs = log()
+    eq(#vim.tbl_filter(function(line)
+        return line == LOGINS
+    end, runs), 1, "one lookup: " .. vim.inspect(runs))
+    eq(#runs, 4, "the lookup and three tea api requests: " .. vim.inspect(runs))
+end
+
+T["a_cancel_during_the_lookup_starts_no_request"] = function()
+    local log = fake_gitea_api.commands({ logins = { WORK } })
+    local gitea = source()
+    local cancelled_callback, cancelled_lists = helpers.recorder()
+    local callback, lists = helpers.recorder()
+
+    local _, controller = gitea:complete_issues(cancelled_callback, REMOTE, "#")
+    helpers.not_nil(controller):cancel()
+    gitea:complete_change_requests(callback, REMOTE, "!")
+    helpers.wait_for(function()
+        return #lists == 1
+    end, "the other request answers after the lookup")
+    helpers.flush()
+
+    eq(log(), { LOGINS, TEA_PULLS }, "the cancelled request starts no command")
+    eq(cancelled_lists, {}, "a cancelled request gets no list")
+end
+
+T["a_cache_hit_runs_no_tea"] = function()
+    local log = fake_gitea_api.commands({ logins = { WORK } })
+    local gitea = source()
+    for _, kind in ipairs({ "issues", "pull_requests", "mentions" }) do
+        gitea:_entry(kind, REMOTE):set({})
+    end
+    local callback, lists = helpers.recorder()
+
+    for _, method in ipairs({ "complete_issues_and_change_requests", "complete_change_requests", "complete_mentions" }) do
+        gitea[method](gitea, callback, REMOTE, "#")
+    end
+
+    eq(#lists, 3, "each cache hit answers at once")
+    eq(log(), {}, "no command runs")
+end
+
+T["the_logins_stay_for_the_session_until_the_cache_is_cleared"] = function()
+    local log = fake_gitea_api.commands({ logins = { WORK } })
+
+    complete(source(), "complete_issues", "#")
+    cache.clear_all()
+    complete(source(), "complete_issues", "#")
+    eq(log(), { LOGINS, TEA_ISSUES, TEA_ISSUES }, "a new source uses the logins of the session")
+
+    commands.clear_cache(true)
+    complete(source(), "complete_issues", "#")
+    eq(log(), { LOGINS, TEA_ISSUES, TEA_ISSUES, LOGINS, TEA_ISSUES }, ":CmpGitClearCache! looks up the logins again")
 end
 
 return T

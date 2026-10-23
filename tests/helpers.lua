@@ -250,6 +250,11 @@ local function teardown_case()
     if cache then
         cache.forget()
     end
+    -- The tea logins are shared by the Gitea sources of the session
+    local gitea = package.loaded["cmp_git.sources.gitea"]
+    if gitea then
+        gitea.clear_logins()
+    end
 
     for _, name in ipairs(ENV_NAMES) do
         -- A nil value unsets the variable

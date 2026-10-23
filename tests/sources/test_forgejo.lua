@@ -46,7 +46,7 @@ end
 T["the_forgejo_token_variable_gives_the_items"] = function()
     vim.env.FORGEJO_TOKEN = "secret"
     vim.env.GITEA_TOKEN = "gitea"
-    local log = fake_gitea_api.curl()
+    local log = fake_gitea_api.commands()
     local forgejo = source()
 
     eq(complete(forgejo, "complete_issues_and_change_requests", "#"), { "#1: An issue", "#2: A pull request" }, "#")
@@ -63,7 +63,7 @@ T["the_forgejo_token_variable_gives_the_items"] = function()
 end
 
 T["without_a_token_the_public_items_come_from_curl"] = function()
-    local log = fake_gitea_api.curl()
+    local log = fake_gitea_api.commands()
     local forgejo = source()
 
     eq(complete(forgejo, "complete_change_requests", "!"), { "!2: A pull request" }, "the pull requests")
