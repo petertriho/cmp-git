@@ -73,9 +73,65 @@ T["commit_capability_parse_marker_collision_and_malformed_records"] = function()
     eq(commits[1].description, "body with ###CMP_GIT_END### marker", "commit parser allows old entry marker text")
 end
 
--- The parser before it read the fields in place. The test below checks that the new parser gives the same output.
+T["commit_capability_parse_dedents_the_body"] = function()
+    local function description(body)
+        local raw = commit_record("abcdef1234567890", "subject", body, "Ada", "ada@example.com", 1234567890)
+        return commit_capability.parse(raw, commit_test_config())[1].description
+    end
+
+    eq(
+        description("  ## what\n  - a\n\n  ## how\n  - enable it if\n    it is on PATH\n"),
+        "## what\n- a\n\n## how\n- enable it if\n  it is on PATH",
+        "a body that is indented as a whole keeps its relative indentation"
+    )
+    eq(description("  first\n    second"), "first\n  second", "the first line has the shared indentation")
+    eq(description("    first\n  second"), "  first\nsecond", "a later line has the shared indentation")
+    eq(description("\t\tfirst\n\t\t\tsecond"), "first\n\tsecond", "tabs are an indentation")
+    eq(description("first\n  second"), "first\n  second", "a first line without indentation")
+    eq(description("  first\nsecond"), "first\nsecond", "a later line without indentation")
+    eq(description("\tfirst\n  second"), "first\n  second", "a tab and a space do not match")
+    eq(description("  first\n \t \n\n  second"), "first\n\n\nsecond", "lines with only whitespace become empty")
+    eq(
+        description("first\n \t \n  second"),
+        "first\n \t \n  second",
+        "lines with only whitespace stay without a dedent"
+    )
+    eq(description("\n \n\t\n  first\n  second\n\n"), "first\nsecond", "blank lines around the body are removed")
+    eq(description(" \r first\n  second"), "first\n second", "the indentation starts after other whitespace")
+    eq(description(""), "", "an empty body")
+    eq(description(" \n\t "), "", "a body with only whitespace")
+end
+
+-- The parser before it read the fields in place, with the dedent of the body. The test below checks that the new
+-- parser gives the same output.
 local function old_trim(s)
     return (s:gsub("^%s*(.-)%s*$", "%1"))
+end
+
+---The body without the indentation that all its lines with text share, written with line lists instead of the index
+---arithmetic of the parser. Without a shared indentation, it is the trimmed body.
+local function old_body(s)
+    local trimmed = old_trim(s)
+    -- The spaces and tabs right before the first byte that is not whitespace
+    local indent = s:match("([ \t]*)%S") or ""
+    local lines = vim.split(indent .. trimmed, "\n", { plain = true })
+    local margin
+    for _, line in ipairs(lines) do
+        if line:find("%S") then
+            local lead = line:match("^[ \t]*")
+            margin = margin or lead
+            while lead:sub(1, #margin) ~= margin do
+                margin = margin:sub(1, -2)
+            end
+        end
+    end
+    if not margin or margin == "" then
+        return trimmed
+    end
+    for i, line in ipairs(lines) do
+        lines[i] = line:find("%S") and line:sub(#margin + 1) or ""
+    end
+    return table.concat(lines, "\n")
 end
 
 local function old_split_nul(input)
@@ -102,7 +158,7 @@ local function old_parse(result, config)
             table.insert(commits, {
                 sha = old_trim(fields[i]):sub(1, config.sha_length),
                 title = old_trim(fields[i + 1]),
-                description = old_trim(fields[i + 2]),
+                description = old_body(fields[i + 2]),
                 author_name = fields[i + 3] or "",
                 author_mail = fields[i + 4] or "",
                 commit_timestamp = timestamp,
@@ -146,6 +202,11 @@ T["commit_capability_parse_matches_the_old_parser"] = function()
         "Ünïcödé",
         "\031",
         "a" .. string.rep(" ", 50) .. "b",
+        "  ## what\n  - a\n \t \n    b\n",
+        "  indented\n",
+        "\n  - after a blank line\n    more\n",
+        "\t- tab line\n",
+        "   \n",
     }
     local function text()
         local parts = {}

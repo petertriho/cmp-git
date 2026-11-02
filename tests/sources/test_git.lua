@@ -86,6 +86,60 @@ T["git_requests_answer_in_a_repository_without_commits"] = function()
     eq(next(git.cache_trailer_values), nil, "trailer values are not cached")
 end
 
+T["git_commit_documentation_keeps_the_body_layout"] = function()
+    if vim.fn.executable("git") ~= 1 then
+        helpers.skip("git is not installed")
+    end
+
+    -- The body of issue #54. It is indented as a whole, and one line is indented more.
+    local repo = helpers.git_repo()
+    repo.commit(table.concat({
+        "chore(astronvim): auto install Treesitter language packs",
+        "",
+        "  ## what",
+        "  - auto install Treesitter language packs",
+        "",
+        "  ## how",
+        "  - enable config `auto_install` if `tree-sitter` is installed and",
+        "    available on PATH",
+    }, "\n"))
+    vim.fn.chdir(repo.dir)
+
+    local git = Git.new(config.normalize({}).git)
+    local line = "See :"
+    local context = {
+        bufnr = helpers.buffer({ "feat: subject", "", line }),
+        cursor = { row = 3, character = #line },
+        line = line,
+    }
+    local lists = {}
+    git:get_commits(function(list)
+        table.insert(lists, list)
+    end, context, ":")
+    helpers.wait_for(function()
+        return #lists > 0
+    end, "commits call back")
+
+    eq(#lists, 1, "commits call back once")
+    eq(#lists[1].items, 1, "commits give the commit")
+    local item = lists[1].items[1]
+    eq(item.documentation, {
+        kind = "markdown",
+        value = table.concat({
+            "# chore(astronvim): auto install Treesitter language packs",
+            "",
+            "## what",
+            "- auto install Treesitter language packs",
+            "",
+            "## how",
+            "- enable config `auto_install` if `tree-sitter` is installed and",
+            "  available on PATH",
+            "",
+            "Authored by Ada Lovelace (ada@example.com), committed on " .. os.date("%c", item.data.commit_timestamp),
+        }, "\n"),
+    }, "the documentation keeps the lines of the body without their shared indentation")
+end
+
 T["git_requests_answer_without_git"] = function()
     -- `command.build` gives no job when git is not installed
     helpers.stub(vim.fn, "executable", function()
