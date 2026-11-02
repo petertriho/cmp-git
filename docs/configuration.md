@@ -157,6 +157,8 @@ For compatibility, cmp-git also supports `filter_fn` on a provider, as an alias 
 
 - `sha` has `git.commits.sha_length` characters (default 7). The default `insertText` inserts `sha`. The default
   `label` shows the first 7 characters.
+- `description` is the body of the commit, without the blank lines at its start and the whitespace at its end. When
+  all lines with text share an indentation, that indentation is removed, and lines with only whitespace become empty.
 - `author_name` and `author_mail` are the name and the email of the author, with the `.mailmap` applied.
   `commit_timestamp` is the commit date.
 - GitHub issues and pull requests always have `body` and `updatedAt`.

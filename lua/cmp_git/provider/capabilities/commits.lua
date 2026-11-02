@@ -4,12 +4,17 @@ local utils = require("cmp_git.utils")
 
 local M = {}
 
+local byte = string.byte
 local find = string.find
+local match = string.match
 local sub = string.sub
 local trim_range = utils.trim_range
 
 -- The NUL-terminated fields of each commit in the `M.request` format
 local FIELDS = 6
+
+-- The bytes of an indentation: tab and space
+local INDENT = { [9] = true, [32] = true }
 
 ---@param config cmp_git.Config.GitCommits
 ---@return cmp_git.CommandSpec
@@ -34,6 +39,53 @@ local function trimmed(s, first, last)
     return sub(s, trim_range(s, first, last))
 end
 
+---The trimmed body without the indentation that all its lines with text share, as `textwrap.dedent` of Python does.
+---Some bodies are indented as a whole, and the trim removes the indentation of the first line only. Lines with only
+---whitespace do not count, and they become empty when an indentation is removed. A tab and a space do not match.
+---Without a shared indentation, the result is the trimmed body.
+---@param s string
+---@param first integer
+---@param last integer
+---@return string
+local function dedented(s, first, last)
+    local field_first = first
+    first, last = trim_range(s, first, last)
+    if first > last then
+        return ""
+    end
+
+    local line_first = first
+    while line_first > field_first and INDENT[byte(s, line_first - 1)] do
+        line_first = line_first - 1
+    end
+    -- The first line has text, so the shared indentation is a part of its indentation
+    if line_first == first then
+        return sub(s, first, last)
+    end
+
+    local lines = vim.split(sub(s, line_first, last), "\n", { plain = true })
+    local margin = sub(s, line_first, first - 1)
+    for _, line in ipairs(lines) do
+        if find(line, "%S") then
+            local indent = match(line, "^[ \t]*")
+            local shared = 0
+            while shared < #margin and byte(margin, shared + 1) == byte(indent, shared + 1) do
+                shared = shared + 1
+            end
+            if shared == 0 then
+                return sub(s, first, last)
+            end
+            margin = sub(margin, 1, shared)
+        end
+    end
+
+    local width = #margin
+    for i, line in ipairs(lines) do
+        lines[i] = find(line, "%S") and sub(line, width + 1) or ""
+    end
+    return table.concat(lines, "\n")
+end
+
 ---@param result string
 ---@param config cmp_git.Config.GitCommits
 ---@return cmp_git.Commit[]
@@ -42,7 +94,7 @@ function M.parse(result, config)
     local now = os.time()
     local sha_length = config.sha_length
     -- The position of the NUL after each field of the current commit. The fields are read in place, so that each
-    -- field is copied once, after the trim.
+    -- field is copied once, after the trim. `dedented` also splits a body whose first line is indented into lines.
     local stops = {}
     local start = 1
 
@@ -73,7 +125,7 @@ function M.parse(result, config)
         local commit = {
             sha = sha,
             title = trimmed(result, stops[1] + 1, stops[2] - 1),
-            description = trimmed(result, stops[2] + 1, stops[3] - 1),
+            description = dedented(result, stops[2] + 1, stops[3] - 1),
             author_name = sub(result, stops[3] + 1, stops[4] - 1),
             author_mail = sub(result, stops[4] + 1, stops[5] - 1),
             commit_timestamp = timestamp,
