@@ -1,3 +1,4 @@
+local autosquash = require("cmp_git.provider.capabilities.autosquash")
 local commits = require("cmp_git.provider.capabilities.commits")
 local trailers = require("cmp_git.provider.capabilities.trailers")
 
@@ -60,6 +61,28 @@ function Git:get_commits(callback, context, trigger_char)
             config = config,
             trigger_char = trigger_char,
             bufnr = bufnr,
+        })
+end
+
+---The autosquash prefix words that start with the letters before the cursor. They start no process.
+---@param callback fun(list: cmp_git.CompletionList)
+function Git:get_autosquash_prefixes(callback, context)
+    callback(autosquash.prefixes.list(self.config.autosquash.prefixes, context.line or ""))
+    return true
+end
+
+---The titles of earlier commits after an autosquash prefix. The commits come from the history and the cache of
+---`get_commits`.
+---@param callback fun(list: cmp_git.CompletionList)
+function Git:get_autosquash_commits(callback, context)
+    return true,
+        autosquash.commits.complete({
+            cache = self.cache_commits,
+            callback = callback,
+            commits_config = self.config.commits,
+            config = self.config.autosquash.commits,
+            line = context.line,
+            bufnr = context.bufnr or vim.api.nvim_get_current_buf(),
         })
 end
 

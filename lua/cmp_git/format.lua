@@ -76,6 +76,29 @@ local function gitea_formats()
     }
 end
 
+---@param commit cmp_git.Commit
+---@return lsp.MarkupContent
+local function commit_documentation(_trigger_char, commit)
+    return {
+        kind = "markdown",
+        value = string.format(
+            "# %s\n\n%s\n\nAuthored by %s (%s), committed on %s",
+            commit.title,
+            commit.description,
+            commit.author_name,
+            commit.author_mail,
+            os.date("%c", commit.commit_timestamp)
+        ),
+    }
+end
+
+-- What `git rebase --autosquash` does with a commit whose title starts with the prefix
+local AUTOSQUASH_ACTIONS = {
+    fixup = "keeps the message of that commit",
+    squash = "combines the two messages",
+    amend = "replaces the message of that commit with the message of this commit",
+}
+
 local M = {
     git = {
         ---@type cmp_git.FormatConfig<cmp_git.Commit>
@@ -90,19 +113,54 @@ local M = {
             insertText = function(_trigger_char, commit)
                 return commit.sha
             end,
-            documentation = function(_trigger_char, commit)
-                return {
-                    kind = "markdown",
-                    value = string.format(
-                        "# %s\n\n%s\n\nAuthored by %s (%s), committed on %s",
-                        commit.title,
-                        commit.description,
-                        commit.author_name,
-                        commit.author_mail,
-                        os.date("%c", commit.commit_timestamp)
-                    ),
-                }
-            end,
+            documentation = commit_documentation,
+        },
+        autosquash = {
+            ---@type cmp_git.FormatConfig<cmp_git.AutosquashPrefix>
+            prefixes = {
+                label = function(_trigger_char, prefix)
+                    return prefix.word .. "!"
+                end,
+                filterText = function(_trigger_char, prefix)
+                    return prefix.word
+                end,
+                insertText = function(_trigger_char, prefix)
+                    return prefix.word .. "! "
+                end,
+                documentation = function(_trigger_char, prefix)
+                    local action = AUTOSQUASH_ACTIONS[prefix.word]
+                    local text = "`git rebase --autosquash` reads only the prefixes `fixup!`, `squash!`, and `amend!`."
+                    if action then
+                        text = string.format(
+                            "`git rebase --autosquash` adds the changes of this commit to the commit with the title "
+                                .. "after the prefix, and %s.",
+                            action
+                        )
+                    end
+                    return {
+                        kind = "markdown",
+                        value = string.format("# %s!\n\n%s", prefix.word, text),
+                    }
+                end,
+            },
+            -- trigger_char is `!` only when the typed text touches the `!` of the prefix (`fixup!` or `fixup!feat`).
+            -- Then the nvim-cmp offset starts at the `!`, and the inserted title needs a space before it.
+            ---@type cmp_git.FormatConfig<cmp_git.Commit>
+            commits = {
+                label = function(_trigger_char, commit)
+                    return commit.title
+                end,
+                filterText = function(trigger_char, commit)
+                    if trigger_char then
+                        return string.format("%s %s", trigger_char, commit.title)
+                    end
+                    return commit.title
+                end,
+                insertText = function(trigger_char, commit)
+                    return (trigger_char and " " or "") .. commit.title
+                end,
+                documentation = commit_documentation,
+            },
         },
         trailers = {
             ---@type cmp_git.FormatConfig<cmp_git.TrailerKey>

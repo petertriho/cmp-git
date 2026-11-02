@@ -7,12 +7,24 @@ local function gitea_updated_at(item)
     return string.format("%010d", os.difftime(os.time(), utils.parse_gitea_date(item.updated_at)))
 end
 
+---The commits sort the newest first.
+---@param commit cmp_git.Commit
+---@return string
+local function commit_age(commit)
+    return string.format("%010d", commit.diff)
+end
+
 local M = {
     git = {
-        ---@param commit cmp_git.Commit
-        commits = function(commit) -- nil, "sha", "title", "description", "author_name", "author_mail", "commit_timestamp", or custom function
-            return string.format("%010d", commit.diff)
-        end,
+        commits = commit_age, -- nil, "sha", "title", "description", "author_name", "author_mail", "commit_timestamp", or custom function
+        autosquash = {
+            ---@param prefix cmp_git.AutosquashPrefix
+            prefixes = function(prefix) -- nil, "word", or custom function
+                -- The order of the words
+                return string.format("%05d", prefix.index)
+            end,
+            commits = commit_age, -- nil, "sha", "title", "description", "author_name", "author_mail", "commit_timestamp", or custom function
+        },
         trailers = {
             ---@param trailer cmp_git.TrailerKey
             keys = function(trailer) -- nil, "key", or custom function

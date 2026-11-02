@@ -50,6 +50,30 @@ local function cursor_from_context(ctx)
     return { row = position[1], character = position[2] }
 end
 
+---@class cmp_git.BlinkCompletionItem: cmp_git.CompletionItem
+---@field source_id string The id of the blink.cmp provider of the item.
+
+---blink.cmp calls this to accept an item. `default_implementation` inserts the text.
+---@param item cmp_git.BlinkCompletionItem
+---@param callback fun()
+---@param default_implementation fun()
+function Blink:execute(_ctx, item, callback, default_implementation)
+    default_implementation()
+    callback()
+    if not Core.reopens_menu(item) then
+        return
+    end
+
+    -- After blink.cmp has finished the accept
+    vim.schedule(function()
+        -- Only blink.cmp calls this, but the module can be missing for other callers
+        local ok, blink = pcall(require, "blink.cmp")
+        if ok then
+            blink.show({ providers = { item.source_id } })
+        end
+    end)
+end
+
 function Blink:get_completions(ctx, callback)
     local cancelled = false
     local responded = false

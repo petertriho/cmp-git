@@ -88,6 +88,25 @@ function Source:complete(params, callback)
     return self.core:complete(self:_context_from_params(params), callback)
 end
 
+---nvim-cmp calls this after the confirm of an item has inserted its text.
+---@param completion_item cmp_git.CompletionItem
+---@param callback fun()
+function Source:execute(completion_item, callback)
+    callback()
+    if not Core.reopens_menu(completion_item) then
+        return
+    end
+
+    -- After the callback, which nvim-cmp schedules to end the confirm
+    vim.schedule(function()
+        -- Only nvim-cmp calls this, but the module can be missing for other callers
+        local ok, cmp = pcall(require, "cmp")
+        if ok then
+            cmp.complete({ config = { sources = { { name = "git" } } } })
+        end
+    end)
+end
+
 ---nvim-cmp reads the text edit ranges as UTF-16 unless the source names another encoding. cmp-git finds the edit
 ---start in bytes.
 ---@return string

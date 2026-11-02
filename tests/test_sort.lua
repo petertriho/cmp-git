@@ -22,6 +22,15 @@ end
 
 T["default_git_sorts"] = function()
     eq(sort.get_sort_text(sort.git.commits, { diff = 42 }), "0000000042", "commits sort by age")
+    ok(
+        sort.git.autosquash.commits({ diff = 5 }) < sort.git.autosquash.commits({ diff = 50 }),
+        "autosquash commits sort newest first"
+    )
+    ok(
+        sort.git.autosquash.prefixes({ word = "squash", index = 2 })
+            < sort.git.autosquash.prefixes({ word = "amend", index = 10 }),
+        "autosquash prefixes keep the order of the words"
+    )
 
     local used_more = sort.git.trailers.keys({ key = "Fixes", count = 2, builtin_index = 9 })
     local builtin_first = sort.git.trailers.keys({ key = "Signed-off-by", count = 1, builtin_index = 2 })

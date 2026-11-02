@@ -32,12 +32,16 @@ cmp-git uses the current trailer value patterns for it.
 The default trailer entries come before the `:` entry. As a result, `Co-authored-by:` completes identities, not
 commits.
 
+The default autosquash entries come first. As a result, on line 1 after `fixup!`, `squash!`, or `amend!`, the `:`,
+`#`, `@`, and `!` triggers complete commit titles. For example, `fixup!` completes commit titles, not GitLab merge
+requests, and `fixup! feat:` completes commit titles, not commits.
+
 ### Built-in actions
 
 The built-in actions are:
 
-- `git_commits`, `git_trailer_keys`, `git_trailer_identities`, and `git_trailer_values`. These actions need a
-  `pattern` entry, except `git_commits`.
+- `git_commits`, `git_trailer_keys`, `git_trailer_identities`, `git_trailer_values`, `git_autosquash_prefixes`, and
+  `git_autosquash`. These actions need a `pattern` entry, except `git_commits`.
 - `gitlab_issues`, `gitlab_mentions`, and `gitlab_change_requests`.
 - `github_issues`, `github_change_requests`, `github_issues_and_change_requests`, and `github_mentions`.
 - `gitea_issues`, `gitea_change_requests`, `gitea_issues_and_change_requests`, and `gitea_mentions`.
@@ -96,6 +100,114 @@ To turn off trailer completion, set `trigger_actions` without the two `pattern` 
 If you set your own `trigger_actions`, add the two `pattern` entries from the [defaults](../README.md#config) to get
 trailer completion.
 
+## Autosquash completion
+
+On the subject line of a commit message, cmp-git completes the subjects of `fixup!`, `squash!`, and `amend!` commits.
+`git rebase --autosquash` moves each of these commits after its target commit.
+
+| You type     | Completion                 | From                                      |
+| ------------ | -------------------------- | ----------------------------------------- |
+| `fi`         | `fixup! `                  | A word in `git.autosquash.prefixes.words` |
+| `fixup!`     | `fixup! feat: add parser`  | The title of an earlier commit            |
+| `squash! fe` | `squash! feat: add parser` | The title of an earlier commit            |
+| `amend!`     | `amend! fix: handle input` | The title of an earlier commit            |
+
+After you select a prefix word, the completion menu opens again and shows the commit titles. This works with
+`nvim-cmp` and with `blink.cmp`.
+
+Autosquash completion works only when all of these conditions are true:
+
+- The filetype of the buffer is in `git.autosquash.filetypes`. This list does not support `"*"`. Autosquash completion
+  also needs the filetype in `filetypes`.
+- The cursor is on line 1.
+
+The prefix words also need these conditions:
+
+- The text before the cursor has only letters, and it is the start of a word in `git.autosquash.prefixes.words`. The
+  match is case-sensitive, because git reads only lowercase prefixes.
+- The text has at least `git.autosquash.prefixes.min_length` letters (default 2). A value below 1 acts as 1. With fewer
+  letters, cmp-git gives an incomplete list without items, so the completion engine asks again on the next letter.
+
+If the text starts no word, the request goes to the next entries. For example, `fe` gives no prefix word.
+
+The commit titles come from the last `git.commits.limit` commits, the same commits that `:` completes. Thus a commit
+title request after a `:` request in the same buffer starts no git process. The list has these properties:
+
+- It has no commit whose title starts with `fixup! `, `squash! `, or `amend! `.
+- It has one item for each title. The item is the newest commit with that title.
+- It can show commits that you pushed, and commits outside the range of your rebase.
+
+After the prefix and its spaces, `:`, `#`, `@`, and `!` start no other completion. Only the first prefix counts, so in
+`squash! fixup! x`, the commit title replaces `fixup! x`.
+
+When the typed text touches the `!`, as in `fixup!` or `fixup!feat`, `trigger_char` of `git.autosquash.commits.format`
+is `!`. The default `insertText` then starts with a space, and the default `filterText` starts with `!`. After a
+space, `trigger_char` is `nil`.
+
+### How git finds the target commit
+
+`git rebase --autosquash` reads the text after the prefix. It does not read the body of the commit. It finds the
+target commit in this order:
+
+1. A commit with exactly this title.
+2. A commit that the text names, such as a hash or `HEAD~2`. Git does this step only if the text has no space.
+3. A commit whose title starts with the text.
+
+Git skips a repeated prefix, so `fixup! fixup! feat: add parser` targets `feat: add parser`.
+
+If two commits in the range of the rebase have the same title, git targets the oldest one. `git commit --fixup` has the
+same behavior. cmp-git inserts the title, so git can target an older commit than the commit that you selected. To insert
+the hash in place of the title, change `insertText`. For example:
+
+```lua
+require("cmp_git").setup({
+    git = {
+        autosquash = {
+            commits = {
+                format = {
+                    insertText = function(trigger_char, commit)
+                        return (trigger_char and " " or "") .. commit.sha
+                    end,
+                },
+            },
+        },
+    },
+})
+```
+
+### Prefix words and the commit titles
+
+Two settings name the prefixes:
+
+- `git.autosquash.prefixes.words` sets the prefix words.
+- The `pattern` of the `git_autosquash` entry sets the prefixes after which the commit titles complete.
+
+If a word is not in the pattern, its item inserts the word, `!`, and a space, but the commit titles do not show.
+The commit titles show only when line 1 starts with letters and `!`, so each prefix of the pattern must have this
+form. `git rebase --autosquash` reads only `fixup!`, `squash!`, and `amend!`.
+
+### Turn off autosquash completion
+
+- To turn off all autosquash completion, set `git.autosquash.filetypes = {}`.
+- To turn off the prefix words, set `git.autosquash.prefixes.words = {}`, or set `trigger_actions` without the entry
+  with the `git_autosquash_prefixes` action.
+- To turn off the commit titles, set `trigger_actions` without the entry with the `git_autosquash` action.
+
+If you set your own `trigger_actions`, add these two entries to get autosquash completion. Put them before the other
+entries, so that the `:`, `#`, `@`, and `!` entries do not handle the request first:
+
+```lua
+{
+    pattern = [[^[[:alnum:]-]\+]],
+    actions = { "git_autosquash_prefixes" },
+},
+{
+    pattern = [[^\%(fixup\|squash\|amend\)!\s*\zs.*]],
+    keyword_pattern = [[^\%(fixup\|squash\|amend\)\%(\zs!\S*\|!\s*\zs.*\)]],
+    actions = { "git_autosquash" },
+},
+```
+
 ## Format and sort items
 
 Each capability, such as `git.commits` or `github.issues`, has a `format` table and a `sort_by` value.
@@ -144,6 +256,8 @@ For compatibility, cmp-git also supports `filter_fn` on a provider, as an alias 
 | Capability                               | Fields                                                                                  |
 | ---------------------------------------- | --------------------------------------------------------------------------------------- |
 | `git.commits`                            | `sha`, `title`, `description`, `author_name`, `author_mail`, `commit_timestamp`, `diff` |
+| `git.autosquash.prefixes`                | `word`, `index`                                                                         |
+| `git.autosquash.commits`                 | The same fields as `git.commits`                                                        |
 | `git.trailers.keys`                      | `key`, `count`, `builtin_index`                                                         |
 | `git.trailers.identities`                | `name`, `email`, `source`, `is_self`, `timestamp`, `diff`                               |
 | `git.trailers.values`                    | `key`, `value`, `count`, `timestamp`, `diff`                                            |
@@ -167,6 +281,7 @@ For compatibility, cmp-git also supports `filter_fn` on a provider, as an alias 
 - `diff` is the number of seconds since the commit, or since the most recent use of the identity or the value.
 - `count` is the number of uses in the scanned commits.
 - `builtin_index` is the position of the key in `git.trailers.keys.builtin`. It is `nil` for a key from history.
+- `word` is a word of `git.autosquash.prefixes.words`, and `index` is its position in that list.
 - `source` is `"author"`, the trailer key, or `"self"`. `is_self` is `true` for your git identity.
 
 ### Sort
@@ -177,6 +292,8 @@ field name, such as `"title"`. For a field name, cmp-git uses the value of that 
 | Capability                                | Default order                                                              |
 | ----------------------------------------- | -------------------------------------------------------------------------- |
 | `git.commits`                             | Newest first                                                               |
+| `git.autosquash.prefixes`                 | The order of `words`                                                       |
+| `git.autosquash.commits`                  | Newest first                                                               |
 | `git.trailers.keys`                       | Most used first, then the order of `keys.builtin`, then alphabetical order |
 | `git.trailers.identities`                 | Most recent first. Your git identity comes first if it is not in history.  |
 | `git.trailers.values`                     | Most used first, then most recent                                          |

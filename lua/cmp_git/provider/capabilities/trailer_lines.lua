@@ -2,10 +2,11 @@
 ---the trailer capability, so that a request that trailer completion declines does not load the log parsers.
 local M = {}
 
+---Whether the filetype, or one part of a compound filetype such as `gitcommit.markdown`, is in the list.
 ---@param filetypes string[]
 ---@param filetype string
 ---@return boolean
-local function filetype_matches(filetypes, filetype)
+function M.filetype_matches(filetypes, filetype)
     if vim.tbl_contains(filetypes, filetype) then
         return true
     end
@@ -78,7 +79,7 @@ function M.available(config, context, kind)
 
     -- `vim.bo[bufnr]` makes a new table on each read
     local filetype = vim.api.nvim_get_option_value("filetype", { buf = bufnr })
-    if not filetype_matches(config.filetypes or {}, filetype) then
+    if not M.filetype_matches(config.filetypes or {}, filetype) then
         return false
     end
 

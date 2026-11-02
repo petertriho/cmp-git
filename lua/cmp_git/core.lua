@@ -1,6 +1,7 @@
 -- The sources and the repository module load on first use, so that a session loads only the code that its requests
 -- need. For example, a declined request loads neither, and a GitHub remote does not load the GitLab source.
 local config = require("cmp_git.config")
+local autosquash_lines = require("cmp_git.provider.capabilities.autosquash_lines")
 local log = require("cmp_git.log")
 local trailer_lines = require("cmp_git.provider.capabilities.trailer_lines")
 
@@ -53,6 +54,12 @@ local builtin_trigger_actions = {
     git_commits = function(core, callback, context, _git_info, trigger_char)
         return route_status(core.sources.git:get_commits(callback, context, trigger_char))
     end,
+    git_autosquash_prefixes = function(core, callback, context)
+        return route_status(core.sources.git:get_autosquash_prefixes(callback, context))
+    end,
+    git_autosquash = function(core, callback, context)
+        return route_status(core.sources.git:get_autosquash_commits(callback, context))
+    end,
     git_trailer_keys = function(core, callback, context, _git_info, trigger_char)
         return route_status(core.sources.git:get_trailer_keys(callback, context, trigger_char))
     end,
@@ -84,6 +91,8 @@ local builtin_trigger_actions = {
 -- Built-in actions that read only the local repository. They need no remote, and they always handle the request.
 local LOCAL_ACTIONS = {
     git_commits = true,
+    git_autosquash_prefixes = true,
+    git_autosquash = true,
     git_trailer_keys = true,
     git_trailer_identities = true,
     git_trailer_values = true,
@@ -91,6 +100,12 @@ local LOCAL_ACTIONS = {
 
 -- Synchronous checks that run before repository discovery, so that a declined request starts no git process.
 local builtin_trigger_availability = {
+    git_autosquash_prefixes = function(core, context)
+        return autosquash_lines.available(core.config.git.autosquash, context, "prefixes")
+    end,
+    git_autosquash = function(core, context)
+        return autosquash_lines.available(core.config.git.autosquash, context, "commits")
+    end,
     git_trailer_keys = function(core, context)
         return trailer_lines.available(core.config.git.trailers, context, "keys")
     end,
@@ -555,6 +570,15 @@ function Core:complete(context, callback)
     end, context.bufnr)
 
     return controller
+end
+
+---Whether the completion engine must open the menu again after the insert of the item. A prefix word item has this
+---marker in `data`, so that the commit list shows at once after `fixup! `.
+---@param item? { data?: any }
+---@return boolean
+function Core.reopens_menu(item)
+    local data = item and item.data
+    return type(data) == "table" and data.reopen == true
 end
 
 function Core:get_keyword_pattern()

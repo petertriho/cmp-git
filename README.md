@@ -4,12 +4,14 @@ Git source for [hrsh7th/nvim-cmp](https://github.com/hrsh7th/nvim-cmp) and [Sagh
 
 ## Features
 
-| Git                | Trigger                                                                  |
-| ------------------ | ------------------------------------------------------------------------ |
-| Commits            | :                                                                        |
-| Trailer keys       | A word at the start of a line in a commit message                        |
-| Trailer identities | `Name <email>` after an identity key, such as `Co-authored-by: `         |
-| Trailer values     | An earlier value of the key after any other key, such as `Assisted-by: ` |
+| Git                 | Trigger                                                                  |
+| ------------------- | ------------------------------------------------------------------------ |
+| Commits             | :                                                                        |
+| Trailer keys        | A word at the start of a line in a commit message                        |
+| Trailer identities  | `Name <email>` after an identity key, such as `Co-authored-by: `         |
+| Trailer values      | An earlier value of the key after any other key, such as `Assisted-by: ` |
+| Autosquash prefixes | The start of `fixup`, `squash`, or `amend` on line 1 of a commit message |
+| Autosquash titles   | `fixup!`, `squash!`, or `amend!` on line 1 of a commit message           |
 
 | GitHub        | Trigger |
 | ------------- | ------- |
@@ -197,6 +199,21 @@ require("cmp_git").setup({
                 format = format.git.trailers.values,
             },
         },
+        autosquash = {
+            filetypes = { "gitcommit", "NeogitCommitMessage" },
+            -- the prefix words at the start of line 1, such as `fixup! ` for `fi`
+            prefixes = {
+                words = { "fixup", "squash", "amend" },
+                min_length = 2, -- letters to type before the words show
+                sort_by = sort.git.autosquash.prefixes,
+                format = format.git.autosquash.prefixes,
+            },
+            -- the titles of earlier commits after the prefix, from the commits of `git.commits`
+            commits = {
+                sort_by = sort.git.autosquash.commits,
+                format = format.git.autosquash.commits,
+            },
+        },
     },
     github = {
         hosts = {},  -- list of private instances of github
@@ -284,6 +301,15 @@ require("cmp_git").setup({
     trigger_actions = {
         {
             pattern = [[^[[:alnum:]-]\+]],
+            actions = { "git_autosquash_prefixes" },
+        },
+        {
+            pattern = [[^\%(fixup\|squash\|amend\)!\s*\zs.*]],
+            keyword_pattern = [[^\%(fixup\|squash\|amend\)\%(\zs!\S*\|!\s*\zs.*\)]],
+            actions = { "git_autosquash" },
+        },
+        {
+            pattern = [[^[[:alnum:]-]\+]],
             actions = { "git_trailer_keys" },
         },
         {
@@ -321,6 +347,7 @@ require("cmp_git").setup({
 
 - [Trigger actions](docs/configuration.md#trigger-actions)
 - [Trailer completion](docs/configuration.md#trailer-completion)
+- [Autosquash completion](docs/configuration.md#autosquash-completion)
 - [Format and sort items](docs/configuration.md#format-and-sort-items)
 - [Filetypes](docs/configuration.md#filetypes)
 - [Remotes and SSH aliases](docs/configuration.md#remotes-and-ssh-aliases)

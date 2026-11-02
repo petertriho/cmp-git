@@ -294,6 +294,94 @@ T["nvim_cmp_special_trigger_characters"] = function()
     eq(triggers, { "%", "]" }, "special trigger characters route")
 end
 
+---A prefix word item, as the autosquash capability gives it.
+local PREFIX_ITEM = { label = "fixup!", insertText = "fixup! ", data = { word = "fixup", index = 1, reopen = true } }
+---A commit item of the autosquash commit list.
+local COMMIT_ITEM = { label = "feat: add parser", insertText = "feat: add parser", data = { sha = "abcdef1" } }
+
+---Replace the `cmp` module with a stub that records the `complete` calls in `events`.
+---@param events table[]
+local function stub_cmp(events)
+    helpers.stub(package.loaded, "cmp", {
+        complete = function(option)
+            table.insert(events, { "complete", option })
+        end,
+    })
+end
+
+T["nvim_cmp_execute_reopens_the_menu_after_a_prefix_item"] = function()
+    local source = Source.new({})
+    local events = {}
+    stub_cmp(events)
+    local function callback()
+        table.insert(events, { "callback" })
+    end
+
+    source:execute(PREFIX_ITEM, callback)
+    eq(events, { { "callback" } }, "the callback runs at once, and the reopen waits for nvim-cmp to finish the confirm")
+    helpers.flush()
+    eq(
+        events,
+        { { "callback" }, { "complete", { config = { sources = { { name = "git" } } } } } },
+        "one request with only the git source, after the callback"
+    )
+
+    events = {}
+    stub_cmp(events)
+    source:execute(COMMIT_ITEM, callback)
+    helpers.flush()
+    eq(events, { { "callback" } }, "a commit item runs the callback and does not reopen the menu")
+end
+
+T["nvim_cmp_execute_without_nvim_cmp"] = function()
+    local source = Source.new({})
+    helpers.stub(package.loaded, "cmp", nil)
+    helpers.stub(package.preload, "cmp", function()
+        error("module 'cmp' not found")
+    end)
+    -- A scheduled error would only print a message, so the reopen runs at once
+    helpers.stub(vim, "schedule", function(fn)
+        fn()
+    end)
+    local called = false
+
+    source:execute(PREFIX_ITEM, function()
+        called = true
+    end)
+
+    ok(called, "the callback runs, and execute raises no error")
+end
+
+T["nvim_cmp_reopen_request_gives_the_commit_items"] = function()
+    helpers.stub(repository, "is_git_repo", function(on_result)
+        on_result(true)
+    end)
+    local source = Source.new({})
+    local bufnr = helpers.buffer({ "fixup! " })
+    vim.api.nvim_set_current_buf(bufnr)
+    source.sources.git.cache_commits[bufnr] = {
+        {
+            sha = "abcdef1",
+            title = "feat: add parser",
+            description = "",
+            author_name = "Ada Lovelace",
+            author_mail = "ada@example.com",
+            commit_timestamp = 1700000000,
+            diff = 1,
+        },
+    }
+    local callback, lists = helpers.recorder()
+
+    -- `cmp.complete` asks with the Invoked trigger kind
+    source:complete(cmp_params("fixup! ", 1), callback)
+
+    eq(#lists, 1, "the request answers")
+    local item = lists[1].items[1]
+    eq(item.label, "feat: add parser", "the commit items")
+    eq(item.textEdit.range.start.character, 7, "the edit starts after the prefix and its space")
+    eq(item.textEdit.newText, "feat: add parser", "the insert is the title")
+end
+
 T["source_new_uses_normalized_config"] = function()
     local source = Source.new({
         github = {

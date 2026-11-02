@@ -8,6 +8,19 @@ local ok = helpers.ok
 
 local T = helpers.new_set()
 
+---@param trigger_actions table[]
+---@param action string
+---@return integer index
+---@return table entry
+local function entry_with_action(trigger_actions, action)
+    for index, entry in ipairs(trigger_actions) do
+        if vim.tbl_contains(entry.actions or {}, action) then
+            return index, entry
+        end
+    end
+    error("no entry with the action " .. action)
+end
+
 T["config_normalize_fills_defaults_and_hosts"] = function()
     local normalized = config.normalize({
         github = {
@@ -212,11 +225,14 @@ end
 T["config_trailer_defaults"] = function()
     local normalized = config.normalize({})
 
-    eq(normalized.trigger_actions[1].actions[1], "git_trailer_keys", "trailer keys action is first")
-    eq(normalized.trigger_actions[2].actions[1], "git_trailer_identities", "trailer identities action is second")
-    eq(normalized.trigger_actions[2].actions[2], "git_trailer_values", "trailer values action follows identities")
+    local keys = entry_with_action(normalized.trigger_actions, "git_trailer_keys")
+    eq(
+        normalized.trigger_actions[keys + 1].actions,
+        { "git_trailer_identities", "git_trailer_values" },
+        "trailer values entry follows the keys entry, with identities first"
+    )
     eq(normalized.git.trailers.values.limit, 1000, "trailer values scan limit")
-    eq(normalized.trigger_actions[3].trigger_character, ":", "commit trigger follows trailer actions")
+    eq(normalized.trigger_actions[keys + 2].trigger_character, ":", "commit trigger follows trailer actions")
     eq(normalized.git.trailers.keys.limit, 100, "trailer keys scan limit")
     eq(normalized.git.trailers.identities.limit, 1000, "trailer identities scan limit")
     eq(normalized.git.trailers.keys.builtin[1], "Co-authored-by", "built-in keys start with Co-authored-by")
@@ -231,8 +247,62 @@ T["config_trailer_defaults"] = function()
     ok(not vim.tbl_contains(normalized.git.trailers.filetypes, "octo"), "no trailers in octo")
 end
 
+T["config_autosquash_defaults"] = function()
+    local normalized = config.normalize({})
+    local autosquash = normalized.git.autosquash
+
+    eq(autosquash.filetypes, { "gitcommit", "NeogitCommitMessage" }, "autosquash in commit messages")
+    eq(type(autosquash.commits.format.insertText), "function", "the commit format")
+    eq(type(autosquash.commits.sort_by), "function", "the commit sort")
+
+    eq(autosquash.prefixes.words, { "fixup", "squash", "amend" }, "the prefix words of git")
+    eq(autosquash.prefixes.min_length, 2, "the prefix words show from the second letter")
+    eq(type(autosquash.prefixes.format.insertText), "function", "the prefix format")
+    eq(type(autosquash.prefixes.sort_by), "function", "the prefix sort")
+
+    local _, keys_entry = entry_with_action(normalized.trigger_actions, "git_trailer_keys")
+    local prefixes_entry = normalized.trigger_actions[1]
+    eq(prefixes_entry.actions, { "git_autosquash_prefixes" }, "the prefix entry comes first")
+    eq(prefixes_entry.pattern, keys_entry.pattern, "the prefix entry shares the pattern of the trailer keys")
+    eq(prefixes_entry.keyword_pattern, nil, "the prefix entry adds no keyword pattern")
+
+    local entry = normalized.trigger_actions[2]
+    eq(entry.actions, { "git_autosquash" }, "the commit list entry follows")
+    eq(entry.pattern, [[^\%(fixup\|squash\|amend\)!\s*\zs.*]], "the commit list starts after the prefix")
+    eq(
+        entry.keyword_pattern,
+        [[^\%(fixup\|squash\|amend\)\%(\zs!\S*\|!\s*\zs.*\)]],
+        "the keyword starts at a `!` that the typed text touches"
+    )
+    eq(entry_with_action(normalized.trigger_actions, "git_trailer_keys"), 3, "the trailer entries follow")
+    for _, field in ipairs({ "pattern", "keyword_pattern" }) do
+        eq(entry[field]:find([[\@<=]], 1, true), nil, field .. " has no lookbehind")
+    end
+end
+
+T["config_autosquash_partial_overrides_keep_the_defaults"] = function()
+    local words = config.normalize({ git = { autosquash = { prefixes = { words = { "fixup" } } } } }).git.autosquash
+    eq(words.prefixes.words, { "fixup" }, "a word list replaces the default words")
+    eq(words.prefixes.min_length, 2, "a word list keeps the minimum length")
+    eq(type(words.prefixes.format.label), "function", "a word list keeps the format")
+    eq(words.filetypes, { "gitcommit", "NeogitCommitMessage" }, "a word list keeps the filetypes")
+
+    local min_length = config.normalize({ git = { autosquash = { prefixes = { min_length = 1 } } } }).git.autosquash
+    eq(min_length.prefixes.min_length, 1, "a minimum length")
+    eq(min_length.prefixes.words, { "fixup", "squash", "amend" }, "a minimum length keeps the words")
+    eq(type(min_length.commits.format.label), "function", "a minimum length keeps the commit format")
+end
+
+T["config_autosquash_empty_lists_replace_the_defaults"] = function()
+    local autosquash =
+        config.normalize({ git = { autosquash = { filetypes = {}, prefixes = { words = {} } } } }).git.autosquash
+
+    eq(autosquash.filetypes, {}, "no filetypes turn off autosquash completion")
+    eq(autosquash.prefixes.words, {}, "no words turn off the prefix words")
+end
+
 T["config_trailer_value_pattern_has_no_lookbehind"] = function()
-    local value_entry = config.normalize({}).trigger_actions[2]
+    local _, value_entry = entry_with_action(config.normalize({}).trigger_actions, "git_trailer_values")
 
     -- A lookbehind makes Vim use its backtracking engine, which is slow on long lines
     eq(value_entry.pattern:find([[\@<=]], 1, true), nil, "value pattern has no lookbehind")
@@ -243,7 +313,7 @@ T["config_normalize_upgrades_the_lookbehind_value_pattern"] = function()
     local lookbehind = [[\%(^[[:alnum:]-]\+:\s*\)\@<=\%([^[:space:]<>:#@!][^<>:#@!]*\%(<[^>]*\)\?\)\?]]
     local user_entry = { pattern = lookbehind, actions = { "git_trailer_values" } }
     local custom_entry = { pattern = [[^Refs:\s*\zs\S*]], actions = { "git_trailer_values" } }
-    local defaults = config.normalize({}).trigger_actions[2]
+    local _, defaults = entry_with_action(config.normalize({}).trigger_actions, "git_trailer_values")
 
     local normalized = config.normalize({ trigger_actions = { user_entry, custom_entry } })
 
