@@ -208,6 +208,13 @@ T["core_keyword_pattern_offsets"] = function()
         { "cc @ad", 3 },
         { "see !4", 4 },
         { "body text he", nil },
+        { "fixup!", 5 },
+        { "fixup!feat", 5 },
+        { "fixup! ", 7 },
+        { "fixup! a", 7 },
+        { "fixup! feat: a", 7 },
+        { "amend! fix #12 x", 7 },
+        { "squash! fixup! x", 8 },
     }
 
     for _, case in ipairs(cases) do
@@ -295,24 +302,28 @@ T["trailer_value_pattern_matches_the_lookbehind_pattern"] = function()
     end
 end
 
-T["trailer_patterns_are_fast_on_long_lines"] = function()
+T["trigger_patterns_are_fast_on_long_lines"] = function()
     local core = Core.new({})
     local regexes = { vim.regex([[\%(]] .. core.keyword_pattern .. [[\)\m$]]) }
     for _, trigger_action in ipairs(core.trigger_actions) do
         table.insert(regexes, trigger_action.regex)
     end
-    local line = string.rep("parser cache ", 400)
+    eq(action_regex(core, "git_autosquash") ~= nil, true, "the autosquash pattern is measured")
+    -- A long body line, and a long subject after an autosquash prefix, which the autosquash patterns match to the end
+    local lines = { string.rep("parser cache ", 400), "fixup! " .. string.rep("parser cache ", 400) }
 
-    local start = vim.uv.hrtime()
-    for _ = 1, 3 do
-        for _, regex in ipairs(regexes) do
-            regex:match_str(line)
+    for _, line in ipairs(lines) do
+        local start = vim.uv.hrtime()
+        for _ = 1, 3 do
+            for _, regex in ipairs(regexes) do
+                regex:match_str(line)
+            end
         end
-    end
-    local elapsed_ms = (vim.uv.hrtime() - start) / 1e6
+        local elapsed_ms = (vim.uv.hrtime() - start) / 1e6
 
-    -- The lookbehind took about 2 s here, and the `\zs` form takes about 1 ms
-    ok(elapsed_ms < 200, string.format("patterns take %.1f ms on a %d character line", elapsed_ms, #line))
+        -- The lookbehind trailer value pattern took about 2 s here, and the `\zs` patterns take about 1 ms
+        ok(elapsed_ms < 200, string.format("patterns take %.1f ms on %s...", elapsed_ms, vim.inspect(line:sub(1, 20))))
+    end
 end
 
 T["trailer_routing"] = function()
@@ -345,6 +356,7 @@ T["trailer_routing"] = function()
 
     local cases = {
         { line = "Co-auth", expected = "keys" },
+        { line = "Co", expected = "keys" },
         { line = "Co-authored-by:", trigger = ":", expected = "identities" },
         { line = "Co-authored-by: Ada", expected = "identities" },
         { line = "Co-authored-by: Ada <ada@", trigger = "@", expected = "identities" },
@@ -366,6 +378,225 @@ T["trailer_routing"] = function()
 
         eq(table.concat(calls, ","), case.expected, "route for " .. vim.inspect(case.line))
     end
+end
+
+-- Newest first, as `git log` gives them
+local HISTORY = {
+    {
+        sha = "1111111",
+        title = "fixup! feat: add parser (#12)",
+        description = "",
+        author_name = "Ada Lovelace",
+        author_mail = "ada@example.com",
+        commit_timestamp = 1700000000,
+        diff = 1,
+    },
+    {
+        sha = "2222222",
+        title = "docs: describe the parser",
+        description = "",
+        author_name = "Ada Lovelace",
+        author_mail = "ada@example.com",
+        commit_timestamp = 1699999999,
+        diff = 2,
+    },
+    {
+        sha = "3333333",
+        title = "feat: add parser (#12)",
+        description = "",
+        author_name = "Ada Lovelace",
+        author_mail = "ada@example.com",
+        commit_timestamp = 1699999998,
+        diff = 3,
+    },
+}
+
+---Make a core whose hosted sources record the methods that run and handle each request, with a GitLab remote.
+---@return table core
+---@return string[] calls `discover` and `<source>.<method>` of each call.
+local function core_with_recorded_remote()
+    local core = Core.new({})
+    local calls = {}
+    helpers.stub(repository, "is_git_repo", function(on_result)
+        on_result(true)
+    end)
+    helpers.stub(repository, "discover", function(_, opts)
+        table.insert(calls, "discover")
+        opts.on_complete({ host = "gitlab.com", owner = "group", repo = "project" })
+    end)
+    for _, name in ipairs({ "github", "gitlab", "gitea", "forgejo" }) do
+        local methods = {}
+        for _, method in ipairs({ "complete_issues", "complete_change_requests", "complete_mentions" }) do
+            methods[method] = function(_, callback)
+                table.insert(calls, name .. "." .. method)
+                callback({ items = {}, isIncomplete = false })
+                return true
+            end
+        end
+        rawset(core.sources, name, methods)
+    end
+    return core, calls
+end
+
+T["autosquash_commit_items_on_line_1"] = function()
+    local core, calls = core_with_recorded_remote()
+    local cases = {
+        { line = "fixup!", trigger = "!", edit_start = 6, insert = " docs: describe the parser" },
+        { line = "fixup!feat", trigger = "!", edit_start = 6, insert = " docs: describe the parser" },
+        { line = "fixup! fe", edit_start = 7, insert = "docs: describe the parser" },
+        { line = "fixup! feat:", trigger = ":", edit_start = 7, insert = "docs: describe the parser" },
+        { line = "amend! fix #12", trigger = "#", edit_start = 7, insert = "docs: describe the parser" },
+        { line = "squash! fixup! x", edit_start = 8, insert = "docs: describe the parser" },
+    }
+
+    for _, case in ipairs(cases) do
+        local bufnr = helpers.buffer({ case.line })
+        core.sources.git.cache_commits[bufnr] = HISTORY
+        local callback, lists = helpers.recorder()
+        core:complete({
+            trigger_character = case.trigger,
+            cursor = { row = 1, character = #case.line },
+            line = case.line,
+            bufnr = bufnr,
+        }, callback)
+
+        local name = vim.inspect(case.line)
+        eq(#lists, 1, name .. " answers once")
+        eq(
+            vim.tbl_map(function(item)
+                return item.label
+            end, lists[1].items),
+            { "docs: describe the parser", "feat: add parser (#12)" },
+            name .. " gives the titles"
+        )
+        local edit = lists[1].items[1].textEdit
+        eq(edit.range.start.character, case.edit_start, name .. " edit start")
+        eq(edit.range["end"].character, #case.line, name .. " edit end")
+        eq(edit.newText, case.insert, name .. " inserts the title")
+    end
+    eq(calls, {}, "the commit list needs no remote, so a GitLab remote gives no merge requests")
+end
+
+---Complete the line on line 1 of a commit message.
+---@param line string
+---@param overrides? table
+---@return cmp_git.CompletionList list
+---@return integer checks The repository checks of the request.
+local function complete_line_1(line, overrides)
+    local core = Core.new(overrides or {})
+    local checks = 0
+    helpers.stub(repository, "is_git_repo", function(on_result)
+        checks = checks + 1
+        on_result(true)
+    end)
+    local callback, lists = helpers.recorder()
+    core:complete({ cursor = { row = 1, character = #line }, line = line, bufnr = helpers.buffer({ line }) }, callback)
+    eq(#lists, 1, vim.inspect(line) .. " answers once")
+    return lists[1], checks
+end
+
+---@param list cmp_git.CompletionList
+---@return string[]
+local function labels(list)
+    return vim.tbl_map(function(item)
+        return item.label
+    end, list.items)
+end
+
+T["autosquash_prefix_items_on_line_1"] = function()
+    local declined = { items = {}, isIncomplete = false }
+
+    eq(complete_line_1("f"), { items = {}, isIncomplete = true }, "f asks again on the next letter")
+
+    local list = complete_line_1("fi")
+    eq(labels(list), { "fixup!" }, "fi gives fixup!")
+    local item = list.items[1]
+    eq(item.textEdit.range.start.character, 0, "the edit starts at the line start")
+    eq(item.textEdit.range["end"].character, 2, "the edit ends at the cursor")
+    eq(item.textEdit.newText, "fixup! ", "the insert is the prefix and a space")
+    eq(item.data.reopen, true, "the item has the reopen marker")
+
+    for _, line in ipairs({ "fe", "Fi" }) do
+        local result, checks = complete_line_1(line)
+        eq(result, declined, vim.inspect(line) .. " gives no autosquash item")
+        eq(checks, 0, vim.inspect(line) .. " checks no repository")
+    end
+    eq(labels(complete_line_1("sq")), { "squash!" }, "sq gives squash!")
+    eq(labels(complete_line_1("am")), { "amend!" }, "am gives amend!")
+    local min_length = { git = { autosquash = { prefixes = { min_length = 1 } } } }
+    eq(labels(complete_line_1("f", min_length)), { "fixup!" }, "f with min_length 1 gives fixup!")
+    local words = { git = { autosquash = { prefixes = { words = { "fixup" } } } } }
+    eq(complete_line_1("sq", words), declined, "sq with the words { fixup } gives no autosquash item")
+end
+
+T["autosquash_prefixes_fall_through_to_the_next_entries"] = function()
+    local core = Core.new({ git = { trailers = { min_line = 1 } } })
+    local calls = {}
+    helpers.stub(core.sources.git, "get_trailer_keys", function()
+        table.insert(calls, "keys")
+        return true
+    end)
+    local function run(line)
+        calls = {}
+        core:_run_trigger_actions(
+            nil,
+            function() end,
+            { cursor = { row = 1, character = #line }, line = line, bufnr = helpers.buffer({ line }) },
+            {}
+        )
+        return table.concat(calls, ",")
+    end
+
+    eq(run("fe"), "keys", "letters that start no word go to the trailer keys of the same regex")
+    eq(run("fi"), "", "letters that start a word give the prefix words")
+end
+
+T["autosquash_prefixes_start_no_process"] = function()
+    if vim.fn.executable("git") ~= 1 then
+        helpers.skip("git is not installed")
+    end
+
+    vim.fn.chdir(helpers.git_repo().dir)
+    local core = Core.new({})
+    local context = { cursor = { row = 1, character = 2 }, line = "fi", bufnr = helpers.buffer({ "fi" }) }
+    local callback, lists = helpers.recorder()
+    core:complete(context, callback)
+    helpers.wait_for(function()
+        return #lists == 1
+    end, "the first request answers")
+
+    local spawns = 0
+    local system = vim.system
+    helpers.stub(vim, "system", function(...)
+        spawns = spawns + 1
+        return system(...)
+    end)
+    core:complete(context, callback)
+
+    eq(spawns, 0, "a request after the repository check starts no process")
+    eq(#lists, 2, "the request answers at once")
+    eq(labels(lists[2]), { "fixup!" }, "the request gives the prefix")
+end
+
+T["autosquash_keeps_the_bang_trigger_elsewhere"] = function()
+    local core, calls = core_with_recorded_remote()
+    local function run(lines, row, filetype)
+        for key in pairs(calls) do
+            calls[key] = nil
+        end
+        local bufnr = helpers.buffer(lines, filetype)
+        core.sources.git.cache_commits[bufnr] = HISTORY
+        local callback, lists = helpers.recorder()
+        core:complete(
+            { trigger_character = "!", cursor = { row = row, character = 6 }, line = "fixup!", bufnr = bufnr },
+            callback
+        )
+        eq(#lists, 1, "the request answers once")
+        return table.concat(calls, ",")
+    end
+
+    eq(run({ "subject", "", "fixup!" }, 3), "discover,gitlab.complete_change_requests", "`!` on line 3")
+    eq(run({ "fixup!" }, 1, "octo"), "discover,gitlab.complete_change_requests", "`!` on line 1 of an octo buffer")
 end
 
 ---Replace the regexes of the trigger actions with wrappers that count the matches.
@@ -400,7 +631,12 @@ T["routing_checks_availability_first_and_matches_each_regex_once"] = function()
 
     local octo = helpers.buffer({ "title", "", line }, "octo")
     eq(#core:_route({ cursor = { row = 3, character = #line }, line = line, bufnr = octo }), 0, "no trailers in octo")
-    eq(counts, { git_trailer_keys = 0, git_trailer_identities = 0 }, "unavailable actions match no regex")
+    -- The prefix words share the regex of the trailer keys, so its count has the name of the prefix action
+    eq(
+        counts,
+        { git_autosquash_prefixes = 0, git_autosquash = 0, git_trailer_identities = 0 },
+        "unavailable actions match no regex"
+    )
 
     local bufnr = helpers.buffer({ "feat: subject", "", line })
     local context = { cursor = { row = 3, character = #line }, line = line, bufnr = bufnr }
@@ -408,7 +644,11 @@ T["routing_checks_availability_first_and_matches_each_regex_once"] = function()
     eq(#routes, 2, "identities and values routes")
     eq(routes[1].edit_start, 16, "identities edit start")
     eq(routes[2].edit_start, 16, "values edit start")
-    eq(counts, { git_trailer_keys = 1, git_trailer_identities = 1 }, "the value actions share one match")
+    eq(
+        counts,
+        { git_autosquash_prefixes = 1, git_autosquash = 0, git_trailer_identities = 1 },
+        "the value actions share one match, and autosquash is only on line 1"
+    )
 
     helpers.stub(repository, "is_git_repo", function(on_result)
         on_result(true)
@@ -424,9 +664,13 @@ T["routing_checks_availability_first_and_matches_each_regex_once"] = function()
             return true
         end,
     }
-    counts.git_trailer_keys, counts.git_trailer_identities = 0, 0
+    counts.git_autosquash_prefixes, counts.git_trailer_identities = 0, 0
     core:complete(context, function() end)
-    eq(counts, { git_trailer_keys = 1, git_trailer_identities = 1 }, "a request matches each regex once")
+    eq(
+        counts,
+        { git_autosquash_prefixes = 1, git_autosquash = 0, git_trailer_identities = 1 },
+        "a request matches each regex once"
+    )
 end
 
 T["core_pre_route_skips_repository"] = function()
@@ -844,6 +1088,7 @@ T["setup_and_a_declined_request_load_only_the_core_modules"] = function()
             "cmp_git.core",
             "cmp_git.format",
             "cmp_git.log",
+            "cmp_git.provider.capabilities.autosquash_lines",
             "cmp_git.provider.capabilities.trailer_lines",
             "cmp_git.sort",
             "cmp_git.source",

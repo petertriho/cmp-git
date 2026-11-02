@@ -31,6 +31,16 @@ local TRAILER_VALUE_KEYWORD_PATTERN = [[^[[:alnum:]-]\+\zs:\S*\|]] .. TRAILER_VA
 -- users who set their own `trigger_actions` to copy the default entries, so `normalize` replaces it.
 local LEGACY_TRAILER_VALUE_PATTERN = [[\%(^[[:alnum:]-]\+:\s*\)\@<=]] .. TRAILER_VALUE
 
+-- Keep these in sync with the autosquash entry in the README. `git rebase --autosquash` recognizes only these three
+-- prefixes. `\zs` sets the edit start after the prefix and its spaces, so that `:`, `#`, `@`, and `!` in the title
+-- start no other completion. Only the first prefix counts, so an item replaces `fixup! x` in `squash! fixup! x`.
+local AUTOSQUASH_PATTERN = [[^\%(fixup\|squash\|amend\)!\s*\zs.*]]
+-- As for `Key:` in `TRAILER_VALUE_KEYWORD_PATTERN`, the first branch starts the keyword at the `!` when the typed text
+-- touches it (`fixup!` or `fixup!feat`). The edit then starts after the `!` (`AUTOSQUASH_PATTERN`), and the commit
+-- format adds a space before the title and filters on the `!`. The second branch is `AUTOSQUASH_PATTERN`. The branches
+-- share one `^`, because Vim tries each `^` branch of the keyword pattern at each column of the line.
+local AUTOSQUASH_KEYWORD_PATTERN = [[^\%(fixup\|squash\|amend\)\%(\zs!\S*\|!\s*\zs.*\)]]
+
 local IDENTITY_TRAILER_KEYS = {
     "Co-authored-by",
     "Signed-off-by",
@@ -100,6 +110,30 @@ local defaults = {
                 limit = 1000, -- commits scanned for values
                 sort_by = sort.git.trailers.values,
                 format = format.git.trailers.values,
+            },
+        },
+        ---Completion on the subject line (line 1) of `fixup!`, `squash!`, and `amend!` commits
+        ---@class cmp_git.Config.GitAutosquash
+        autosquash = {
+            ---@type string[]
+            filetypes = { "gitcommit", "NeogitCommitMessage" },
+            ---The prefix words at the start of the line, such as `fixup!` for `fi`. The commit list opens only after a
+            ---prefix that the pattern of the `git_autosquash` entry matches.
+            ---@class cmp_git.Config.GitAutosquashPrefixes
+            prefixes = {
+                ---@type string[]
+                words = { "fixup", "squash", "amend" },
+                ---Letters to type before the words show. A value below 1 acts as 1.
+                ---@type integer
+                min_length = 2,
+                sort_by = sort.git.autosquash.prefixes,
+                format = format.git.autosquash.prefixes,
+            },
+            ---The titles of earlier commits after the prefix. The history and its cache are the ones of `commits`.
+            ---@class cmp_git.Config.GitAutosquashCommits
+            commits = {
+                sort_by = sort.git.autosquash.commits,
+                format = format.git.autosquash.commits,
             },
         },
     },
@@ -215,6 +249,17 @@ local defaults = {
     },
     ---@type (cmp_git.Config.NamedTriggerActions|cmp_git.Config.PatternTriggerActions|cmp_git.Config.TriggerAction)[]
     trigger_actions = {
+        {
+            -- The pattern of the trailer keys, so that core matches one regex for both entries, and the keyword
+            -- pattern does not grow. The `available` check of the action tests the line.
+            pattern = TRAILER_KEY_PATTERN,
+            actions = { "git_autosquash_prefixes" },
+        },
+        {
+            pattern = AUTOSQUASH_PATTERN,
+            keyword_pattern = AUTOSQUASH_KEYWORD_PATTERN,
+            actions = { "git_autosquash" },
+        },
         {
             pattern = TRAILER_KEY_PATTERN,
             actions = { "git_trailer_keys" },

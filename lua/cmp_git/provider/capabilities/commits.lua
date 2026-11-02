@@ -139,7 +139,7 @@ end
 
 ---@param commits cmp_git.Commit[]
 ---@param config cmp_git.Config.GitCommits
----@param trigger_char string
+---@param trigger_char string?
 ---@return cmp_git.CompletionItem[]
 function M.items(commits, config, trigger_char)
     local items = {}
@@ -152,8 +152,9 @@ end
 ---@class cmp_git.Provider.CommitCapabilityArgs
 ---@field cache table<integer, cmp_git.Commit[]>
 ---@field callback fun(list: cmp_git.CompletionList)
----@field config cmp_git.Config.GitCommits
----@field trigger_char string
+---@field config cmp_git.Config.GitCommits The request, the parse, and the cache of the history.
+---@field trigger_char? string
+---@field items? fun(commits: cmp_git.Commit[], config: cmp_git.Config.GitCommits, trigger_char: string?): cmp_git.CompletionItem[] Makes the items of the history, by default `M.items`.
 ---@field runner? table
 ---@field bufnr? integer
 
@@ -161,9 +162,10 @@ end
 ---@return cmp_git.SystemJob?
 function M.job(args)
     local bufnr = args.bufnr or vim.api.nvim_get_current_buf()
+    local items = args.items or M.items
 
     if args.cache[bufnr] then
-        args.callback({ items = M.items(args.cache[bufnr], args.config, args.trigger_char), isIncomplete = false })
+        args.callback({ items = items(args.cache[bufnr], args.config, args.trigger_char), isIncomplete = false })
         return nil
     end
 
@@ -184,7 +186,7 @@ function M.job(args)
 
         local parsed = M.parse(result, args.config)
         args.cache[bufnr] = parsed
-        args.callback({ items = M.items(parsed, args.config, args.trigger_char), isIncomplete = false })
+        args.callback({ items = items(parsed, args.config, args.trigger_char), isIncomplete = false })
     end)
 
     if not job then

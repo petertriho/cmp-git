@@ -43,6 +43,67 @@ T["git_commits"] = function()
     ok(item.data == commit, "data is the commit")
 end
 
+T["git_autosquash_commits"] = function()
+    local commit = {
+        sha = "abcdef1",
+        title = "feat: add parser (#12)",
+        description = "Body text",
+        author_name = "Ada Lovelace",
+        author_mail = "ada@example.com",
+        commit_timestamp = 1234567890,
+        diff = 5,
+    }
+    local documentation = format.item(defaults.git.commits, ":", commit).documentation.value
+
+    eq(fields(format.item(defaults.git.autosquash.commits, nil, commit)), {
+        label = "feat: add parser (#12)",
+        insertText = "feat: add parser (#12)",
+        filterText = "feat: add parser (#12)",
+        documentation = documentation,
+    }, "after the prefix and a space")
+    local attached = format.item(defaults.git.autosquash.commits, "!", commit)
+    eq(fields(attached), {
+        label = "feat: add parser (#12)",
+        insertText = " feat: add parser (#12)",
+        filterText = "! feat: add parser (#12)",
+        documentation = documentation,
+    }, "when the typed text touches the `!`")
+    eq(attached.sortText, "0000000005", "sort text comes from sort_by")
+end
+
+T["git_autosquash_prefixes"] = function()
+    local documentation = {}
+    for index, word in ipairs({ "fixup", "squash", "amend", "reword" }) do
+        local item = format.item(defaults.git.autosquash.prefixes, nil, { word = word, index = index })
+        eq(item.label, word .. "!", word .. " label")
+        eq(item.filterText, word, word .. " filter text")
+        eq(item.insertText, word .. "! ", word .. " insert text")
+        eq(item.documentation.kind, "markdown", word .. " documentation is markdown")
+        documentation[word] = item.documentation.value
+    end
+
+    eq(
+        documentation.fixup,
+        "# fixup!\n\n`git rebase --autosquash` adds the changes of this commit to the commit with the title after the prefix, and keeps the message of that commit.",
+        "fixup documentation"
+    )
+    eq(
+        documentation.squash,
+        "# squash!\n\n`git rebase --autosquash` adds the changes of this commit to the commit with the title after the prefix, and combines the two messages.",
+        "squash documentation"
+    )
+    eq(
+        documentation.amend,
+        "# amend!\n\n`git rebase --autosquash` adds the changes of this commit to the commit with the title after the prefix, and replaces the message of that commit with the message of this commit.",
+        "amend documentation"
+    )
+    eq(
+        documentation.reword,
+        "# reword!\n\n`git rebase --autosquash` reads only the prefixes `fixup!`, `squash!`, and `amend!`.",
+        "documentation of a word that git does not read"
+    )
+end
+
 T["github_issues"] = function()
     local item = format.item(defaults.github.issues, "#", {
         number = 12,

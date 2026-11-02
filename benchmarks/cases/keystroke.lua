@@ -59,12 +59,24 @@ return {
     keyword_offset("prose_300", fixtures.prose(300)),
     keyword_offset("prose_1000", fixtures.prose(1000)),
     keyword_offset("trailer_value", "Co-authored-by: Ada Lov"),
+    keyword_offset("autosquash", "fixup! feat: add the par"),
     {
         -- The first word of the subject matches the trailer key pattern, but trailers start below the subject
         name = "keystroke/nvim_cmp/complete_declined",
         setup = function()
             fixtures.scratch_buffer(LINES)
             return { source = require("cmp_git.source").new({}), params = cmp_params("Fix", 1) }
+        end,
+        run = function(state)
+            state.source:complete(state.params, noop)
+        end,
+    },
+    {
+        -- Lowercase letters on the subject line that start no autosquash prefix word, so each word is compared
+        name = "keystroke/nvim_cmp/complete_declined_letters",
+        setup = function()
+            fixtures.scratch_buffer(LINES)
+            return { source = require("cmp_git.source").new({}), params = cmp_params("refactor", 1) }
         end,
         run = function(state)
             state.source:complete(state.params, noop)

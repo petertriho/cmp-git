@@ -2,6 +2,7 @@ local helpers = require("tests.helpers")
 local commit_capability = require("cmp_git.provider.capabilities.commits")
 
 local eq = helpers.eq
+local ok = helpers.ok
 
 local T = helpers.new_set()
 
@@ -300,6 +301,64 @@ T["commit_capability_uses_parsed_cache_and_runner"] = function()
     eq(cache[44][1].sha, "abcdef1", "commit capability caches parsed commits")
     eq(cache[44][1].label, nil, "commit capability does not cache completion items")
     eq(last_list.items[1].label, ":abcdef1: cache me", "commit capability maps cached commits")
+end
+
+T["commit_capability_items_function_reuses_the_cached_history"] = function()
+    local builds = 0
+    local raw = commit_record("abcdef1234567890", "cache me", "body", "Author", "author@example.com", 1234567890)
+    local runner = {
+        build = function(_spec, callback)
+            builds = builds + 1
+            return helpers.fake_job(function()
+                callback(raw, true)
+            end)
+        end,
+    }
+    local cache = {}
+    local seen = {}
+    local function titles(commits, config, trigger_char)
+        table.insert(seen, { config = config, trigger_char = trigger_char })
+        return vim.tbl_map(function(commit)
+            return { label = commit.title }
+        end, commits)
+    end
+    local config = commit_test_config()
+    local callback, lists = helpers.recorder()
+
+    commit_capability.complete({
+        cache = cache,
+        callback = callback,
+        config = config,
+        trigger_char = ":",
+        runner = runner,
+        bufnr = 46,
+    })
+    commit_capability.complete({
+        cache = cache,
+        callback = callback,
+        config = config,
+        items = titles,
+        runner = runner,
+        bufnr = 46,
+    })
+
+    eq(builds, 1, "the cached history starts no new process")
+    eq(lists[1].items[1].label, ":abcdef1: cache me", "the default items function")
+    eq(lists[2], { items = { { label = "cache me" } }, isIncomplete = false }, "the items function makes the items")
+    eq(#seen, 1, "the items function runs for its own request only")
+    ok(seen[1].config == config, "the items function gets the config")
+    eq(seen[1].trigger_char, nil, "the items function gets the trigger character")
+
+    commit_capability.complete({
+        cache = {},
+        callback = callback,
+        config = config,
+        items = titles,
+        runner = runner,
+        bufnr = 47,
+    })
+    eq(builds, 2, "an empty cache starts git log")
+    eq(lists[3].items[1].label, "cache me", "the items function makes the items of a new history")
 end
 
 T["commit_capability_answers_failures_without_caching"] = function()

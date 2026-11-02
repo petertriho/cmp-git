@@ -1,5 +1,6 @@
 local helpers = require("tests.helpers")
 local Blink = require("cmp_git.blink")
+local repository = require("cmp_git.repository")
 
 local eq = helpers.eq
 
@@ -146,6 +147,108 @@ T["blink_adapter_matches_text_before_cursor"] = function()
     eq(received.trigger_character, "#", "blink detects the trigger before the cursor")
     eq(received.cursor.row, 3, "blink converts the cursor row")
     eq(received.cursor.character, 5, "blink converts the cursor column")
+end
+
+---A prefix word item, as the autosquash capability gives it and blink.cmp keeps it.
+local PREFIX_ITEM = {
+    label = "fixup!",
+    insertText = "fixup! ",
+    data = { word = "fixup", index = 1, reopen = true },
+    source_id = "cmp_git",
+}
+---A commit item of the autosquash commit list.
+local COMMIT_ITEM = {
+    label = "feat: add parser",
+    insertText = "feat: add parser",
+    data = { sha = "abcdef1" },
+    source_id = "cmp_git",
+}
+
+---Replace the `blink.cmp` module with a stub that records the `show` calls in `events`.
+---@param events table[]
+local function stub_blink(events)
+    helpers.stub(package.loaded, "blink.cmp", {
+        show = function(opts)
+            table.insert(events, { "show", opts })
+        end,
+    })
+end
+
+T["blink_execute_reopens_the_menu_after_a_prefix_item"] = function()
+    local blink = Blink.new({})
+    local events = {}
+    stub_blink(events)
+    local function callback()
+        table.insert(events, { "callback" })
+    end
+    local function default_implementation()
+        table.insert(events, { "default_implementation" })
+    end
+
+    blink:execute({}, PREFIX_ITEM, callback, default_implementation)
+    eq(events, { { "default_implementation" }, { "callback" } }, "the insert and the callback run at once")
+    helpers.flush()
+    eq(
+        events,
+        { { "default_implementation" }, { "callback" }, { "show", { providers = { "cmp_git" } } } },
+        "one show for the provider of the item, after the callback"
+    )
+
+    events = {}
+    stub_blink(events)
+    blink:execute({}, COMMIT_ITEM, callback, default_implementation)
+    helpers.flush()
+    eq(events, { { "default_implementation" }, { "callback" } }, "a commit item does not reopen the menu")
+end
+
+T["blink_execute_without_blink"] = function()
+    local blink = Blink.new({})
+    helpers.stub(package.loaded, "blink.cmp", nil)
+    helpers.stub(package.preload, "blink.cmp", function()
+        error("module 'blink.cmp' not found")
+    end)
+    -- A scheduled error would only print a message, so the reopen runs at once
+    helpers.stub(vim, "schedule", function(fn)
+        fn()
+    end)
+    local calls = {}
+
+    blink:execute({}, PREFIX_ITEM, function()
+        table.insert(calls, "callback")
+    end, function()
+        table.insert(calls, "default_implementation")
+    end)
+
+    eq(calls, { "default_implementation", "callback" }, "the insert and the callback run, and execute raises no error")
+end
+
+T["blink_reopen_request_gives_the_commit_items"] = function()
+    helpers.stub(repository, "is_git_repo", function(on_result)
+        on_result(true)
+    end)
+    local blink = Blink.new({})
+    local bufnr = helpers.buffer({ "fixup! " })
+    blink.core.sources.git.cache_commits[bufnr] = {
+        {
+            sha = "abcdef1",
+            title = "feat: add parser",
+            description = "",
+            author_name = "Ada Lovelace",
+            author_mail = "ada@example.com",
+            commit_timestamp = 1700000000,
+            diff = 1,
+        },
+    }
+    local result
+
+    blink:get_completions({ cursor = { 1, 7 }, line = "fixup! ", bufnr = bufnr }, function(response)
+        result = response
+    end)
+
+    local item = helpers.not_nil(result, "the request answers").items[1]
+    eq(item.label, "feat: add parser", "the commit items")
+    eq(item.textEdit.range.start.character, 7, "the edit starts after the prefix and its space")
+    eq(item.textEdit.newText, "feat: add parser", "the insert is the title")
 end
 
 return T
