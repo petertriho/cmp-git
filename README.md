@@ -175,8 +175,9 @@ require("cmp_git").setup({
             min_line = 3, -- first line where trailers complete, below the subject and its blank line
             keys = {
                 builtin = {
-                    "Co-authored-by", "Signed-off-by", "Reviewed-by", "Acked-by", "Tested-by",
-                    "Reported-by", "Suggested-by", "Helped-by", "Fixes", "Closes", "Refs",
+                    "Co-authored-by", "Co-developed-by", "Signed-off-by", "Reviewed-by", "Acked-by",
+                    "Tested-by", "Reported-by", "Suggested-by", "Helped-by", "Fixes", "Closes", "Refs",
+                    "Assisted-by", "Generated-by",
                 },
                 limit = 100, -- commits scanned for keys
                 sort_by = sort.git.trailers.keys,
@@ -185,8 +186,8 @@ require("cmp_git").setup({
             identities = {
                 -- trailer keys whose values are completed with `Name <email>`
                 keys = {
-                    "Co-authored-by", "Signed-off-by", "Reviewed-by", "Acked-by", "Tested-by",
-                    "Reported-by", "Suggested-by", "Helped-by",
+                    "Co-authored-by", "Co-developed-by", "Signed-off-by", "Reviewed-by", "Acked-by",
+                    "Tested-by", "Reported-by", "Suggested-by", "Helped-by",
                 },
                 limit = 1000, -- commits scanned for identities
                 sort_by = sort.git.trailers.identities,

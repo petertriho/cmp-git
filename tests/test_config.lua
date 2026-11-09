@@ -242,6 +242,18 @@ T["config_trailer_defaults"] = function()
         "identity keys contain Signed-off-by"
     )
     ok(not vim.tbl_contains(normalized.git.trailers.identities.keys, "Fixes"), "identity keys do not contain Fixes")
+    for _, key in ipairs({ "Assisted-by", "Generated-by" }) do
+        ok(vim.tbl_contains(normalized.git.trailers.keys.builtin, key), "built-in keys contain " .. key)
+        ok(not vim.tbl_contains(normalized.git.trailers.identities.keys, key), "identity keys do not contain " .. key)
+    end
+    ok(
+        vim.tbl_contains(normalized.git.trailers.keys.builtin, "Co-developed-by"),
+        "built-in keys contain Co-developed-by"
+    )
+    ok(
+        vim.tbl_contains(normalized.git.trailers.identities.keys, "Co-developed-by"),
+        "identity keys contain Co-developed-by"
+    )
     eq(normalized.git.trailers.min_line, 3, "trailers start below the subject and its blank line")
     ok(vim.tbl_contains(normalized.git.trailers.filetypes, "gitcommit"), "trailers in gitcommit")
     ok(not vim.tbl_contains(normalized.git.trailers.filetypes, "octo"), "no trailers in octo")

@@ -43,6 +43,7 @@ local AUTOSQUASH_KEYWORD_PATTERN = [[^\%(fixup\|squash\|amend\)\%(\zs!\S*\|!\s*\
 
 local IDENTITY_TRAILER_KEYS = {
     "Co-authored-by",
+    "Co-developed-by",
     "Signed-off-by",
     "Reviewed-by",
     "Acked-by",
@@ -90,7 +91,10 @@ local defaults = {
             ---@class cmp_git.Config.GitTrailerKeys
             keys = {
                 ---@type string[]
-                builtin = vim.list_extend(vim.deepcopy(IDENTITY_TRAILER_KEYS), { "Fixes", "Closes", "Refs" }),
+                builtin = vim.list_extend(
+                    vim.deepcopy(IDENTITY_TRAILER_KEYS),
+                    { "Fixes", "Closes", "Refs", "Assisted-by", "Generated-by" }
+                ),
                 limit = 100, -- commits scanned for keys
                 sort_by = sort.git.trailers.keys,
                 format = format.git.trailers.keys,
